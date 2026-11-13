@@ -2,18 +2,26 @@ package com.example.emptyapp.ui.reader
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.emptyapp.data.annotation.AnnotationRepository
+import com.example.emptyapp.data.annotation.BookmarkEntry
+import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkSettingsStore
 import com.example.emptyapp.reader.RefreshFlashController
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.positions
 
 sealed interface ReaderUiState {
   data object Loading : ReaderUiState
@@ -24,6 +32,8 @@ sealed interface ReaderUiState {
     val book: BookEntry,
     val publication: Publication,
     val initialLocator: Locator?,
+    val toc: List<Link>,
+    val positions: List<Locator>,
   ) : ReaderUiState
 }
 
@@ -31,10 +41,15 @@ class ReaderViewModel(
   private val bookId: String,
   private val repository: LibraryRepository,
   private val settingsStore: EInkSettingsStore,
+  private val annotations: AnnotationRepository,
+  private val overrideLocatorJson: String? = null,
 ) : ViewModel() {
   private val flashController = RefreshFlashController()
   private var publication: Publication? = null
   private var lastPositionKey: String? = null
+  private var currentLocator: Locator? = null
+  private var currentBookTitle: String = ""
+
   private val mutableState = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
   private val mutableProgress = MutableStateFlow(0f)
   private val mutableFlashTrigger = MutableStateFlow(0)
@@ -48,6 +63,16 @@ class ReaderViewModel(
   val pagesSinceFlash: StateFlow<Int> = mutablePagesSinceFlash.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
 
+  val bookmarks: StateFlow<List<BookmarkEntry>> =
+    annotations.bookmarks
+      .map { list -> list.filter { it.bookId == bookId } }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+  val highlights: StateFlow<List<HighlightEntry>> =
+    annotations.highlights
+      .map { list -> list.filter { it.bookId == bookId } }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
   init {
     viewModelScope.launch { load() }
   }
@@ -59,6 +84,7 @@ class ReaderViewModel(
   }
 
   fun onLocatorChanged(locator: Locator) {
+    currentLocator = locator
     val key = "${locator.href}#${locator.locations.progression}"
     val previous = lastPositionKey
     lastPositionKey = key
@@ -78,25 +104,60 @@ class ReaderViewModel(
     }
   }
 
+  fun addBookmark() {
+    val locator = currentLocator ?: return
+    val title = locator.title?.takeIf { it.isNotBlank() } ?: currentBookTitle
+    val total = (locator.locations.totalProgression ?: 0.0).toFloat()
+    viewModelScope.launch {
+      annotations.addBookmark(bookId, title, total, locator.toJSON().toString())
+    }
+  }
+
+  fun removeBookmark(id: String) {
+    viewModelScope.launch { annotations.removeBookmark(id) }
+  }
+
+  fun addHighlight(locator: Locator, note: String = "") {
+    val quote = locator.text.highlight?.takeIf { it.isNotBlank() } ?: return
+    val total = (locator.locations.totalProgression ?: 0.0).toFloat()
+    viewModelScope.launch {
+      annotations.addHighlight(
+        bookId = bookId,
+        bookTitle = currentBookTitle,
+        quote = quote,
+        note = note,
+        progress = total,
+        locatorJson = locator.toJSON().toString(),
+      )
+    }
+  }
+
+  fun removeHighlight(id: String) {
+    viewModelScope.launch { annotations.removeHighlight(id) }
+  }
+
   private suspend fun load() {
     val book = repository.find(bookId)
     if (book == null) {
       mutableState.value = ReaderUiState.Error("Không tìm thấy sách")
       return
     }
+    currentBookTitle = book.title
     repository
       .engine
       .open(repository.fileOf(book))
-      .onSuccess {
-        publication = it
+      .onSuccess { pub ->
+        publication = pub
         mutableProgress.value = book.progress
-        mutableState.value = ReaderUiState.Ready(book, it, restoreLocator(book))
+        val initial = parseLocator(overrideLocatorJson) ?: parseLocator(book.lastLocatorJson)
+        val positions = runCatching { pub.positions() }.getOrDefault(emptyList())
+        mutableState.value = ReaderUiState.Ready(book, pub, initial, pub.tableOfContents, positions)
       }
       .onFailure { mutableState.value = ReaderUiState.Error(it.message ?: "Không mở được sách") }
   }
 
-  private fun restoreLocator(book: BookEntry): Locator? =
-    book.lastLocatorJson?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
+  private fun parseLocator(jsonText: String?): Locator? =
+    jsonText?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
 
   override fun onCleared() {
     publication?.close()

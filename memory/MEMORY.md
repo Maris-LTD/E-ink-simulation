@@ -12,15 +12,18 @@
 - **Giao diện E-Ink**:
   - Bảng màu trắng-đen tương phản cao (`#FFFFFF` nền, `#000000` mực, `#111111` phụ), không hiệu ứng nháy/chớp màn hình.
   - Font UI: `Rubik` (`res/font/rubik.ttf`, weight `800–900`) kết hợp `EInkText` (`Stroke` + `Fill`) và đường kẻ `1.5.dp`.
-  - `LibraryScreen`: TopBar (`eInk Reader`, `Tìm`, `+ Thêm sách`), TabBar đen-trắng (`Tất cả`, `Đang đọc`, `Chưa đọc`, `Đã xong`), Filter pills theo tác giả.
-- **Data (`data/book/`)**: `LibraryRepository` quản lý danh sách sách trong `filesDir/books` và index tại `filesDir/library.json` qua `BookIndexStore` + `BookImporter`.
-- **Reader (`reader/`)**:
-  - `ReadiumEngine`: mở `Publication` từ file EPUB.
+  - `LibraryScreen`: TopBar (`eInk Reader`, `Tìm`, `+ Thêm sách`), TabBar đen-trắng (`Tất cả`, `Đang đọc`, `Chưa đọc`, `Highlights`), Filter pills theo tác giả, `LibraryHighlightList` mở thẳng sách tại vị trí highlight.
+- **Data**:
+  - `data/book/`: `LibraryRepository` quản lý danh sách sách trong `filesDir/books` và `filesDir/library.json`.
+  - `data/annotation/`: `AnnotationRepository` lưu dấu trang (`filesDir/bookmarks.json`) và trích dẫn/ghi chú (`filesDir/highlights.json`).
+- **Reader (`reader/`, `ui/reader/`)**:
+  - `ReadiumEngine`: mở `Publication` từ file EPUB; `ReaderViewModel` tải `tableOfContents` và `positions()`.
   - Font đọc: `Literata` (`assets/fonts/literata.ttf` & `literata_italic.ttf`) đăng ký qua `EpubNavigatorFragment.Configuration`, kết hợp tiêm CSS `font-weight` + `-webkit-text-stroke` nhẹ trong `ReaderScreen` (mặc định `fontWeight = 1.25`, `contrast = 1.25f`, `SETTINGS_VERSION = 5`).
   - `EInkSettings` & `EInkSettingsStore`: cấu hình tone (`HIGH_CONTRAST` mặc định, `PAPER`, `SOFT_GRAY`), font (`SERIF`, `SANS_SERIF`), cỡ chữ, độ đậm chữ, giãn dòng, lề, grayscale, contrast, tùy chọn `paperGrain` / `ghosting` (mặc định tắt), `readerFooter` (mặc định bật).
-  - `ReaderActivity`: hỗ trợ phím cứng `KEYCODE_VOLUME_UP` / `KEYCODE_VOLUME_DOWN` để lật trang; `ReaderScreen` có `ReaderTopBar` (`‹`, tiêu đề, `A−`, `A+`) và `ReaderFooterBar`.
+  - `ReaderActivity`: hỗ trợ phím cứng `KEYCODE_VOLUME_UP` / `KEYCODE_VOLUME_DOWN`, `ActionMode.Callback` bôi đen chọn **Highlight** (tô xám `#D4D4D4` qua `DecorableNavigator`) hoặc **Ghi chú** (`HighlightNoteDialog`).
+  - `ReaderBars` & `ReaderContentsSheet`: `ReaderTopBar` (`‹`, tiêu đề, `A−`, `A+`, `Lưu` bookmark, `Mục lục`), `ReaderBottomBar` (thanh kéo tiến độ mượt + `Cài đặt`), `ReaderContentsSheet` (3 tab `Mục lục`, `Dấu trang`, `Highlight`).
 
 ## Trạng thái hiện tại
 - `.\gradlew.bat testDebugUnitTest`: pass (`RefreshFlashControllerTest` 5/5 tests).
 - `.\gradlew.bat installDebug`: cài đặt và chạy COLD launch thành công trên thiết bị `25078PC3EG` (`BMSGKF6XEMKBKFYD`).
-- Chưa có: unit test cho data/settings/mapper, tính năng Mục lục (TOC), Bookmark.
+- Chưa có: unit test cho data/settings/mapper/annotations, đọc bài viết Web/RSS, tra từ điển, hỗ trợ PDF/CBZ.

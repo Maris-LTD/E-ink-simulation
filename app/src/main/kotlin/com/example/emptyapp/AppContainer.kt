@@ -1,6 +1,7 @@
 package com.example.emptyapp
 
 import android.content.Context
+import com.example.emptyapp.data.annotation.AnnotationRepository
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.reader.EInkSettingsStore
 import com.example.emptyapp.reader.ReadiumEngine
@@ -9,4 +10,5 @@ class AppContainer(context: Context) {
   val engine = ReadiumEngine(context)
   val library = LibraryRepository(context, engine)
   val settings = EInkSettingsStore(context)
+  val annotations = AnnotationRepository(context)
 }

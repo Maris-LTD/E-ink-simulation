@@ -21,10 +21,12 @@ fun MainNavigation() {
     entryProvider =
       entryProvider {
         entry<Library> {
-          val viewModel = viewModel { LibraryViewModel(container.library) }
+          val viewModel = viewModel { LibraryViewModel(container.library, container.annotations) }
           LibraryScreen(
             viewModel = viewModel,
-            onOpenBook = { id -> context.startActivity(ReaderActivity.intentFor(context, id)) },
+            onOpenBook = { id, locatorJson ->
+              context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
+            },
           )
         }
       },

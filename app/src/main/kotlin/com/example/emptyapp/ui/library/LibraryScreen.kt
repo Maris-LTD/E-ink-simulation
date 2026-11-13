@@ -48,16 +48,17 @@ private enum class LibraryTab(val label: String) {
   ALL("Tất cả"),
   READING("Đang đọc"),
   UNREAD("Chưa đọc"),
-  DONE("Đã xong"),
+  HIGHLIGHTS("Highlights"),
 }
 
 @Composable
 fun LibraryScreen(
   viewModel: LibraryViewModel,
-  onOpenBook: (String) -> Unit,
+  onOpenBook: (String, String?) -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val books by viewModel.books.collectAsStateWithLifecycle()
+  val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
   var selectedTab by remember { mutableStateOf(LibraryTab.ALL) }
@@ -78,7 +79,7 @@ fun LibraryScreen(
             LibraryTab.ALL -> true
             LibraryTab.READING -> book.progress > 0f && book.progress < 0.99f
             LibraryTab.UNREAD -> book.progress <= 0f
-            LibraryTab.DONE -> book.progress >= 0.99f
+            LibraryTab.HIGHLIGHTS -> false
           }
         val authorMatch = selectedAuthor == null || book.author == selectedAuthor
         val queryMatch =
@@ -115,7 +116,7 @@ fun LibraryScreen(
         )
       }
       EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
-      if (authors.isNotEmpty()) {
+      if (selectedTab != LibraryTab.HIGHLIGHTS && authors.isNotEmpty()) {
         AuthorFilterRow(
           totalCount = books.size,
           authors = authors,
@@ -125,10 +126,27 @@ fun LibraryScreen(
       }
       SectionHeader(title = selectedTab.label.uppercase())
       HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
-      if (filteredBooks.isEmpty()) {
+      if (selectedTab == LibraryTab.HIGHLIGHTS) {
+        val filteredHighlights =
+          remember(highlights, query) {
+            if (query.isBlank()) highlights
+            else {
+              highlights.filter {
+                it.quote.contains(query, ignoreCase = true) ||
+                  it.note.contains(query, ignoreCase = true) ||
+                  it.bookTitle.contains(query, ignoreCase = true)
+              }
+            }
+          }
+        LibraryHighlightList(
+          highlights = filteredHighlights,
+          onOpenHighlight = { bookId, locatorJson -> onOpenBook(bookId, locatorJson) },
+          onRemove = viewModel::removeHighlight,
+        )
+      } else if (filteredBooks.isEmpty()) {
         EmptyLibrary(hasAnyBooks = books.isNotEmpty())
       } else {
-        BookList(filteredBooks, onOpenBook, viewModel::remove)
+        BookList(filteredBooks, { id -> onOpenBook(id, null) }, viewModel::remove)
       }
     }
   }
@@ -261,12 +279,13 @@ private fun SectionHeader(title: String) {
 @Composable
 private fun EmptyLibrary(hasAnyBooks: Boolean) {
   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-    Text(
+    EInkText(
       text =
         if (hasAnyBooks) "Không có sách phù hợp bộ lọc."
         else "Chưa có sách nào.\nNhấn + Thêm sách để nhập tệp EPUB.",
       style = MaterialTheme.typography.bodyLarge,
       color = MaterialTheme.colorScheme.secondary,
+      strokeWidthPx = 1.5f,
     )
   }
 }

@@ -5,33 +5,26 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,19 +33,30 @@ import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.attachReaderInput
 import com.example.emptyapp.reader.awaitView
-import com.example.emptyapp.ui.eink.EInkText
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
 import com.example.emptyapp.ui.eink.RefreshFlashOverlay
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.json.JSONObject
+import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Link
+import org.readium.r2.shared.publication.Locator
+
+private const val HIGHLIGHT_GRAY = 0xFFD4D4D4.toInt()
 
 @OptIn(ExperimentalReadiumApi::class)
 @Composable
 fun ReaderScreen(
   viewModel: ReaderViewModel,
   title: String,
+  toc: List<Link>,
+  positions: List<Locator>,
+  pendingNoteLocator: Locator?,
+  onSaveNote: (Locator, String) -> Unit,
+  onDismissNote: () -> Unit,
   onClose: () -> Unit,
   onNavigatorReady: (EpubNavigatorFragment) -> Unit,
 ) {
@@ -61,20 +65,33 @@ fun ReaderScreen(
   val flashTrigger by viewModel.flashTrigger.collectAsStateWithLifecycle()
   val pageTurnTrigger by viewModel.pageTurnTrigger.collectAsStateWithLifecycle()
   val pagesSinceFlash by viewModel.pagesSinceFlash.collectAsStateWithLifecycle()
+  val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+  val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+
   var chromeVisible by remember { mutableStateOf(false) }
   var settingsOpen by remember { mutableStateOf(false) }
+  var contentsOpen by remember { mutableStateOf(false) }
   var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
   var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
   var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
+  val snackbarHostState = remember { SnackbarHostState() }
+  val scope = rememberCoroutineScope()
 
-  BackHandler(enabled = settingsOpen || chromeVisible) {
-    if (settingsOpen) settingsOpen = false else chromeVisible = false
+  BackHandler(enabled = contentsOpen || settingsOpen || chromeVisible) {
+    when {
+      contentsOpen -> contentsOpen = false
+      settingsOpen -> settingsOpen = false
+      else -> chromeVisible = false
+    }
   }
 
   navigator?.let { nav ->
     LaunchedEffect(nav) {
       nav.awaitView()
-      nav.attachReaderInput(onCenterTap = { chromeVisible = !chromeVisible; settingsOpen = false })
+      nav.attachReaderInput(onCenterTap = {
+        chromeVisible = !chromeVisible
+        settingsOpen = false
+      })
       onNavigatorReady(nav)
     }
     LaunchedEffect(nav, settings) {
@@ -89,6 +106,16 @@ fun ReaderScreen(
         viewModel.onLocatorChanged(locator)
         applyReaderStrokeStyle(nav, viewModel.settings.value)
       }
+    }
+    LaunchedEffect(nav, highlights) {
+      nav.awaitView()
+      val decorations =
+        highlights.mapNotNull { entry ->
+          runCatching { Locator.fromJSON(JSONObject(entry.locatorJson)) }
+            .getOrNull()
+            ?.let { Decoration(entry.id, it, Decoration.Style.Highlight(HIGHLIGHT_GRAY, isActive = true)) }
+        }
+      nav.applyDecorations(decorations, "highlights")
     }
     LaunchedEffect(nav, pageTurnTrigger, flashTrigger, settings.ghosting) {
       activeGhost = if (settings.ghosting && pagesSinceFlash > 0) latestSnapshot else null
@@ -106,10 +133,7 @@ fun ReaderScreen(
       modifier = Modifier.fillMaxSize(),
       onUpdate = { fragment -> if (navigator == null) navigator = fragment },
     )
-    RefreshFlashOverlay(
-      ghostBitmap = activeGhost,
-      ghostAlpha = ghostAlpha,
-    )
+    RefreshFlashOverlay(ghostBitmap = activeGhost, ghostAlpha = ghostAlpha)
     if (settings.paperGrain) PaperGrainOverlay()
     if (!chromeVisible && settings.readerFooter) {
       ReaderFooterBar(
@@ -123,16 +147,28 @@ fun ReaderScreen(
       ReaderTopBar(
         title = title,
         onClose = onClose,
+        onOpenContents = { contentsOpen = true; settingsOpen = false },
+        onBookmark = {
+          viewModel.addBookmark()
+          scope.launch { snackbarHostState.showSnackbar("Đã lưu dấu trang") }
+        },
         onDecreaseFont = {
           viewModel.updateSettings { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) }
         },
         onIncreaseFont = {
-          viewModel.updateSettings { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(3.0)) }
+          viewModel.updateSettings { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(4.0)) }
         },
         modifier = Modifier.align(Alignment.TopCenter),
       )
       ReaderBottomBar(
         progress = progress,
+        seekEnabled = positions.isNotEmpty(),
+        onSeekToProgress = { fraction ->
+          if (positions.isNotEmpty()) {
+            val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
+            navigator?.go(positions[index], animated = false)
+          }
+        },
         onToggleSettings = { settingsOpen = !settingsOpen },
         modifier = Modifier.align(Alignment.BottomCenter),
       )
@@ -144,63 +180,44 @@ fun ReaderScreen(
         modifier =
           Modifier.align(Alignment.BottomCenter)
             .navigationBarsPadding()
-            .padding(bottom = 64.dp)
+            .padding(bottom = 112.dp)
             .fillMaxHeight(0.6f)
             .background(MaterialTheme.colorScheme.background),
       )
     }
-  }
-}
-
-@Composable
-private fun ReaderTopBar(
-  title: String,
-  onClose: () -> Unit,
-  onDecreaseFont: () -> Unit,
-  onIncreaseFont: () -> Unit,
-  modifier: Modifier = Modifier,
-) {
-  Column(
-    modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).statusBarsPadding(),
-  ) {
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      TextButton(onClick = onClose) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
-      EInkText(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.weight(1f).padding(end = 8.dp),
+    if (contentsOpen) {
+      ReaderContentsSheet(
+        toc = toc,
+        bookmarks = bookmarks,
+        highlights = highlights,
+        onSelectToc = { link ->
+          navigator?.go(link, animated = false)
+          contentsOpen = false
+          chromeVisible = false
+        },
+        onSelectLocatorJson = { jsonText ->
+          runCatching { Locator.fromJSON(JSONObject(jsonText)) }.getOrNull()?.let {
+            navigator?.go(it, animated = false)
+          }
+          contentsOpen = false
+          chromeVisible = false
+        },
+        onRemoveBookmark = viewModel::removeBookmark,
+        onRemoveHighlight = viewModel::removeHighlight,
+        onDismiss = { contentsOpen = false },
       )
-      TextButton(onClick = onDecreaseFont) { EInkText("A−", style = MaterialTheme.typography.labelLarge) }
-      TextButton(onClick = onIncreaseFont) { EInkText("A+", style = MaterialTheme.typography.labelLarge) }
     }
-    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
-  }
-}
-
-@Composable
-private fun ReaderBottomBar(
-  progress: Float,
-  onToggleSettings: () -> Unit,
-  modifier: Modifier = Modifier,
-) {
-  Row(
-    modifier =
-      modifier
-        .fillMaxWidth()
-        .background(MaterialTheme.colorScheme.background)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
-        .navigationBarsPadding()
-        .padding(horizontal = 16.dp, vertical = 4.dp),
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically,
-  ) {
-    EInkText("${(progress * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
-    TextButton(onClick = onToggleSettings) { EInkText("Cài đặt") }
+    pendingNoteLocator?.let { locator ->
+      HighlightNoteDialog(
+        quote = locator.text.highlight.orEmpty(),
+        onSave = { note -> onSaveNote(locator, note) },
+        onDismiss = onDismissNote,
+      )
+    }
+    SnackbarHost(
+      hostState = snackbarHostState,
+      modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 72.dp),
+    )
   }
 }
 

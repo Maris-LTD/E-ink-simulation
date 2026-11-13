@@ -3,7 +3,10 @@ package com.example.emptyapp
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.ActionMode
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -22,6 +25,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -29,23 +33,30 @@ import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.reader.ReaderScreen
 import com.example.emptyapp.ui.reader.ReaderUiState
 import com.example.emptyapp.ui.reader.ReaderViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.css.FontStyle
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Locator
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderActivity : FragmentActivity() {
   private var navigator: EpubNavigatorFragment? = null
+  private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
 
   private val viewModel: ReaderViewModel by lazy {
     val container = (application as EmptyApplication).container
     val bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
+    val overrideLocator = intent.getStringExtra(EXTRA_LOCATOR_JSON)
     androidx.lifecycle.ViewModelProvider(
       this,
       viewModelFactory {
-        initializer { ReaderViewModel(bookId, container.library, container.settings) }
+        initializer {
+          ReaderViewModel(bookId, container.library, container.settings, container.annotations, overrideLocator)
+        }
       },
     )[ReaderViewModel::class.java]
   }
@@ -60,6 +71,7 @@ class ReaderActivity : FragmentActivity() {
   @Composable
   private fun ReaderRoot() {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val noteLocator by pendingNoteLocator.collectAsStateWithLifecycle()
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
       when (val current = state) {
         ReaderUiState.Loading -> CenteredMessage("Đang mở sách...", null)
@@ -69,6 +81,14 @@ class ReaderActivity : FragmentActivity() {
           ReaderScreen(
             viewModel = viewModel,
             title = current.book.title,
+            toc = current.toc,
+            positions = current.positions,
+            pendingNoteLocator = noteLocator,
+            onSaveNote = { locator, note ->
+              viewModel.addHighlight(locator, note)
+              pendingNoteLocator.value = null
+            },
+            onDismissNote = { pendingNoteLocator.value = null },
             onClose = ::finish,
             onNavigatorReady = { navigator = it },
           )
@@ -80,7 +100,10 @@ class ReaderActivity : FragmentActivity() {
   private fun installNavigatorFactory(ready: ReaderUiState.Ready): Boolean {
     val factory = EpubNavigatorFactory(ready.publication)
     val config =
-      EpubNavigatorFragment.Configuration(servedAssets = listOf("fonts/.*")).apply {
+      EpubNavigatorFragment.Configuration(
+        servedAssets = listOf("fonts/.*"),
+        selectionActionModeCallback = selectionCallback(),
+      ).apply {
         addFontFamilyDeclaration(
           com.example.emptyapp.reader.EInkPreferencesMapper.READER_SERIF,
           alternates = listOf(FontFamily.SERIF),
@@ -143,10 +166,51 @@ class ReaderActivity : FragmentActivity() {
       super.onKeyUp(keyCode, event)
     }
 
+  private fun selectionCallback(): ActionMode.Callback =
+    object : ActionMode.Callback {
+      override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+        menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, "Highlight")
+        menu.add(Menu.NONE, MENU_NOTE, 1, "Ghi chú")
+        return true
+      }
+
+      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+
+      override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+        val nav = navigator ?: return false
+        return when (item.itemId) {
+          MENU_HIGHLIGHT -> {
+            lifecycleScope.launch {
+              nav.currentSelection()?.let { viewModel.addHighlight(it.locator) }
+              nav.clearSelection()
+            }
+            mode.finish()
+            true
+          }
+          MENU_NOTE -> {
+            lifecycleScope.launch {
+              nav.currentSelection()?.let { pendingNoteLocator.value = it.locator }
+              nav.clearSelection()
+            }
+            mode.finish()
+            true
+          }
+          else -> false
+        }
+      }
+
+      override fun onDestroyActionMode(mode: ActionMode) = Unit
+    }
+
   companion object {
     private const val EXTRA_BOOK_ID = "book_id"
+    private const val EXTRA_LOCATOR_JSON = "locator_json"
+    private const val MENU_HIGHLIGHT = 1001
+    private const val MENU_NOTE = 1002
 
-    fun intentFor(context: Context, bookId: String): Intent =
-      Intent(context, ReaderActivity::class.java).putExtra(EXTRA_BOOK_ID, bookId)
+    fun intentFor(context: Context, bookId: String, locatorJson: String? = null): Intent =
+      Intent(context, ReaderActivity::class.java)
+        .putExtra(EXTRA_BOOK_ID, bookId)
+        .apply { if (locatorJson != null) putExtra(EXTRA_LOCATOR_JSON, locatorJson) }
   }
 }
