@@ -1,10 +1,14 @@
 package com.example.emptyapp.ui.library
 
 import android.app.WallpaperManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,6 +50,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.emptyapp.R
 import com.example.emptyapp.data.stats.DailyReadingStat
 import com.example.emptyapp.data.stats.ReadingBadge
 import com.example.emptyapp.data.stats.ReadingGamification
@@ -300,6 +305,8 @@ fun ReadingStatsScreen(
       AchievementsCard(badges = badges)
 
       SystemEInkModeCard()
+
+      ContactCard()
     }
   }
 }
@@ -724,6 +731,56 @@ private fun GoogleSyncCard(
         enabled = !syncState.syncing,
       ) {
         EInkText(if (syncState.syncing) "Đang kết nối..." else "Đăng nhập với Google")
+      }
+    }
+  }
+}
+
+@Composable
+private fun ContactCard() {
+  val context = LocalContext.current
+  val email = context.getString(R.string.contact_email)
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    EInkText(
+      text = "LIÊN HỆ & PHẢN HỒI",
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    EInkText(
+      text = "Góp ý tính năng hoặc báo lỗi qua email:",
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    EInkText(text = email, style = MaterialTheme.typography.titleSmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(
+        onClick = {
+          val intent =
+            Intent(Intent.ACTION_SENDTO).apply {
+              data = Uri.parse("mailto:$email?subject=${Uri.encode("[eInk Reader] Góp ý / Phản hồi")}")
+            }
+          val launched = runCatching { context.startActivity(intent) }.isSuccess
+          if (!launched) {
+            Toast.makeText(context, "Không tìm thấy ứng dụng Email trên máy", Toast.LENGTH_SHORT).show()
+          }
+        },
+      ) {
+        EInkText("Gửi email")
+      }
+      TextButton(
+        onClick = {
+          val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+          clipboard.setPrimaryClip(ClipData.newPlainText("Email", email))
+          Toast.makeText(context, "Đã sao chép $email", Toast.LENGTH_SHORT).show()
+        },
+      ) {
+        EInkText("Sao chép", color = MaterialTheme.colorScheme.secondary)
       }
     }
   }
