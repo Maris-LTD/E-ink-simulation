@@ -2,6 +2,7 @@ package com.example.emptyapp.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -93,6 +94,14 @@ fun LibraryScreen(
   onOpenStats: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val context = LocalContext.current
+  val tutorialPrefs = remember { context.getSharedPreferences("eink_tutorial_prefs", android.content.Context.MODE_PRIVATE) }
+  var tutorialOpen by remember { mutableStateOf(!tutorialPrefs.getBoolean("tutorial_seen", false)) }
+  fun dismissTutorial() {
+    tutorialOpen = false
+    tutorialPrefs.edit().putBoolean("tutorial_seen", true).apply()
+  }
+
   val books by viewModel.books.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
@@ -135,7 +144,10 @@ fun LibraryScreen(
     snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
     Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-      LibraryHeader(onOpenStats = onOpenStats)
+      LibraryHeader(
+        onOpenTutorial = { tutorialOpen = true },
+        onOpenStats = onOpenStats,
+      )
       EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
       if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
         AuthorFilterRow(
@@ -211,27 +223,46 @@ fun LibraryScreen(
         onAddBook = { picker.launch(SUPPORTED_MIMES) },
       )
     }
+    if (tutorialOpen) {
+      TutorialOverlay(onDismiss = ::dismissTutorial)
+    }
   }
 }
 
 @Composable
-private fun LibraryHeader(onOpenStats: () -> Unit) {
+private fun LibraryHeader(
+  onOpenTutorial: () -> Unit,
+  onOpenStats: () -> Unit,
+) {
   Row(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     EInkText("eInk Reader", style = MaterialTheme.typography.titleLarge)
-    Box(
-      modifier =
-        Modifier.size(36.dp)
-          .clip(CircleShape)
-          .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-          .clickable(onClick = onOpenStats)
-          .semantics { contentDescription = "Thống kê thói quen đọc" },
-      contentAlignment = Alignment.Center,
-    ) {
-      ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+      Box(
+        modifier =
+          Modifier.size(36.dp)
+            .clip(CircleShape)
+            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            .clickable(onClick = onOpenTutorial)
+            .semantics { contentDescription = "Hướng dẫn sử dụng" },
+        contentAlignment = Alignment.Center,
+      ) {
+        EInkText("?", style = MaterialTheme.typography.titleMedium)
+      }
+      Box(
+        modifier =
+          Modifier.size(36.dp)
+            .clip(CircleShape)
+            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            .clickable(onClick = onOpenStats)
+            .semantics { contentDescription = "Thống kê thói quen đọc" },
+        contentAlignment = Alignment.Center,
+      ) {
+        ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+      }
     }
   }
 }
