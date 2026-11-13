@@ -58,6 +58,7 @@ fun ReaderTopBar(
   title: String,
   showFontControls: Boolean = true,
   onClose: () -> Unit,
+  onOpenSearch: () -> Unit,
   onOpenContents: () -> Unit,
   onBookmark: () -> Unit,
   onDecreaseFont: () -> Unit,
@@ -86,6 +87,25 @@ fun ReaderTopBar(
       if (showFontControls) {
         TextButton(onClick = onDecreaseFont) { EInkText("A−", style = MaterialTheme.typography.labelLarge) }
         TextButton(onClick = onIncreaseFont) { EInkText("A+", style = MaterialTheme.typography.labelLarge) }
+      }
+      IconButton(
+        onClick = onOpenSearch,
+        modifier = Modifier.semantics { contentDescription = "Tìm trong sách" },
+      ) {
+        val ink = MaterialTheme.colorScheme.onBackground
+        Canvas(modifier = Modifier.size(19.dp)) {
+          val r = size.minDimension * 0.3f
+          val center = Offset(size.width * 0.42f, size.height * 0.42f)
+          val stroke = 2.dp.toPx()
+          drawCircle(color = ink, radius = r, center = center, style = Stroke(width = stroke))
+          drawLine(
+            color = ink,
+            start = Offset(center.x + r * 0.7f, center.y + r * 0.7f),
+            end = Offset(size.width * 0.85f, size.height * 0.85f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+          )
+        }
       }
       IconButton(
         onClick = onBookmark,

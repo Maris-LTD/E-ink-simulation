@@ -12,6 +12,7 @@ import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkSettingsStore
 import com.example.emptyapp.reader.RefreshFlashController
 import java.io.File
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,23 @@ import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.positions
+import org.readium.r2.shared.publication.services.search.SearchIterator
+import org.readium.r2.shared.publication.services.search.isSearchable
+import org.readium.r2.shared.publication.services.search.search
+
+sealed interface SearchUiState {
+  data object Idle : SearchUiState
+
+  data class Searching(val query: String) : SearchUiState
+
+  data class Results(
+    val query: String,
+    val items: List<Locator>,
+    val hasMore: Boolean,
+  ) : SearchUiState
+
+  data class Error(val query: String, val message: String) : SearchUiState
+}
 
 sealed interface ReaderUiState {
   data object Loading : ReaderUiState
@@ -50,6 +68,8 @@ class ReaderViewModel(
 ) : ViewModel() {
   private val flashController = RefreshFlashController()
   private var publication: Publication? = null
+  private var searchIterator: SearchIterator? = null
+  private var searchJob: Job? = null
   private var lastPositionKey: String? = null
   private var currentLocator: Locator? = null
   private var currentBookTitle: String = ""
@@ -60,6 +80,7 @@ class ReaderViewModel(
   private val mutablePageTurnTrigger = MutableStateFlow(0)
   private val mutablePagesSinceFlash = MutableStateFlow(0)
   private val mutableDictionaryState = MutableStateFlow<DictionaryUiState?>(null)
+  private val mutableSearchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
 
   val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
   val progress: StateFlow<Float> = mutableProgress.asStateFlow()
@@ -67,6 +88,7 @@ class ReaderViewModel(
   val pageTurnTrigger: StateFlow<Int> = mutablePageTurnTrigger.asStateFlow()
   val pagesSinceFlash: StateFlow<Int> = mutablePagesSinceFlash.asStateFlow()
   val dictionaryState: StateFlow<DictionaryUiState?> = mutableDictionaryState.asStateFlow()
+  val searchState: StateFlow<SearchUiState> = mutableSearchState.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
 
   val bookmarks: StateFlow<List<BookmarkEntry>> =
@@ -161,6 +183,57 @@ class ReaderViewModel(
     mutableDictionaryState.value = null
   }
 
+  fun searchInBook(rawQuery: String) {
+    val query = rawQuery.trim()
+    searchJob?.cancel()
+    runCatching { searchIterator?.close() }
+    searchIterator = null
+    if (query.isEmpty()) {
+      mutableSearchState.value = SearchUiState.Idle
+      return
+    }
+    val pub = publication ?: return
+    if (!pub.isSearchable) {
+      mutableSearchState.value = SearchUiState.Error(query, "Định dạng sách này không hỗ trợ tìm kiếm chữ.")
+      return
+    }
+    mutableSearchState.value = SearchUiState.Searching(query)
+    searchJob =
+      viewModelScope.launch {
+        val iterator = pub.search(query)
+        searchIterator = iterator
+        loadNextSearchPage(query, reset = true)
+      }
+  }
+
+  fun loadMoreSearchResults() {
+    val current = mutableSearchState.value as? SearchUiState.Results ?: return
+    if (!current.hasMore) return
+    searchJob?.cancel()
+    searchJob = viewModelScope.launch { loadNextSearchPage(current.query, reset = false) }
+  }
+
+  private suspend fun loadNextSearchPage(query: String, reset: Boolean) {
+    val iterator = searchIterator ?: return
+    iterator
+      .next()
+      .onSuccess { collection ->
+        val existing =
+          if (reset) emptyList()
+          else (mutableSearchState.value as? SearchUiState.Results)?.items.orEmpty()
+        val newItems = collection?.locators.orEmpty()
+        mutableSearchState.value =
+          SearchUiState.Results(
+            query = query,
+            items = existing + newItems,
+            hasMore = collection != null && newItems.isNotEmpty(),
+          )
+      }
+      .onFailure { err ->
+        mutableSearchState.value = SearchUiState.Error(query, err.message ?: "Lỗi khi tải kết quả")
+      }
+  }
+
   private suspend fun load() {
     val book = repository.find(bookId)
     if (book == null) {
@@ -186,6 +259,8 @@ class ReaderViewModel(
     jsonText?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
 
   override fun onCleared() {
+    searchJob?.cancel()
+    runCatching { searchIterator?.close() }
     publication?.close()
   }
 }

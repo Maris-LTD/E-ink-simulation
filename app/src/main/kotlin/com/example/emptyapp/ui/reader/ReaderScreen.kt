@@ -92,11 +92,13 @@ fun ReaderScreen(
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val dictionaryState by viewModel.dictionaryState.collectAsStateWithLifecycle()
+  val searchState by viewModel.searchState.collectAsStateWithLifecycle()
   val context = LocalContext.current
 
   var chromeVisible by remember { mutableStateOf(false) }
   var settingsOpen by remember { mutableStateOf(false) }
   var contentsOpen by remember { mutableStateOf(false) }
+  var searchOpen by remember { mutableStateOf(false) }
   var navigator by remember { mutableStateOf<NavigatorFragment?>(null) }
   var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
   var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -113,8 +115,9 @@ fun ReaderScreen(
     }
   }
 
-  BackHandler(enabled = contentsOpen || settingsOpen || chromeVisible) {
+  BackHandler(enabled = searchOpen || contentsOpen || settingsOpen || chromeVisible) {
     when {
+      searchOpen -> searchOpen = false
       contentsOpen -> contentsOpen = false
       settingsOpen -> settingsOpen = false
       else -> chromeVisible = false
@@ -217,7 +220,8 @@ fun ReaderScreen(
         title = title,
         showFontControls = bookFormat == BookFormat.EPUB,
         onClose = onClose,
-        onOpenContents = { contentsOpen = true; settingsOpen = false },
+        onOpenSearch = { searchOpen = true; contentsOpen = false; settingsOpen = false },
+        onOpenContents = { contentsOpen = true; searchOpen = false; settingsOpen = false },
         onBookmark = {
           viewModel.addBookmark()
           scope.launch { snackbarHostState.showSnackbar("Đã lưu dấu trang") }
@@ -292,6 +296,23 @@ fun ReaderScreen(
         onRemoveBookmark = viewModel::removeBookmark,
         onRemoveHighlight = viewModel::removeHighlight,
         onDismiss = { contentsOpen = false },
+      )
+    }
+    if (searchOpen) {
+      ReaderSearchSheet(
+        state = searchState,
+        onSearch = viewModel::searchInBook,
+        onLoadMore = viewModel::loadMoreSearchResults,
+        onSelectLocator = { locator ->
+          if (bookFormat == BookFormat.PDF) {
+            pdfController.jumpToPage(resolvePdfPageIndex(locator, positions))
+          } else {
+            navigator?.go(locator, animated = false)
+          }
+          searchOpen = false
+          chromeVisible = false
+        },
+        onDismiss = { searchOpen = false },
       )
     }
     pendingNoteLocator?.let { locator ->
