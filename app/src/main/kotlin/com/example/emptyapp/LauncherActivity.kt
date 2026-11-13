@@ -629,7 +629,7 @@ private fun MinimalistAppDrawerPage(
       DrawerViewMode.LIST, DrawerViewMode.TEXT_ONLY -> {
         val showIcons = viewMode == DrawerViewMode.LIST
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-          items(filtered, key = { it.packageName }) { app ->
+          items(filtered, key = { it.packageName }, contentType = { "app_row" }) { app ->
             val pinned = app.packageName in pinnedPackages
             Row(
               modifier =
@@ -677,7 +677,7 @@ private fun MinimalistAppDrawerPage(
           verticalArrangement = Arrangement.spacedBy(14.dp),
           modifier = Modifier.fillMaxSize(),
         ) {
-          gridItems(filtered, key = { it.packageName }) { app ->
+          gridItems(filtered, key = { it.packageName }, contentType = { "app_grid" }) { app ->
             val pinned = app.packageName in pinnedPackages
             Column(
               modifier =
@@ -715,15 +715,12 @@ private fun MonochromeAppIcon(
   size: Dp,
 ) {
   val context = LocalContext.current
-  val iconBitmap by
-    produceState<ImageBitmap?>(
-      initialValue = LauncherAppCache.getIcon(packageName),
-      key1 = packageName,
-    ) {
-      if (value == null) {
-        value = withContext(Dispatchers.IO) { LauncherAppCache.loadIcon(context, packageName) }
-      }
+  var iconBitmap by remember(packageName) { mutableStateOf(LauncherAppCache.getIcon(packageName)) }
+  if (iconBitmap == null) {
+    LaunchedEffect(packageName) {
+      iconBitmap = withContext(Dispatchers.IO) { LauncherAppCache.loadIcon(context, packageName) }
     }
+  }
 
   Box(
     modifier =

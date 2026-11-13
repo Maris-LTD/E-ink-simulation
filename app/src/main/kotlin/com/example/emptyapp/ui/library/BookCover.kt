@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
@@ -33,12 +36,12 @@ fun BookCover(
   compact: Boolean = false,
 ) {
   val path = coverFile?.absolutePath
-  val bitmap by
-    produceState<ImageBitmap?>(initialValue = CoverBitmapCache.get(path), key1 = path) {
-      if (value == null && coverFile != null) {
-        value = withContext(Dispatchers.IO) { CoverBitmapCache.decodeAndCache(coverFile) }
-      }
+  var bitmap by remember(path) { mutableStateOf(CoverBitmapCache.get(path)) }
+  if (bitmap == null && coverFile != null) {
+    LaunchedEffect(path) {
+      bitmap = withContext(Dispatchers.IO) { CoverBitmapCache.decodeAndCache(coverFile) }
     }
+  }
 
   Box(
     modifier =
