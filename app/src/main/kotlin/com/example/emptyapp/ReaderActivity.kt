@@ -72,6 +72,7 @@ class ReaderActivity : FragmentActivity() {
             settingsStore = container.settings,
             annotations = container.annotations,
             dictionary = container.dictionary,
+            statsRepository = container.stats,
             overrideLocatorJson = overrideLocator,
           )
         }
@@ -103,6 +104,21 @@ class ReaderActivity : FragmentActivity() {
       }
       EInkTheme(tone = settings.tone) { ReaderRoot() }
     }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    viewModel.onReaderForegroundChanged(true)
+  }
+
+  override fun onPause() {
+    viewModel.onReaderForegroundChanged(false)
+    super.onPause()
+  }
+
+  override fun onUserInteraction() {
+    super.onUserInteraction()
+    viewModel.notifyUserInteraction()
   }
 
   @Composable

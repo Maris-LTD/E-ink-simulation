@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,6 +90,7 @@ private enum class LibraryViewMode(val label: String, val columns: Int) {
 fun LibraryScreen(
   viewModel: LibraryViewModel,
   onOpenBook: (String, String?) -> Unit,
+  onOpenStats: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val books by viewModel.books.collectAsStateWithLifecycle()
@@ -129,10 +131,11 @@ fun LibraryScreen(
   Scaffold(
     modifier = modifier.fillMaxSize(),
     containerColor = MaterialTheme.colorScheme.background,
+    contentWindowInsets = WindowInsets(0),
     snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
     Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-      LibraryHeader()
+      LibraryHeader(onOpenStats = onOpenStats)
       EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
       if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
         AuthorFilterRow(
@@ -212,12 +215,24 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun LibraryHeader() {
+private fun LibraryHeader(onOpenStats: () -> Unit) {
   Row(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
     verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     EInkText("eInk Reader", style = MaterialTheme.typography.titleLarge)
+    Box(
+      modifier =
+        Modifier.size(36.dp)
+          .clip(CircleShape)
+          .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+          .clickable(onClick = onOpenStats)
+          .semantics { contentDescription = "Thống kê thói quen đọc" },
+      contentAlignment = Alignment.Center,
+    ) {
+      ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+    }
   }
 }
 

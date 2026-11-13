@@ -1,13 +1,24 @@
 package com.example.emptyapp
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.example.emptyapp.ui.library.LibraryScreen
 import com.example.emptyapp.ui.library.LibraryViewModel
+import com.example.emptyapp.ui.library.ReadingStatsScreen
+import kotlinx.coroutines.launch
 
 @Composable
 fun MainNavigation() {
@@ -21,13 +32,38 @@ fun MainNavigation() {
     entryProvider =
       entryProvider {
         entry<Library> {
-          val viewModel = viewModel { LibraryViewModel(container.library, container.annotations) }
-          LibraryScreen(
-            viewModel = viewModel,
-            onOpenBook = { id, locatorJson ->
-              context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
-            },
-          )
+          val viewModel = viewModel { LibraryViewModel(container.library, container.annotations, container.stats) }
+          val books by viewModel.books.collectAsStateWithLifecycle()
+          val stats by viewModel.stats.collectAsStateWithLifecycle()
+          val pagerState = rememberPagerState(pageCount = { 2 })
+          val scope = rememberCoroutineScope()
+
+          BackHandler(enabled = pagerState.currentPage != 0) {
+            scope.launch { pagerState.animateScrollToPage(0) }
+          }
+
+          HorizontalPager(
+            state = pagerState,
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.fillMaxSize(),
+          ) { page ->
+            if (page == 0) {
+              LibraryScreen(
+                viewModel = viewModel,
+                onOpenBook = { id, locatorJson ->
+                  context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
+                },
+                onOpenStats = { scope.launch { pagerState.animateScrollToPage(1) } },
+              )
+            } else {
+              ReadingStatsScreen(
+                stats = stats,
+                completedBooksCount = books.count { it.progress >= 0.99f },
+                onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
+                onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
+              )
+            }
+          }
         }
       },
   )

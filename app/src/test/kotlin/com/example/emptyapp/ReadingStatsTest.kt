@@ -1,0 +1,57 @@
+package com.example.emptyapp
+
+import com.example.emptyapp.data.stats.DailyReadingStat
+import com.example.emptyapp.data.stats.ReadingStatsRepository
+import java.io.File
+import java.time.LocalDate
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ReadingStatsTest {
+  @Test
+  fun recordReadingUpdatesTotalsAndStreak(): Unit = runBlocking {
+    val tempFile = File.createTempFile("reading_stats_test", ".json")
+    tempFile.delete()
+    val today = LocalDate.of(2026, 11, 14)
+    val repo = ReadingStatsRepository(tempFile, todayProvider = { today })
+
+    repo.setDailyGoalMinutes(10)
+    repo.recordReading(deltaSeconds = 600, deltaPages = 15)
+
+    val data = repo.stats.value
+    assertEquals(600L, data.totalSeconds)
+    assertEquals(15, data.totalPagesTurned)
+    assertEquals(1, data.currentStreak)
+    assertEquals(1, data.longestStreak)
+    tempFile.delete()
+  }
+
+  @Test
+  fun computeStreaksPreservesYesterdayUntilTodayGoalMet() {
+    val today = LocalDate.of(2026, 11, 14)
+    val stats =
+      listOf(
+        DailyReadingStat("2026-11-12", secondsRead = 1200),
+        DailyReadingStat("2026-11-13", secondsRead = 1500),
+        DailyReadingStat("2026-11-14", secondsRead = 300),
+      )
+    val (current, best) = ReadingStatsRepository.computeStreaks(stats, goalMinutes = 20, today = today)
+    assertEquals(2, current)
+    assertEquals(2, best)
+  }
+
+  @Test
+  fun computeStreaksResetsWhenDayMissed() {
+    val today = LocalDate.of(2026, 11, 14)
+    val stats =
+      listOf(
+        DailyReadingStat("2026-11-10", secondsRead = 1200),
+        DailyReadingStat("2026-11-11", secondsRead = 1200),
+        DailyReadingStat("2026-11-12", secondsRead = 1200),
+      )
+    val (current, best) = ReadingStatsRepository.computeStreaks(stats, goalMinutes = 20, today = today)
+    assertEquals(0, current)
+    assertEquals(3, best)
+  }
+}

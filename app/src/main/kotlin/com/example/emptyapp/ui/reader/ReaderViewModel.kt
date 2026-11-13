@@ -1,5 +1,6 @@
 package com.example.emptyapp.ui.reader
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.emptyapp.data.annotation.AnnotationRepository
@@ -8,11 +9,15 @@ import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.dictionary.DictionaryService
+import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkSettingsStore
 import com.example.emptyapp.reader.RefreshFlashController
 import java.io.File
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -64,12 +69,17 @@ class ReaderViewModel(
   private val settingsStore: EInkSettingsStore,
   private val annotations: AnnotationRepository,
   private val dictionary: DictionaryService,
+  private val statsRepository: ReadingStatsRepository,
   private val overrideLocatorJson: String? = null,
 ) : ViewModel() {
   private val flashController = RefreshFlashController()
   private var publication: Publication? = null
   private var searchIterator: SearchIterator? = null
   private var searchJob: Job? = null
+  private var statsTickerJob: Job? = null
+  private var lastInteractionMs: Long = 0L
+  private var lastFlushMs: Long = 0L
+  private var pendingPages: Int = 0
   private var lastPositionKey: String? = null
   private var currentLocator: Locator? = null
   private var currentBookTitle: String = ""
@@ -112,6 +122,7 @@ class ReaderViewModel(
   }
 
   fun onLocatorChanged(locator: Locator) {
+    notifyUserInteraction()
     currentLocator = locator
     val key = "${locator.href}#${locator.locations.progression}"
     val previous = lastPositionKey
@@ -119,6 +130,7 @@ class ReaderViewModel(
     val total = (locator.locations.totalProgression ?: 0.0).toFloat()
     mutableProgress.value = total
     if (previous != null && previous != key) {
+      pendingPages += 1
       val step = flashController.onPageTurnStep(settings.value)
       mutablePagesSinceFlash.value = step.pagesSinceFlash
       if (step.fullRefresh) {
@@ -129,6 +141,43 @@ class ReaderViewModel(
     }
     viewModelScope.launch {
       repository.saveProgress(bookId, locator.toJSON().toString(), total)
+    }
+  }
+
+  fun notifyUserInteraction() {
+    lastInteractionMs = SystemClock.elapsedRealtime()
+  }
+
+  fun onReaderForegroundChanged(isForeground: Boolean) {
+    if (isForeground) {
+      val now = SystemClock.elapsedRealtime()
+      lastInteractionMs = now
+      lastFlushMs = now
+      if (statsTickerJob?.isActive == true) return
+      statsTickerJob =
+        viewModelScope.launch {
+          while (isActive) {
+            delay(10_000L)
+            flushReadingStats()
+          }
+        }
+    } else {
+      statsTickerJob?.cancel()
+      statsTickerJob = null
+      viewModelScope.launch(NonCancellable) { flushReadingStats() }
+    }
+  }
+
+  private suspend fun flushReadingStats() {
+    val now = SystemClock.elapsedRealtime()
+    val elapsedMs = (now - lastFlushMs).coerceAtLeast(0L)
+    lastFlushMs = now
+    val active = (now - lastInteractionMs) < INACTIVITY_TIMEOUT_MS
+    val deltaSeconds = if (active) (elapsedMs / 1000L).toInt().coerceIn(0, 60) else 0
+    val deltaPages = pendingPages
+    pendingPages = 0
+    if (deltaSeconds > 0 || deltaPages > 0) {
+      statsRepository.recordReading(deltaSeconds = deltaSeconds, deltaPages = deltaPages)
     }
   }
 
@@ -259,8 +308,13 @@ class ReaderViewModel(
     jsonText?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
 
   override fun onCleared() {
+    statsTickerJob?.cancel()
     searchJob?.cancel()
     runCatching { searchIterator?.close() }
     publication?.close()
+  }
+
+  private companion object {
+    const val INACTIVITY_TIMEOUT_MS = 120_000L
   }
 }
