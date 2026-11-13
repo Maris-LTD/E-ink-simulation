@@ -17,6 +17,7 @@ fun EInkText(
   modifier: Modifier = Modifier,
   color: Color = Color.Unspecified,
   style: TextStyle = LocalTextStyle.current,
+  minLines: Int = 1,
   maxLines: Int = Int.MAX_VALUE,
   overflow: TextOverflow = TextOverflow.Clip,
   strokeWidthPx: Float = 2.0f,
@@ -27,6 +28,7 @@ fun EInkText(
       text = text,
       color = resolvedColor,
       style = style.copy(drawStyle = Stroke(width = strokeWidthPx, join = StrokeJoin.Round)),
+      minLines = minLines,
       maxLines = maxLines,
       overflow = overflow,
     )
@@ -34,6 +36,7 @@ fun EInkText(
       text = text,
       color = resolvedColor,
       style = style,
+      minLines = minLines,
       maxLines = maxLines,
       overflow = overflow,
     )

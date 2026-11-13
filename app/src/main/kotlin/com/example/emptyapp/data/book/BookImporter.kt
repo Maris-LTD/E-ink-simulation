@@ -13,6 +13,7 @@ class BookImporter(
   private val context: Context,
   private val engine: ReadiumEngine,
   private val booksDir: File,
+  private val coversDir: File,
 ) {
   suspend fun import(uri: Uri): Result<BookEntry> =
     withContext(Dispatchers.IO) {
@@ -36,6 +37,9 @@ class BookImporter(
         target.delete()
         return@withContext Result.failure(it)
       }
+      val coverName = "$id.jpg"
+      val coverFile = File(coversDir, coverName)
+      val hasCover = CoverExtractor.extract(target, format, publication, coverFile)
       val entry =
         BookEntry(
           id = id,
@@ -43,6 +47,7 @@ class BookImporter(
           author = publication.metadata.authors.joinToString { it.name },
           fileName = fileName,
           format = format,
+          coverFileName = if (hasCover) coverName else null,
         )
       publication.close()
       Result.success(entry)

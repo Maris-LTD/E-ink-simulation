@@ -8,6 +8,7 @@ import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.LibraryRepository
+import java.io.File
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,8 @@ class LibraryViewModel(
   val highlights: StateFlow<List<HighlightEntry>> = annotations.highlights
   val importing: StateFlow<Boolean> = mutableImporting.asStateFlow()
   val messages = messageChannel.receiveAsFlow()
+
+  fun coverFileOf(book: BookEntry): File? = repository.coverFileOf(book)
 
   fun import(uri: Uri) {
     viewModelScope.launch {

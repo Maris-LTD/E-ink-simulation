@@ -16,6 +16,7 @@ data class BookEntry(
   val author: String,
   val fileName: String,
   val format: BookFormat = BookFormat.EPUB,
+  val coverFileName: String? = null,
   val lastLocatorJson: String? = null,
   val progress: Float = 0f,
 )
