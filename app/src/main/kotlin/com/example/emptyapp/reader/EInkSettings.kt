@@ -9,14 +9,18 @@ enum class EInkTone(val background: Int, val text: Int) {
 enum class EInkFont { SERIF, SANS_SERIF }
 
 data class EInkSettings(
-  val tone: EInkTone = EInkTone.PAPER,
+  val tone: EInkTone = EInkTone.HIGH_CONTRAST,
   val font: EInkFont = EInkFont.SERIF,
   val fontScale: Double = 1.2,
-  val lineHeight: Double = 1.4,
-  val pageMargins: Double = 1.4,
+  val fontWeight: Double = 1.25,
+  val lineHeight: Double = 1.5,
+  val pageMargins: Double = 1.5,
   val grayscale: Boolean = true,
-  val contrast: Float = 1.15f,
-  val flashEnabled: Boolean = true,
+  val contrast: Float = 1.25f,
+  val flashEnabled: Boolean = false,
   val flashEveryPages: Int = 6,
   val animations: Boolean = false,
+  val paperGrain: Boolean = false,
+  val ghosting: Boolean = false,
+  val readerFooter: Boolean = true,
 )

@@ -38,10 +38,14 @@ class ReaderViewModel(
   private val mutableState = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
   private val mutableProgress = MutableStateFlow(0f)
   private val mutableFlashTrigger = MutableStateFlow(0)
+  private val mutablePageTurnTrigger = MutableStateFlow(0)
+  private val mutablePagesSinceFlash = MutableStateFlow(0)
 
   val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
   val progress: StateFlow<Float> = mutableProgress.asStateFlow()
   val flashTrigger: StateFlow<Int> = mutableFlashTrigger.asStateFlow()
+  val pageTurnTrigger: StateFlow<Int> = mutablePageTurnTrigger.asStateFlow()
+  val pagesSinceFlash: StateFlow<Int> = mutablePagesSinceFlash.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
 
   init {
@@ -51,6 +55,7 @@ class ReaderViewModel(
   fun updateSettings(transform: (EInkSettings) -> EInkSettings) {
     settingsStore.update(transform)
     flashController.reset()
+    mutablePagesSinceFlash.value = 0
   }
 
   fun onLocatorChanged(locator: Locator) {
@@ -59,8 +64,14 @@ class ReaderViewModel(
     lastPositionKey = key
     val total = (locator.locations.totalProgression ?: 0.0).toFloat()
     mutableProgress.value = total
-    if (previous != null && previous != key && flashController.onPageTurn(settings.value)) {
-      mutableFlashTrigger.value += 1
+    if (previous != null && previous != key) {
+      val step = flashController.onPageTurnStep(settings.value)
+      mutablePagesSinceFlash.value = step.pagesSinceFlash
+      if (step.fullRefresh) {
+        mutableFlashTrigger.value += 1
+      } else {
+        mutablePageTurnTrigger.value += 1
+      }
     }
     viewModelScope.launch {
       repository.saveProgress(bookId, locator.toJSON().toString(), total)

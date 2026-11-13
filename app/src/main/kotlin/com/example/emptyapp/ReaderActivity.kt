@@ -31,6 +31,8 @@ import com.example.emptyapp.ui.reader.ReaderUiState
 import com.example.emptyapp.ui.reader.ReaderViewModel
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.epub.css.FontStyle
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.shared.ExperimentalReadiumApi
 
 @OptIn(ExperimentalReadiumApi::class)
@@ -77,11 +79,30 @@ class ReaderActivity : FragmentActivity() {
 
   private fun installNavigatorFactory(ready: ReaderUiState.Ready): Boolean {
     val factory = EpubNavigatorFactory(ready.publication)
+    val config =
+      EpubNavigatorFragment.Configuration(servedAssets = listOf("fonts/.*")).apply {
+        addFontFamilyDeclaration(
+          com.example.emptyapp.reader.EInkPreferencesMapper.READER_SERIF,
+          alternates = listOf(FontFamily.SERIF),
+        ) {
+          addFontFace {
+            addSource("fonts/literata.ttf")
+            setFontStyle(FontStyle.NORMAL)
+            setFontWeight(200..900)
+          }
+          addFontFace {
+            addSource("fonts/literata_italic.ttf")
+            setFontStyle(FontStyle.ITALIC)
+            setFontWeight(200..900)
+          }
+        }
+      }
     supportFragmentManager.fragmentFactory =
       factory.createFragmentFactory(
         initialLocator = ready.initialLocator,
         initialPreferences =
           com.example.emptyapp.reader.EInkPreferencesMapper.toEpub(viewModel.settings.value),
+        configuration = config,
       )
     return true
   }

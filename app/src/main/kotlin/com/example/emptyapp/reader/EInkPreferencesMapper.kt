@@ -9,13 +9,16 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 
 @OptIn(ExperimentalReadiumApi::class)
 object EInkPreferencesMapper {
+  val READER_SERIF = FontFamily("Literata")
+
   fun toEpub(settings: EInkSettings): EpubPreferences =
     EpubPreferences(
       backgroundColor = Color(settings.tone.background),
       textColor = Color(settings.tone.text),
       theme = Theme.LIGHT,
-      fontFamily = if (settings.font == EInkFont.SERIF) FontFamily.SERIF else FontFamily.SANS_SERIF,
+      fontFamily = if (settings.font == EInkFont.SERIF) READER_SERIF else FontFamily.SANS_SERIF,
       fontSize = settings.fontScale,
+      fontWeight = settings.fontWeight,
       lineHeight = settings.lineHeight,
       pageMargins = settings.pageMargins,
       publisherStyles = false,

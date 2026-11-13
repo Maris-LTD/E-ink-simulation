@@ -9,7 +9,8 @@ object EInkColorFilter {
     val matrix = ColorMatrix()
     if (settings.grayscale) matrix.setSaturation(0f)
     val contrast = settings.contrast
-    val offset = (1f - contrast) * 128f
+    val pivot = if (contrast > 1f) 246f else 128f
+    val offset = (1f - contrast) * pivot
     val contrastMatrix =
       ColorMatrix(
         floatArrayOf(

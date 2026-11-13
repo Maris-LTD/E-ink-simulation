@@ -55,7 +55,13 @@ fun ReaderSettingsPanel(
       label = "Cỡ chữ",
       value = "${(settings.fontScale * 100).toInt()}%",
       onMinus = { onChange { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) } },
-      onPlus = { onChange { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(3.0)) } },
+      onPlus = { onChange { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(4.0)) } },
+    )
+    StepperRow(
+      label = "Độ đậm chữ",
+      value = String.format(Locale.US, "%.2f", settings.fontWeight),
+      onMinus = { onChange { it.copy(fontWeight = (it.fontWeight - 0.1).coerceAtLeast(1.0)) } },
+      onPlus = { onChange { it.copy(fontWeight = (it.fontWeight + 0.1).coerceAtMost(2.5)) } },
     )
     StepperRow(
       label = "Giãn dòng",
@@ -76,13 +82,9 @@ fun ReaderSettingsPanel(
       onMinus = { onChange { it.copy(contrast = (it.contrast - 0.05f).coerceAtLeast(0.8f)) } },
       onPlus = { onChange { it.copy(contrast = (it.contrast + 0.05f).coerceAtMost(1.8f)) } },
     )
-    SwitchRow("Chớp refresh", settings.flashEnabled) { on -> onChange { it.copy(flashEnabled = on) } }
-    StepperRow(
-      label = "Refresh mỗi (trang)",
-      value = settings.flashEveryPages.toString(),
-      onMinus = { onChange { it.copy(flashEveryPages = (it.flashEveryPages - 1).coerceAtLeast(1)) } },
-      onPlus = { onChange { it.copy(flashEveryPages = (it.flashEveryPages + 1).coerceAtMost(30)) } },
-    )
+    SwitchRow("Vân giấy E-Ink", settings.paperGrain) { on -> onChange { it.copy(paperGrain = on) } }
+    SwitchRow("Lưu ảnh mờ (Ghosting)", settings.ghosting) { on -> onChange { it.copy(ghosting = on) } }
+    SwitchRow("Thanh tiến độ E-Reader", settings.readerFooter) { on -> onChange { it.copy(readerFooter = on) } }
   }
 }
 

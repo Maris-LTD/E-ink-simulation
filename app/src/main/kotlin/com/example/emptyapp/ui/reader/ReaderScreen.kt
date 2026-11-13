@@ -1,17 +1,22 @@
 package com.example.emptyapp.ui.reader
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,14 +29,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkPreferencesMapper
+import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.attachReaderInput
 import com.example.emptyapp.reader.awaitView
+import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.eink.PaperGrainOverlay
 import com.example.emptyapp.ui.eink.RefreshFlashOverlay
+import java.util.Locale
+import kotlinx.coroutines.delay
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
 
@@ -46,9 +59,13 @@ fun ReaderScreen(
   val settings by viewModel.settings.collectAsStateWithLifecycle()
   val progress by viewModel.progress.collectAsStateWithLifecycle()
   val flashTrigger by viewModel.flashTrigger.collectAsStateWithLifecycle()
+  val pageTurnTrigger by viewModel.pageTurnTrigger.collectAsStateWithLifecycle()
+  val pagesSinceFlash by viewModel.pagesSinceFlash.collectAsStateWithLifecycle()
   var chromeVisible by remember { mutableStateOf(false) }
   var settingsOpen by remember { mutableStateOf(false) }
   var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
+  var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+  var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
 
   BackHandler(enabled = settingsOpen || chromeVisible) {
     if (settingsOpen) settingsOpen = false else chromeVisible = false
@@ -63,19 +80,57 @@ fun ReaderScreen(
     LaunchedEffect(nav, settings) {
       val view = nav.awaitView()
       nav.submitPreferences(EInkPreferencesMapper.toEpub(settings))
-      view.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, EInkColorFilter.paintOf(settings))
+      view.setLayerType(View.LAYER_TYPE_HARDWARE, EInkColorFilter.paintOf(settings))
+      delay(120L)
+      applyReaderStrokeStyle(nav, settings)
     }
-    LaunchedEffect(nav) { nav.currentLocator.collect(viewModel::onLocatorChanged) }
+    LaunchedEffect(nav) {
+      nav.currentLocator.collect { locator ->
+        viewModel.onLocatorChanged(locator)
+        applyReaderStrokeStyle(nav, viewModel.settings.value)
+      }
+    }
+    LaunchedEffect(nav, pageTurnTrigger, flashTrigger, settings.ghosting) {
+      activeGhost = if (settings.ghosting && pagesSinceFlash > 0) latestSnapshot else null
+      val view = nav.awaitView()
+      delay(220L)
+      if (settings.ghosting) latestSnapshot = captureGhostSnapshot(view)
+    }
   }
+
+  val ghostAlpha =
+    if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
 
   Box(modifier = Modifier.fillMaxSize().background(Color(settings.tone.background))) {
     AndroidFragment<EpubNavigatorFragment>(
       modifier = Modifier.fillMaxSize(),
       onUpdate = { fragment -> if (navigator == null) navigator = fragment },
     )
-    RefreshFlashOverlay(trigger = flashTrigger)
+    RefreshFlashOverlay(
+      ghostBitmap = activeGhost,
+      ghostAlpha = ghostAlpha,
+    )
+    if (settings.paperGrain) PaperGrainOverlay()
+    if (!chromeVisible && settings.readerFooter) {
+      ReaderFooterBar(
+        title = title,
+        progress = progress,
+        inkColor = Color(settings.tone.text),
+        modifier = Modifier.align(Alignment.BottomCenter),
+      )
+    }
     if (chromeVisible) {
-      ReaderTopBar(title = title, onClose = onClose, modifier = Modifier.align(Alignment.TopCenter))
+      ReaderTopBar(
+        title = title,
+        onClose = onClose,
+        onDecreaseFont = {
+          viewModel.updateSettings { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) }
+        },
+        onIncreaseFont = {
+          viewModel.updateSettings { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(3.0)) }
+        },
+        modifier = Modifier.align(Alignment.TopCenter),
+      )
       ReaderBottomBar(
         progress = progress,
         onToggleSettings = { settingsOpen = !settingsOpen },
@@ -98,19 +153,32 @@ fun ReaderScreen(
 }
 
 @Composable
-private fun ReaderTopBar(title: String, onClose: () -> Unit, modifier: Modifier = Modifier) {
-  Row(
-    modifier =
-      modifier
-        .fillMaxWidth()
-        .background(MaterialTheme.colorScheme.background)
-        .border(1.dp, MaterialTheme.colorScheme.outline)
-        .statusBarsPadding()
-        .padding(horizontal = 8.dp, vertical = 4.dp),
-    verticalAlignment = Alignment.CenterVertically,
+private fun ReaderTopBar(
+  title: String,
+  onClose: () -> Unit,
+  onDecreaseFont: () -> Unit,
+  onIncreaseFont: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Column(
+    modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).statusBarsPadding(),
   ) {
-    TextButton(onClick = onClose) { Text("‹ Thư viện") }
-    Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      TextButton(onClick = onClose) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
+      EInkText(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.weight(1f).padding(end = 8.dp),
+      )
+      TextButton(onClick = onDecreaseFont) { EInkText("A−", style = MaterialTheme.typography.labelLarge) }
+      TextButton(onClick = onIncreaseFont) { EInkText("A+", style = MaterialTheme.typography.labelLarge) }
+    }
+    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
   }
 }
 
@@ -125,13 +193,42 @@ private fun ReaderBottomBar(
       modifier
         .fillMaxWidth()
         .background(MaterialTheme.colorScheme.background)
-        .border(1.dp, MaterialTheme.colorScheme.outline)
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
         .navigationBarsPadding()
         .padding(horizontal = 16.dp, vertical = 4.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
-    TextButton(onClick = onToggleSettings) { Text("Cài đặt") }
+    EInkText("${(progress * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
+    TextButton(onClick = onToggleSettings) { EInkText("Cài đặt") }
   }
+}
+
+private suspend fun applyReaderStrokeStyle(nav: EpubNavigatorFragment, settings: EInkSettings) {
+  val cssWeight = (400 + ((settings.fontWeight - 1.0) * 300)).toInt().coerceIn(400, 900)
+  val strokePx = String.format(Locale.US, "%.2f", (settings.fontWeight - 1.0).coerceAtLeast(0.0) * 0.35)
+  val inkHex = String.format(Locale.US, "#%06X", 0xFFFFFF and settings.tone.text)
+  val css =
+    "body, p, div, span, li, blockquote, a, em, i, h1, h2, h3, h4, h5, h6 { " +
+      "font-weight: $cssWeight !important; " +
+      "-webkit-text-stroke: ${strokePx}px $inkHex !important; " +
+      "}"
+  val js =
+    "(function(){var s=document.getElementById('eink-stroke')||document.createElement('style');" +
+      "s.id='eink-stroke';s.textContent='$css';" +
+      "if(document.head)document.head.appendChild(s);})();"
+  nav.evaluateJavascript(js)
+}
+
+private fun captureGhostSnapshot(view: View): ImageBitmap? {
+  if (view.width <= 0 || view.height <= 0) return null
+  val scaledWidth = (view.width / 4).coerceAtLeast(1)
+  val scaledHeight = (view.height / 4).coerceAtLeast(1)
+  return runCatching {
+    val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.scale(0.25f, 0.25f)
+    view.draw(canvas)
+    bitmap.asImageBitmap()
+  }.getOrNull()
 }
