@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.data.stats.DailyReadingStat
+import com.example.emptyapp.data.stats.ReadingBadge
+import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.ui.eink.EInkText
@@ -70,6 +72,7 @@ fun ReaderAvatarIcon(modifier: Modifier = Modifier) {
 fun ReadingStatsScreen(
   stats: ReadingStatsData,
   completedBooksCount: Int,
+  highlightsCount: Int,
   onChangeGoalMinutes: (Int) -> Unit,
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
@@ -86,6 +89,8 @@ fun ReadingStatsScreen(
   val pagesPerHour =
     if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
     else 0
+  val rank = ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount)
+  val badges = ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount)
 
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -106,35 +111,63 @@ fun ReadingStatsScreen(
           .padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-      Row(
+      Column(
         modifier =
           Modifier.fillMaxWidth()
             .border(1.5.dp, MaterialTheme.colorScheme.outline)
             .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+          Box(
+            modifier =
+              Modifier.size(52.dp)
+                .clip(CircleShape)
+                .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+            contentAlignment = Alignment.Center,
+          ) {
+            ReaderAvatarIcon(modifier = Modifier.size(38.dp))
+          }
+          Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            EInkText(
+              text = "Cấp ${rank.level} · ${rank.title}",
+              style = MaterialTheme.typography.titleMedium,
+            )
+            EInkText(
+              text = "${rank.xp} XP · Chuỗi: ${stats.currentStreak} ngày (Kỷ lục: ${stats.longestStreak})",
+              style = MaterialTheme.typography.labelMedium,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+          }
+        }
         Box(
           modifier =
-            Modifier.size(52.dp)
-              .clip(CircleShape)
-              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
-          contentAlignment = Alignment.Center,
+            Modifier.fillMaxWidth()
+              .height(10.dp)
+              .border(1.dp, MaterialTheme.colorScheme.outline),
         ) {
-          ReaderAvatarIcon(modifier = Modifier.size(38.dp))
+          if (rank.progressToNext > 0f) {
+            Box(
+              modifier =
+                Modifier.fillMaxWidth(rank.progressToNext)
+                  .fillMaxHeight()
+                  .background(MaterialTheme.colorScheme.primary),
+            )
+          }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          EInkText("Độc giả eInk", style = MaterialTheme.typography.titleMedium)
-          EInkText(
-            text = "Chuỗi hiện tại: ${stats.currentStreak} ngày",
-            style = MaterialTheme.typography.bodyMedium,
-          )
-          EInkText(
-            text = "Kỷ lục chuỗi dài nhất: ${stats.longestStreak} ngày",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.secondary,
-          )
-        }
+        val nextLabel =
+          rank.nextLevelXp?.let { target ->
+            "Còn ${(target - rank.xp).coerceAtLeast(0)} XP để lên ${rank.nextLevelTitle}"
+          } ?: "Đã đạt cấp bậc cao nhất"
+        EInkText(
+          text = nextLabel,
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.secondary,
+        )
       }
 
       Column(
@@ -219,6 +252,87 @@ fun ReadingStatsScreen(
         days = heatmapDays,
         goalSeconds = goalMinutes * 60,
         activeDaysCount = activeDaysCount,
+      )
+
+      AchievementsCard(badges = badges)
+    }
+  }
+}
+
+@Composable
+private fun AchievementsCard(badges: List<ReadingBadge>) {
+  val unlockedCount = badges.count { it.unlocked }
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText("Huy hiệu thành tựu", style = MaterialTheme.typography.titleSmall)
+      EInkText(
+        text = "$unlockedCount / ${badges.size}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+    }
+    badges.chunked(2).forEach { pair ->
+      Row(
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        pair.forEach { badge ->
+          BadgeCard(badge = badge, modifier = Modifier.weight(1f).fillMaxHeight())
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun BadgeCard(
+  badge: ReadingBadge,
+  modifier: Modifier = Modifier,
+) {
+  val borderColor =
+    if (badge.unlocked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant
+  val borderWidth = if (badge.unlocked) 1.5.dp else 1.dp
+  Row(
+    modifier = modifier.border(borderWidth, borderColor).padding(10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Box(
+      modifier =
+        Modifier.size(24.dp)
+          .clip(CircleShape)
+          .background(if (badge.unlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+          .border(1.5.dp, borderColor, CircleShape),
+      contentAlignment = Alignment.Center,
+    ) {
+      if (badge.unlocked) {
+        EInkText(
+          text = "✓",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onPrimary,
+        )
+      }
+    }
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      EInkText(
+        text = badge.title,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (badge.unlocked) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.secondary,
+      )
+      EInkText(
+        text = badge.description,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.secondary,
       )
     }
   }

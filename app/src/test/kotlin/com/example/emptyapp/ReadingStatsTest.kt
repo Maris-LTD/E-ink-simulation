@@ -1,6 +1,8 @@
 package com.example.emptyapp
 
 import com.example.emptyapp.data.stats.DailyReadingStat
+import com.example.emptyapp.data.stats.ReadingGamification
+import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import java.io.File
 import java.time.LocalDate
@@ -69,5 +71,22 @@ class ReadingStatsTest {
     assertEquals("2026-11-14", series.last().date)
     assertEquals(300, series[4].secondsRead)
     assertEquals(0, series[0].secondsRead)
+  }
+
+  @Test
+  fun gamificationComputesXpRankAndBadges() {
+    val stats = ReadingStatsData(totalSeconds = 3600L, totalPagesTurned = 120, longestStreak = 7)
+    val rank = ReadingGamification.rankFor(stats, completedBooksCount = 1, highlightsCount = 5)
+    // 60m*10 + 120*2 + 1*100 + 5*25 = 600 + 240 + 100 + 125 = 1065 XP -> Cấp 3 (Mọt sách)
+    assertEquals(1065, rank.xp)
+    assertEquals(3, rank.level)
+    assertEquals("Mọt sách", rank.title)
+
+    val badges = ReadingGamification.badgesFor(stats, completedBooksCount = 1, highlightsCount = 5)
+    val unlockedIds = badges.filter { it.unlocked }.map { it.id }.toSet()
+    assertEquals(
+      setOf("first_page", "streak_3", "streak_7", "pages_100", "book_done_1", "annotator"),
+      unlockedIds,
+    )
   }
 }

@@ -34,6 +34,7 @@ fun MainNavigation() {
         entry<Library> {
           val viewModel = viewModel { LibraryViewModel(container.library, container.annotations, container.stats) }
           val books by viewModel.books.collectAsStateWithLifecycle()
+          val highlights by viewModel.highlights.collectAsStateWithLifecycle()
           val stats by viewModel.stats.collectAsStateWithLifecycle()
           val pagerState = rememberPagerState(pageCount = { 2 })
           val scope = rememberCoroutineScope()
@@ -59,6 +60,7 @@ fun MainNavigation() {
               ReadingStatsScreen(
                 stats = stats,
                 completedBooksCount = books.count { it.progress >= 0.99f },
+                highlightsCount = highlights.size,
                 onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
                 onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
               )
