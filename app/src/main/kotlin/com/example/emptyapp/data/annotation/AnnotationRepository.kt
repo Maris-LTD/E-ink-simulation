@@ -67,6 +67,30 @@ class AnnotationRepository(context: Context) {
     commitHighlights { list -> list.filterNot { it.id == id } }
   }
 
+  suspend fun mergeFromRemote(
+    remoteBookmarks: List<BookmarkEntry>,
+    remoteHighlights: List<HighlightEntry>,
+  ) {
+    if (remoteBookmarks.isNotEmpty()) {
+      commitBookmarks { local ->
+        val byId = LinkedHashMap<String, BookmarkEntry>()
+        (local + remoteBookmarks)
+          .sortedByDescending { it.createdAt }
+          .forEach { byId.putIfAbsent(it.id, it) }
+        byId.values.toList()
+      }
+    }
+    if (remoteHighlights.isNotEmpty()) {
+      commitHighlights { local ->
+        val byId = LinkedHashMap<String, HighlightEntry>()
+        (local + remoteHighlights)
+          .sortedByDescending { it.createdAt }
+          .forEach { byId.putIfAbsent(it.id, it) }
+        byId.values.toList()
+      }
+    }
+  }
+
   private suspend fun commitBookmarks(transform: (List<BookmarkEntry>) -> List<BookmarkEntry>) {
     bookmarkState.update(transform)
     val snapshot = bookmarkState.value

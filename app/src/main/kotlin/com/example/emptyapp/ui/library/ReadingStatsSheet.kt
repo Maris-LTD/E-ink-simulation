@@ -5,6 +5,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,10 +50,16 @@ import com.example.emptyapp.data.stats.ReadingBadge
 import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
+import com.example.emptyapp.data.sync.SyncActionResult
+import com.example.emptyapp.data.sync.SyncUiState
 import com.example.emptyapp.system.EInkWallpaperService
 import com.example.emptyapp.ui.eink.EInkText
+import java.text.SimpleDateFormat
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 fun ReaderAvatarIcon(modifier: Modifier = Modifier) {
@@ -81,10 +91,27 @@ fun ReadingStatsScreen(
   stats: ReadingStatsData,
   completedBooksCount: Int,
   highlightsCount: Int,
+  syncState: SyncUiState = SyncUiState(),
+  onSignInAndSync: suspend () -> SyncActionResult = { SyncActionResult.Synced },
+  onHandleSyncConsent: suspend (Intent?) -> SyncActionResult = { SyncActionResult.Synced },
+  onSignOutSync: () -> Unit = {},
   onChangeGoalMinutes: (Int) -> Unit,
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val scope = rememberCoroutineScope()
+  val consentLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+      scope.launch { onHandleSyncConsent(res.data) }
+    }
+  fun triggerSync() {
+    scope.launch {
+      val result = onSignInAndSync()
+      if (result is SyncActionResult.NeedsConsent) {
+        consentLauncher.launch(IntentSenderRequest.Builder(result.pendingIntent).build())
+      }
+    }
+  }
   val todaySeconds = stats.todaySeconds()
   val todayMinutes = todaySeconds / 60
   val goalMinutes = stats.dailyGoalMinutes.coerceAtLeast(5)
@@ -119,6 +146,11 @@ fun ReadingStatsScreen(
           .padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+      GoogleSyncCard(
+        syncState = syncState,
+        onSyncOrSignIn = ::triggerSync,
+        onSignOut = onSignOutSync,
+      )
       Column(
         modifier =
           Modifier.fillMaxWidth()
@@ -602,6 +634,78 @@ private fun StatSummaryBox(
       style = MaterialTheme.typography.labelSmall.copy(textAlign = TextAlign.Center),
       color = MaterialTheme.colorScheme.secondary,
     )
+  }
+}
+
+@Composable
+private fun GoogleSyncCard(
+  syncState: SyncUiState,
+  onSyncOrSignIn: () -> Unit,
+  onSignOut: () -> Unit,
+) {
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    EInkText(
+      text = "ĐỒNG BỘ GOOGLE DRIVE",
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    if (syncState.isSignedIn) {
+      EInkText(
+        text = syncState.displayName?.takeIf { it.isNotBlank() }?.let { "$it (${syncState.email})" } ?: syncState.email.orEmpty(),
+        style = MaterialTheme.typography.titleSmall,
+      )
+      val syncTimeText =
+        if (syncState.lastSyncedAt > 0L) {
+          val formatted = SimpleDateFormat("HH:mm dd/MM", Locale.getDefault()).format(Date(syncState.lastSyncedAt))
+          "Lần đồng bộ cuối: $formatted"
+        } else {
+          "Chưa đồng bộ"
+        }
+      EInkText(
+        text = syncState.statusMessage ?: syncTimeText,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+          onClick = onSyncOrSignIn,
+          enabled = !syncState.syncing,
+        ) {
+          EInkText(if (syncState.syncing) "Đang đồng bộ..." else "Đồng bộ ngay")
+        }
+        TextButton(
+          onClick = onSignOut,
+          enabled = !syncState.syncing,
+        ) {
+          EInkText("Đăng xuất", color = MaterialTheme.colorScheme.secondary)
+        }
+      }
+    } else {
+      EInkText(
+        text = "Đăng nhập Google để tự động đồng bộ tiến độ đọc, dấu trang, highlight và thống kê giữa các thiết bị (0đ, lưu trên Drive AppData riêng).",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+      if (!syncState.statusMessage.isNullOrBlank()) {
+        EInkText(
+          text = syncState.statusMessage,
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.error,
+        )
+      }
+      OutlinedButton(
+        onClick = onSyncOrSignIn,
+        enabled = !syncState.syncing,
+      ) {
+        EInkText(if (syncState.syncing) "Đang kết nối..." else "Đăng nhập với Google")
+      }
+    }
   }
 }
 

@@ -19,4 +19,6 @@ data class BookEntry(
   val coverFileName: String? = null,
   val lastLocatorJson: String? = null,
   val progress: Float = 0f,
+  val contentHash: String? = null,
+  val updatedAt: Long = 0L,
 )

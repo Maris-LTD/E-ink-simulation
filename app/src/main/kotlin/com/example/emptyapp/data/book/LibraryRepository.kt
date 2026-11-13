@@ -65,9 +65,53 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
   }
 
   suspend fun saveProgress(id: String, locatorJson: String, progress: Float) {
+    val now = System.currentTimeMillis()
     commit { list ->
       list.map {
-        if (it.id == id) it.copy(lastLocatorJson = locatorJson, progress = progress) else it
+        if (it.id == id) it.copy(lastLocatorJson = locatorJson, progress = progress, updatedAt = now) else it
+      }
+    }
+  }
+
+  suspend fun ensureContentHashes() {
+    val missing = state.value.filter { it.contentHash == null }
+    if (missing.isEmpty()) return
+    val computed =
+      withContext(Dispatchers.IO) {
+        missing.mapNotNull { book ->
+          BookImporter.sha256Hex(fileOf(book))?.let { hash -> book.id to hash }
+        }.toMap()
+      }
+    if (computed.isEmpty()) return
+    commit { list ->
+      list.map { book ->
+        val hash = computed[book.id]
+        if (book.contentHash == null && hash != null) book.copy(contentHash = hash) else book
+      }
+    }
+  }
+
+  suspend fun applySyncedProgress(
+    progressByHash: Map<String, Pair<String?, Pair<Float, Long>>>,
+  ) {
+    if (progressByHash.isEmpty()) return
+    commit { list ->
+      list.map { book ->
+        val remote = book.contentHash?.let { progressByHash[it] } ?: return@map book
+        val (remoteLocator, progressAndTime) = remote
+        val (remoteProgress, remoteUpdatedAt) = progressAndTime
+        val shouldApply =
+          (remoteUpdatedAt > book.updatedAt && remoteLocator != null) ||
+            (book.updatedAt == 0L && remoteProgress > book.progress && remoteLocator != null)
+        if (shouldApply) {
+          book.copy(
+            lastLocatorJson = remoteLocator,
+            progress = remoteProgress,
+            updatedAt = remoteUpdatedAt,
+          )
+        } else {
+          book
+        }
       }
     }
   }

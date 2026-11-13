@@ -168,6 +168,7 @@ class ReaderActivity : FragmentActivity() {
     viewModel.onReaderForegroundChanged(false)
     postLockScreenNotification()
     EInkReadingWidgetProvider.refreshAll(this)
+    (application as EmptyApplication).container.sync.syncInBackgroundIfSignedIn()
     super.onPause()
   }
 

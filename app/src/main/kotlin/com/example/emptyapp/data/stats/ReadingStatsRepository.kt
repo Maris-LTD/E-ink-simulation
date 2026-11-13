@@ -89,6 +89,41 @@ class ReadingStatsRepository(
     }
   }
 
+  suspend fun mergeFromRemote(remote: ReadingStatsData) {
+    val today = todayProvider()
+    mutex.withLock {
+      val local = state.value
+      val byDate = LinkedHashMap<String, DailyReadingStat>()
+      for (item in local.dailyStats) byDate[item.date] = item
+      for (item in remote.dailyStats) {
+        val prev = byDate[item.date]
+        byDate[item.date] =
+          if (prev == null) item
+          else DailyReadingStat(
+            date = item.date,
+            secondsRead = maxOf(prev.secondsRead, item.secondsRead),
+            pagesTurned = maxOf(prev.pagesTurned, item.pagesTurned),
+          )
+      }
+      val mergedDaily = byDate.values.sortedBy { it.date }
+      val totalSec = maxOf(local.totalSeconds, remote.totalSeconds, mergedDaily.sumOf { it.secondsRead.toLong() })
+      val totalPages = maxOf(local.totalPagesTurned, remote.totalPagesTurned, mergedDaily.sumOf { it.pagesTurned })
+      val next =
+        recompute(
+          local.copy(
+            dailyGoalMinutes = maxOf(local.dailyGoalMinutes, remote.dailyGoalMinutes),
+            longestStreak = maxOf(local.longestStreak, remote.longestStreak),
+            totalSeconds = totalSec,
+            totalPagesTurned = totalPages,
+            dailyStats = mergedDaily,
+          ),
+          today = today,
+        )
+      state.value = next
+      write(next)
+    }
+  }
+
   private fun recompute(
     data: ReadingStatsData,
     today: LocalDate = todayProvider(),

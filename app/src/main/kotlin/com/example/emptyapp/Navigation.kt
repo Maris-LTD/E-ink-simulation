@@ -36,6 +36,7 @@ fun MainNavigation() {
           val books by viewModel.books.collectAsStateWithLifecycle()
           val highlights by viewModel.highlights.collectAsStateWithLifecycle()
           val stats by viewModel.stats.collectAsStateWithLifecycle()
+          val syncState by container.sync.uiState.collectAsStateWithLifecycle()
           val pagerState = rememberPagerState(pageCount = { 2 })
           val scope = rememberCoroutineScope()
 
@@ -62,6 +63,10 @@ fun MainNavigation() {
                 stats = stats,
                 completedBooksCount = books.count { it.progress >= 0.99f },
                 highlightsCount = highlights.size,
+                syncState = syncState,
+                onSignInAndSync = { container.sync.signInAndSync() },
+                onHandleSyncConsent = { data -> container.sync.handleConsentResult(data) },
+                onSignOutSync = { container.sync.signOut() },
                 onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
                 onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
               )

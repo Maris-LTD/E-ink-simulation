@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.example.emptyapp.reader.ReadiumEngine
 import java.io.File
+import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -48,6 +49,8 @@ class BookImporter(
           fileName = fileName,
           format = format,
           coverFileName = if (hasCover) coverName else null,
+          contentHash = sha256Hex(target),
+          updatedAt = System.currentTimeMillis(),
         )
       publication.close()
       Result.success(entry)
@@ -79,5 +82,22 @@ class BookImporter(
   private fun fallbackTitle(displayName: String?, uri: Uri): String {
     val raw = displayName ?: uri.lastPathSegment?.substringAfterLast('/')
     return raw?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Sách mới"
+  }
+
+  companion object {
+    fun sha256Hex(file: File): String? =
+      runCatching {
+        if (!file.exists()) return null
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(16 * 1024)
+        file.inputStream().use { input ->
+          while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            digest.update(buffer, 0, read)
+          }
+        }
+        digest.digest().joinToString("") { "%02x".format(it) }
+      }.getOrNull()
   }
 }
