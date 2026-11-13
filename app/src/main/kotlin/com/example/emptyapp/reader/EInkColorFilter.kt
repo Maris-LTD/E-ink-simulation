@@ -21,6 +21,33 @@ object EInkColorFilter {
         )
       )
     matrix.postConcat(contrastMatrix)
+    when (settings.tone) {
+      EInkTone.DARK -> {
+        val invert =
+          ColorMatrix(
+            floatArrayOf(
+              -1f, 0f, 0f, 0f, 255f,
+              0f, -1f, 0f, 0f, 255f,
+              0f, 0f, -1f, 0f, 255f,
+              0f, 0f, 0f, 1f, 0f,
+            )
+          )
+        matrix.postConcat(invert)
+      }
+      EInkTone.WARM -> {
+        val warm = ColorMatrix().apply { setScale(1f, 0.92f, 0.78f, 1f) }
+        matrix.postConcat(warm)
+      }
+      EInkTone.PAPER -> {
+        val paper = ColorMatrix().apply { setScale(0.95f, 0.93f, 0.87f, 1f) }
+        matrix.postConcat(paper)
+      }
+      EInkTone.SOFT_GRAY -> {
+        val gray = ColorMatrix().apply { setScale(0.84f, 0.84f, 0.84f, 1f) }
+        matrix.postConcat(gray)
+      }
+      EInkTone.HIGH_CONTRAST -> Unit
+    }
     return matrix
   }
 

@@ -1,10 +1,13 @@
 package com.example.emptyapp.ui.eink
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -13,12 +16,42 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.emptyapp.R
+import com.example.emptyapp.reader.EInkTone
 
-private val Paper = Color(0xFFFFFFFF)
-private val Ink = Color(0xFF000000)
-private val Mid = Color(0xFF111111)
-private val Panel = Color(0xFFF2F2F2)
-private val DividerLight = Color(0xFFD0D0D0)
+private fun eInkColorScheme(tone: EInkTone): ColorScheme {
+  val bg = Color(tone.background)
+  val fg = Color(tone.text)
+  if (tone == EInkTone.DARK) {
+    return darkColorScheme(
+      primary = fg,
+      onPrimary = bg,
+      secondary = lerp(fg, bg, 0.15f),
+      onSecondary = bg,
+      background = bg,
+      onBackground = fg,
+      surface = bg,
+      onSurface = fg,
+      surfaceVariant = lerp(bg, fg, 0.08f),
+      onSurfaceVariant = fg,
+      outline = lerp(bg, fg, 0.5f),
+      outlineVariant = lerp(bg, fg, 0.22f),
+    )
+  }
+  return lightColorScheme(
+    primary = fg,
+    onPrimary = bg,
+    secondary = lerp(fg, bg, 0.12f),
+    onSecondary = bg,
+    background = bg,
+    onBackground = fg,
+    surface = bg,
+    onSurface = fg,
+    surfaceVariant = lerp(bg, fg, 0.06f),
+    onSurfaceVariant = fg,
+    outline = fg,
+    outlineVariant = lerp(bg, fg, 0.18f),
+  )
+}
 
 @OptIn(ExperimentalTextApi::class)
 private val EInkSansFamily =
@@ -45,21 +78,13 @@ private val EInkSansFamily =
     ),
   )
 
-private val EInkColorScheme =
-  lightColorScheme(
-    primary = Ink,
-    onPrimary = Paper,
-    secondary = Mid,
-    onSecondary = Paper,
-    background = Paper,
-    onBackground = Ink,
-    surface = Paper,
-    onSurface = Ink,
-    surfaceVariant = Panel,
-    onSurfaceVariant = Ink,
-    outline = Ink,
-    outlineVariant = DividerLight,
-  )
+@Composable
+fun EInkTheme(
+  tone: EInkTone = EInkTone.HIGH_CONTRAST,
+  content: @Composable () -> Unit,
+) {
+  MaterialTheme(colorScheme = eInkColorScheme(tone), typography = eInkTypography(), content = content)
+}
 
 private fun TextStyle.sans() = copy(fontFamily = EInkSansFamily)
 
@@ -111,7 +136,4 @@ private fun eInkTypography(): Typography {
   )
 }
 
-@Composable
-fun EInkTheme(content: @Composable () -> Unit) {
-  MaterialTheme(colorScheme = EInkColorScheme, typography = eInkTypography(), content = content)
-}
+

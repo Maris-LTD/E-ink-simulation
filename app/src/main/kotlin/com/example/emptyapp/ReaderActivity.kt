@@ -7,6 +7,7 @@ import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -31,6 +33,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkPreferencesMapper
+import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.reader.PdfPagerController
 import com.example.emptyapp.ui.reader.ReaderScreen
@@ -78,13 +81,31 @@ class ReaderActivity : FragmentActivity() {
     super.onCreate(null)
     enableEdgeToEdge()
     hideSystemBars()
-    setContent { EInkTheme { ReaderRoot() } }
+    setContent {
+      val settings by viewModel.settings.collectAsStateWithLifecycle()
+      val isDark = settings.tone == EInkTone.DARK
+      LaunchedEffect(settings.tone) {
+        window.decorView.setBackgroundColor(settings.tone.background)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+          isAppearanceLightStatusBars = !isDark
+          isAppearanceLightNavigationBars = !isDark
+        }
+      }
+      EInkTheme(tone = settings.tone) { ReaderRoot() }
+    }
   }
 
   @Composable
   private fun ReaderRoot() {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     val noteLocator by pendingNoteLocator.collectAsStateWithLifecycle()
+    LaunchedEffect(settings.brightness) {
+      val override =
+        if (settings.brightness < 0f) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        else settings.brightness.coerceIn(0.02f, 1f)
+      window.attributes = window.attributes.apply { screenBrightness = override }
+    }
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
       when (val current = state) {
         ReaderUiState.Loading -> CenteredMessage("Đang mở sách...", null)

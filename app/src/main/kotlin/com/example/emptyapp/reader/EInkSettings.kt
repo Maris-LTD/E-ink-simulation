@@ -2,8 +2,10 @@ package com.example.emptyapp.reader
 
 enum class EInkTone(val background: Int, val text: Int) {
   PAPER(0xFFE4E0D4.toInt(), 0xFF1A1A1A.toInt()),
+  WARM(0xFFEBD9B9.toInt(), 0xFF2B2118.toInt()),
   HIGH_CONTRAST(0xFFFFFFFF.toInt(), 0xFF000000.toInt()),
   SOFT_GRAY(0xFFCFCFCF.toInt(), 0xFF101010.toInt()),
+  DARK(0xFF121212.toInt(), 0xFFEAEAEA.toInt()),
 }
 
 enum class EInkFont { SERIF, SANS_SERIF }
@@ -17,6 +19,7 @@ data class EInkSettings(
   val pageMargins: Double = 1.5,
   val grayscale: Boolean = true,
   val contrast: Float = 1.25f,
+  val brightness: Float = -1f,
   val flashEnabled: Boolean = false,
   val flashEveryPages: Int = 6,
   val animations: Boolean = false,

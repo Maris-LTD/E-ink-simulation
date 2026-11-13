@@ -32,6 +32,7 @@ class EInkSettingsStore(context: Context) {
       pageMargins = prefs.getFloat(KEY_MARGINS, defaults.pageMargins.toFloat()).toDouble(),
       grayscale = prefs.getBoolean(KEY_GRAYSCALE, defaults.grayscale),
       contrast = prefs.getFloat(KEY_CONTRAST, defaults.contrast),
+      brightness = prefs.getFloat(KEY_BRIGHTNESS, defaults.brightness),
       flashEnabled = prefs.getBoolean(KEY_FLASH, defaults.flashEnabled),
       flashEveryPages = prefs.getInt(KEY_FLASH_EVERY, defaults.flashEveryPages),
       animations = prefs.getBoolean(KEY_ANIMATIONS, defaults.animations),
@@ -53,6 +54,7 @@ class EInkSettingsStore(context: Context) {
       .putFloat(KEY_MARGINS, value.pageMargins.toFloat())
       .putBoolean(KEY_GRAYSCALE, value.grayscale)
       .putFloat(KEY_CONTRAST, value.contrast)
+      .putFloat(KEY_BRIGHTNESS, value.brightness)
       .putBoolean(KEY_FLASH, value.flashEnabled)
       .putInt(KEY_FLASH_EVERY, value.flashEveryPages)
       .putBoolean(KEY_ANIMATIONS, value.animations)
@@ -76,6 +78,7 @@ class EInkSettingsStore(context: Context) {
     const val KEY_MARGINS = "page_margins"
     const val KEY_GRAYSCALE = "grayscale"
     const val KEY_CONTRAST = "contrast"
+    const val KEY_BRIGHTNESS = "brightness"
     const val KEY_FLASH = "flash"
     const val KEY_FLASH_EVERY = "flash_every"
     const val KEY_ANIMATIONS = "animations"

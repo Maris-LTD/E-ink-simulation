@@ -1,6 +1,7 @@
 package com.example.emptyapp.ui.reader
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
-import com.example.emptyapp.reader.EInkTone
 import java.util.Locale
 
 @Composable
@@ -39,13 +39,6 @@ fun ReaderSettingsPanel(
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     if (isReflowable) {
-      ChoiceRow(
-        label = "Tông giấy",
-        options = EInkTone.entries,
-        selected = settings.tone,
-        nameOf = { toneName(it) },
-        onSelect = { tone -> onChange { it.copy(tone = tone) } },
-      )
       ChoiceRow(
         label = "Phông chữ",
         options = EInkFont.entries,
@@ -91,13 +84,6 @@ fun ReaderSettingsPanel(
   }
 }
 
-private fun toneName(tone: EInkTone): String =
-  when (tone) {
-    EInkTone.PAPER -> "Giấy"
-    EInkTone.HIGH_CONTRAST -> "Trắng"
-    EInkTone.SOFT_GRAY -> "Xám"
-  }
-
 @Composable
 private fun <T> ChoiceRow(
   label: String,
@@ -108,7 +94,10 @@ private fun <T> ChoiceRow(
 ) {
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
     Text(label, style = MaterialTheme.typography.labelLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
       options.forEach { option ->
         if (option == selected) {
           Button(onClick = { onSelect(option) }) { Text(nameOf(option)) }

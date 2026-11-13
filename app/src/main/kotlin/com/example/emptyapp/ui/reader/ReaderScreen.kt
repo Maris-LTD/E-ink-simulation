@@ -8,26 +8,35 @@ import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,6 +50,7 @@ import com.example.emptyapp.ui.eink.PaperGrainOverlay
 import com.example.emptyapp.ui.eink.RefreshFlashOverlay
 import java.io.File
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -90,8 +100,18 @@ fun ReaderScreen(
   var navigator by remember { mutableStateOf<NavigatorFragment?>(null) }
   var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
   var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
+  var brightnessHudVisible by remember { mutableStateOf(false) }
+  var edgeStripHeightPx by remember { mutableFloatStateOf(1f) }
+  val latestBrightness by rememberUpdatedState(settings.brightness)
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
+
+  LaunchedEffect(brightnessHudVisible, settings.brightness) {
+    if (brightnessHudVisible) {
+      delay(1200)
+      brightnessHudVisible = false
+    }
+  }
 
   BackHandler(enabled = contentsOpen || settingsOpen || chromeVisible) {
     when {
@@ -213,6 +233,10 @@ fun ReaderScreen(
       ReaderBottomBar(
         progress = progress,
         seekEnabled = positions.isNotEmpty(),
+        tone = settings.tone,
+        brightness = settings.brightness,
+        onToneChange = { tone -> viewModel.updateSettings { it.copy(tone = tone) } },
+        onBrightnessChange = { value -> viewModel.updateSettings { it.copy(brightness = value) } },
         onSeekToProgress = { fraction ->
           if (positions.isNotEmpty()) {
             val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
@@ -235,7 +259,7 @@ fun ReaderScreen(
         modifier =
           Modifier.align(Alignment.BottomCenter)
             .navigationBarsPadding()
-            .padding(bottom = 112.dp)
+            .padding(bottom = 156.dp)
             .fillMaxHeight(0.6f)
             .background(MaterialTheme.colorScheme.background),
       )
@@ -291,6 +315,47 @@ fun ReaderScreen(
         },
         onDismiss = viewModel::dismissDictionary,
       )
+    }
+    Box(
+      modifier =
+        Modifier.align(Alignment.CenterStart)
+          .fillMaxHeight()
+          .width(28.dp)
+          .onSizeChanged { edgeStripHeightPx = it.height.coerceAtLeast(1).toFloat() }
+          .pointerInput(Unit) {
+            var dragBrightness = 0.5f
+            detectVerticalDragGestures(
+              onDragStart = {
+                dragBrightness = if (latestBrightness < 0f) 0.5f else latestBrightness
+                brightnessHudVisible = true
+              },
+              onVerticalDrag = { change, dragAmount ->
+                change.consume()
+                val delta = -dragAmount / (edgeStripHeightPx * 0.65f)
+                dragBrightness = (dragBrightness + delta).coerceIn(0.02f, 1f)
+                viewModel.updateSettings { it.copy(brightness = dragBrightness) }
+                brightnessHudVisible = true
+              },
+            )
+          }
+    )
+    if (brightnessHudVisible) {
+      val pct = (settings.brightness.coerceIn(0.02f, 1f) * 100).roundToInt()
+      Box(
+        modifier =
+          Modifier.align(Alignment.TopCenter)
+            .statusBarsPadding()
+            .padding(top = 16.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+      ) {
+        Text(
+          text = "Độ sáng: $pct%",
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.onSurface,
+        )
+      }
     }
     SnackbarHost(
       hostState = snackbarHostState,

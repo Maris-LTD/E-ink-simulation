@@ -8,7 +8,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.EInkTheme
 
 class MainActivity : ComponentActivity() {
@@ -17,7 +22,16 @@ class MainActivity : ComponentActivity() {
 
     enableEdgeToEdge()
     setContent {
-      EInkTheme {
+      val settings by (application as EmptyApplication).container.settings.settings.collectAsStateWithLifecycle()
+      val isDark = settings.tone == EInkTone.DARK
+      LaunchedEffect(settings.tone) {
+        window.decorView.setBackgroundColor(settings.tone.background)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+          isAppearanceLightStatusBars = !isDark
+          isAppearanceLightNavigationBars = !isDark
+        }
+      }
+      EInkTheme(tone = settings.tone) {
         Surface(
           modifier = Modifier.fillMaxSize().safeDrawingPadding(),
           color = MaterialTheme.colorScheme.background,

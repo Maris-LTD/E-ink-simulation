@@ -103,7 +103,7 @@ fun PdfPagerReader(
   val scope = rememberCoroutineScope()
   var isZoomed by remember { mutableStateOf(false) }
   val colorFilter =
-    remember(settings.grayscale, settings.contrast) {
+    remember(settings.grayscale, settings.contrast, settings.tone) {
       ColorFilter.colorMatrix(ColorMatrix(EInkColorFilter.matrixOf(settings).array))
     }
 
