@@ -45,6 +45,7 @@ fun MainNavigation() {
 
           HorizontalPager(
             state = pagerState,
+            beyondViewportPageCount = 1,
             verticalAlignment = Alignment.Top,
             modifier = Modifier.fillMaxSize(),
           ) { page ->

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeJoin
@@ -23,11 +24,15 @@ fun EInkText(
   strokeWidthPx: Float = 2.0f,
 ) {
   val resolvedColor = if (color != Color.Unspecified) color else style.color
+  val strokeStyle =
+    remember(style, strokeWidthPx) {
+      style.copy(drawStyle = Stroke(width = strokeWidthPx, join = StrokeJoin.Round))
+    }
   Box(modifier = modifier) {
     Text(
       text = text,
       color = resolvedColor,
-      style = style.copy(drawStyle = Stroke(width = strokeWidthPx, join = StrokeJoin.Round)),
+      style = strokeStyle,
       minLines = minLines,
       maxLines = maxLines,
       overflow = overflow,

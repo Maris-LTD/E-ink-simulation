@@ -2,9 +2,14 @@ package com.example.emptyapp
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.ColorMatrix as AndroidColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.os.BatteryManager
 import android.os.Bundle
+import android.util.LruCache
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -62,8 +67,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -76,13 +79,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.reader.EInkTone
+import com.example.emptyapp.ui.eink.CoverBitmapCache
 import com.example.emptyapp.ui.eink.EInkText
 import com.example.emptyapp.ui.eink.EInkTheme
 import java.io.File
@@ -165,23 +168,32 @@ private fun EInkHomePager(
   val pagerState = rememberPagerState(pageCount = { 2 })
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
-  val apps = remember { queryLaunchableApps(context) }
+  val apps by
+    produceState(initialValue = LauncherAppCache.cachedAppsOrEmpty()) {
+      val loaded = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context) }
+      value = loaded
+      withContext(Dispatchers.IO) { LauncherAppCache.prewarmIcons(context, loaded) }
+    }
 
   var pinnedPackages by remember {
-    mutableStateOf(
-      prefs.getStringSet("pinned_packages", null)
-        ?: apps.take(4).map { it.packageName }.toSet()
-    )
+    mutableStateOf(prefs.getStringSet("pinned_packages", null))
   }
+  LaunchedEffect(apps, pinnedPackages) {
+    if (pinnedPackages == null && apps.isNotEmpty()) {
+      pinnedPackages = apps.take(4).map { it.packageName }.toSet()
+    }
+  }
+  val resolvedPinned = pinnedPackages.orEmpty()
   var drawerViewMode by remember {
     val saved = prefs.getString("drawer_view_mode", DrawerViewMode.GRID_3.name)
     mutableStateOf(DrawerViewMode.entries.firstOrNull { it.name == saved } ?: DrawerViewMode.GRID_3)
   }
 
   fun togglePin(app: LaunchableApp) {
+    val current = pinnedPackages.orEmpty()
     val next =
-      if (app.packageName in pinnedPackages) pinnedPackages - app.packageName
-      else pinnedPackages + app.packageName
+      if (app.packageName in current) current - app.packageName
+      else current + app.packageName
     pinnedPackages = next
     prefs.edit().putStringSet("pinned_packages", next).apply()
     val msg =
@@ -210,6 +222,7 @@ private fun EInkHomePager(
   ) { padding ->
     HorizontalPager(
       state = pagerState,
+      beyondViewportPageCount = 1,
       verticalAlignment = Alignment.Top,
       modifier = Modifier.padding(padding).fillMaxSize(),
     ) { page ->
@@ -219,7 +232,7 @@ private fun EInkHomePager(
           highlightsCount = highlightsCount,
           stats = stats,
           tone = tone,
-          pinnedApps = apps.filter { it.packageName in pinnedPackages },
+          pinnedApps = remember(apps, resolvedPinned) { apps.filter { it.packageName in resolvedPinned } },
           coverOf = coverOf,
           onToneChange = onToneChange,
           onOpenLibrary = onOpenLibrary,
@@ -231,7 +244,7 @@ private fun EInkHomePager(
       } else {
         MinimalistAppDrawerPage(
           apps = apps,
-          pinnedPackages = pinnedPackages,
+          pinnedPackages = resolvedPinned,
           viewMode = drawerViewMode,
           onCycleViewMode = ::cycleViewMode,
           onLaunchApp = { pkg -> launchPackage(context, pkg) },
@@ -269,9 +282,8 @@ private fun MinimalistHomePage(
     }
   }
 
-  val timeText = remember(now) { now.format(DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())) }
-  val dateText =
-    remember(now) { now.format(DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale("vi", "VN"))) }
+  val timeText = remember(now) { now.format(LAUNCHER_TIME_FORMATTER) }
+  val dateText = remember(now) { now.format(LAUNCHER_DATE_FORMATTER) }
   val currentBook = books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull()
   val completedCount = books.count { it.progress >= 0.99f }
   val rank = ReadingGamification.rankFor(stats, completedCount, highlightsCount)
@@ -442,10 +454,11 @@ private fun CurrentBookHeroCard(
   coverFile: File?,
   onClick: () -> Unit,
 ) {
-  val coverBitmap =
-    remember(coverFile?.absolutePath) {
-      coverFile?.takeIf { it.exists() }?.let { file ->
-        runCatching { BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() }.getOrNull()
+  val coverPath = coverFile?.absolutePath
+  val coverBitmap by
+    produceState<ImageBitmap?>(initialValue = CoverBitmapCache.get(coverPath), key1 = coverPath) {
+      if (value == null && coverFile != null) {
+        value = withContext(Dispatchers.IO) { CoverBitmapCache.decodeAndCache(coverFile) }
       }
     }
   val pct = ((book?.progress ?: 0f) * 100).toInt()
@@ -467,12 +480,12 @@ private fun CurrentBookHeroCard(
           .background(MaterialTheme.colorScheme.surfaceVariant),
       contentAlignment = Alignment.Center,
     ) {
-      if (coverBitmap != null) {
+      val currentCover = coverBitmap
+      if (currentCover != null) {
         Image(
-          bitmap = coverBitmap,
+          bitmap = currentCover,
           contentDescription = book?.title,
           contentScale = ContentScale.Crop,
-          colorFilter = ColorFilter.colorMatrix(EINK_MONOCHROME_MATRIX),
           modifier = Modifier.fillMaxSize(),
         )
       } else {
@@ -703,13 +716,13 @@ private fun MonochromeAppIcon(
 ) {
   val context = LocalContext.current
   val iconBitmap by
-    produceState<ImageBitmap?>(initialValue = null, packageName) {
-      value =
-        withContext(Dispatchers.IO) {
-          runCatching {
-            context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96).asImageBitmap()
-          }.getOrNull()
-        }
+    produceState<ImageBitmap?>(
+      initialValue = LauncherAppCache.getIcon(packageName),
+      key1 = packageName,
+    ) {
+      if (value == null) {
+        value = withContext(Dispatchers.IO) { LauncherAppCache.loadIcon(context, packageName) }
+      }
     }
 
   Box(
@@ -723,7 +736,6 @@ private fun MonochromeAppIcon(
       Image(
         bitmap = bmp,
         contentDescription = null,
-        colorFilter = ColorFilter.colorMatrix(EINK_MONOCHROME_MATRIX),
         modifier = Modifier.fillMaxSize(),
       )
     }
@@ -775,10 +787,58 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGridCells(
   }
 }
 
-private val EINK_MONOCHROME_MATRIX =
-  ColorMatrix().apply {
-    setToSaturation(0f)
+private val LAUNCHER_TIME_FORMATTER: DateTimeFormatter =
+  DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+
+private val LAUNCHER_DATE_FORMATTER: DateTimeFormatter =
+  DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale("vi", "VN"))
+
+private object LauncherAppCache {
+  private val iconCache = LruCache<String, ImageBitmap>(256)
+  @Volatile private var cachedApps: List<LaunchableApp>? = null
+  private val grayscalePaint =
+    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+      colorFilter = ColorMatrixColorFilter(AndroidColorMatrix().apply { setSaturation(0f) })
+    }
+
+  fun cachedAppsOrEmpty(): List<LaunchableApp> = cachedApps.orEmpty()
+
+  fun getIcon(packageName: String): ImageBitmap? = iconCache.get(packageName)
+
+  fun loadApps(context: Context): List<LaunchableApp> {
+    val queried = queryLaunchableApps(context)
+    cachedApps = queried
+    return queried
   }
+
+  fun prewarmIcons(context: Context, apps: List<LaunchableApp>) {
+    for (app in apps) {
+      if (iconCache.get(app.packageName) == null) {
+        loadIcon(context, app.packageName)
+      }
+    }
+  }
+
+  fun loadIcon(context: Context, packageName: String): ImageBitmap? {
+    iconCache.get(packageName)?.let { return it }
+    val image =
+      runCatching {
+        val drawable = context.packageManager.getApplicationIcon(packageName)
+        val sizePx = 88
+        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = AndroidCanvas(bitmap)
+        val saveCount = canvas.saveLayer(0f, 0f, sizePx.toFloat(), sizePx.toFloat(), grayscalePaint)
+        drawable.setBounds(0, 0, sizePx, sizePx)
+        drawable.draw(canvas)
+        canvas.restoreToCount(saveCount)
+        bitmap.asImageBitmap()
+      }.getOrNull()
+    if (image != null) {
+      iconCache.put(packageName, image)
+    }
+    return image
+  }
+}
 
 private fun readBatteryPercent(context: Context): Int {
   val manager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return 100
