@@ -66,6 +66,7 @@ fun MainNavigation() {
                 syncState = syncState,
                 onSignInAndSync = { container.sync.signInAndSync() },
                 onHandleSyncConsent = { data -> container.sync.handleConsentResult(data) },
+                onToggleSyncBookFiles = { enabled -> container.sync.setSyncBookFiles(enabled) },
                 onSignOutSync = { container.sync.signOut() },
                 onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
                 onBack = { scope.launch { pagerState.animateScrollToPage(0) } },

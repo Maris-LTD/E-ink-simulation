@@ -14,6 +14,7 @@ import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import com.google.android.gms.tasks.Task
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -58,10 +59,16 @@ class GoogleDriveSyncManager(
         email = prefs.getString(KEY_EMAIL, null),
         displayName = prefs.getString(KEY_NAME, null),
         lastSyncedAt = prefs.getLong(KEY_LAST_SYNC, 0L),
+        syncBookFiles = prefs.getBoolean(KEY_SYNC_BOOKS, true),
       ),
     )
 
   val uiState: StateFlow<SyncUiState> = state.asStateFlow()
+
+  fun setSyncBookFiles(enabled: Boolean) {
+    prefs.edit().putBoolean(KEY_SYNC_BOOKS, enabled).apply()
+    state.update { it.copy(syncBookFiles = enabled) }
+  }
 
   suspend fun signInAndSync(): SyncActionResult {
     state.update { it.copy(syncing = true, statusMessage = "Đang kết nối Google...") }
@@ -129,8 +136,9 @@ class GoogleDriveSyncManager(
   }
 
   fun signOut() {
-    prefs.edit().clear().apply()
-    state.value = SyncUiState()
+    val keepSyncBooks = state.value.syncBookFiles
+    prefs.edit().clear().putBoolean(KEY_SYNC_BOOKS, keepSyncBooks).apply()
+    state.value = SyncUiState(syncBookFiles = keepSyncBooks)
     runCatching { Identity.getSignInClient(appContext).signOut() }
   }
 
@@ -142,15 +150,24 @@ class GoogleDriveSyncManager(
           fetchUserProfile(token)
           library.ensureContentHashes()
 
-          val fileId = findSyncFileId(token)
-          val remote = fileId?.let { downloadSyncPayload(token, it) }
+          val appDataFiles = listAppDataFiles(token)
+          val syncFileId = appDataFiles[SYNC_FILE_NAME]
+          val remote = syncFileId?.let { downloadSyncPayload(token, it) }
+
+          if (state.value.syncBookFiles) {
+            if (remote != null) {
+              downloadMissingBooks(token, remote.books, appDataFiles)
+            }
+            uploadMissingBooks(token, appDataFiles)
+          }
+
           if (remote != null) {
             mergeRemoteIntoLocal(remote)
           }
 
           val mergedPayload = buildLocalPayload()
           val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
-          uploadSyncJson(token, fileId, encoded)
+          uploadSyncJson(token, syncFileId, encoded)
 
           val now = System.currentTimeMillis()
           prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
@@ -247,6 +264,8 @@ class GoogleDriveSyncManager(
         SyncedBookProgress(
           contentHash = hash,
           title = book.title,
+          author = book.author,
+          format = book.format,
           progress = book.progress,
           lastLocatorJson = book.lastLocatorJson,
           updatedAt = book.updatedAt,
@@ -288,14 +307,127 @@ class GoogleDriveSyncManager(
     )
   }
 
-  private fun findSyncFileId(token: String): String? {
+  private fun listAppDataFiles(token: String): Map<String, String> {
     val url =
       "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder" +
-        "&q=name%3D%27$SYNC_FILE_NAME%27&fields=files(id)"
-    val body = httpGet(url, token) ?: return null
-    val files = JSONObject(body).optJSONArray("files") ?: return null
-    return if (files.length() > 0) files.getJSONObject(0).optString("id").takeIf { it.isNotBlank() } else null
+        "&pageSize=200&fields=files(id,name)"
+    val body = httpGet(url, token) ?: return emptyMap()
+    val files = JSONObject(body).optJSONArray("files") ?: return emptyMap()
+    val map = LinkedHashMap<String, String>(files.length())
+    for (i in 0 until files.length()) {
+      val obj = files.getJSONObject(i)
+      val id = obj.optString("id")
+      val name = obj.optString("name")
+      if (id.isNotBlank() && name.isNotBlank()) {
+        map[name] = id
+      }
+    }
+    return map
   }
+
+  private suspend fun downloadMissingBooks(
+    token: String,
+    remoteBooks: List<SyncedBookProgress>,
+    appDataFiles: Map<String, String>,
+  ) {
+    val localHashes = library.books.value.mapNotNull { it.contentHash }.toHashSet()
+    for (remoteBook in remoteBooks) {
+      if (remoteBook.contentHash in localHashes) continue
+      val driveFileName = bookDriveFileName(remoteBook.contentHash, remoteBook.format.extension)
+      val driveFileId = appDataFiles[driveFileName] ?: continue
+      state.update { it.copy(statusMessage = "Đang tải sách: ${remoteBook.title}") }
+      val tempFile = File(appContext.cacheDir, "sync_${remoteBook.contentHash}.tmp")
+      val downloaded = downloadFileTo(token, driveFileId, tempFile)
+      if (downloaded) {
+        library.importFromSyncedFile(
+          tempFile = tempFile,
+          title = remoteBook.title,
+          author = remoteBook.author,
+          format = remoteBook.format,
+          contentHash = remoteBook.contentHash,
+          progress = remoteBook.progress,
+          lastLocatorJson = remoteBook.lastLocatorJson,
+          updatedAt = remoteBook.updatedAt,
+        )
+        localHashes += remoteBook.contentHash
+      }
+      tempFile.delete()
+    }
+  }
+
+  private fun uploadMissingBooks(
+    token: String,
+    appDataFiles: Map<String, String>,
+  ) {
+    for (book in library.books.value) {
+      val hash = book.contentHash ?: continue
+      val driveFileName = bookDriveFileName(hash, book.format.extension)
+      if (driveFileName in appDataFiles) continue
+      val localFile = library.fileOf(book)
+      if (!localFile.exists() || localFile.length() <= 0L || localFile.length() > MAX_SYNC_BOOK_BYTES) {
+        continue
+      }
+      state.update { it.copy(statusMessage = "Đang tải lên: ${book.title}") }
+      uploadBinaryFileToAppData(token, driveFileName, localFile)
+    }
+  }
+
+  private fun downloadFileTo(token: String, fileId: String, target: File): Boolean {
+    val conn =
+      (URL("https://www.googleapis.com/drive/v3/files/$fileId?alt=media").openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 15_000
+        readTimeout = 60_000
+        setRequestProperty("Authorization", "Bearer $token")
+      }
+    return try {
+      if (conn.responseCode !in 200..299) return false
+      conn.inputStream.use { input ->
+        target.outputStream().use { output -> input.copyTo(output) }
+      }
+      true
+    } catch (_: Exception) {
+      false
+    } finally {
+      conn.disconnect()
+    }
+  }
+
+  private fun uploadBinaryFileToAppData(token: String, driveFileName: String, file: File) {
+    val boundary = "eink_book_${System.currentTimeMillis()}"
+    val header =
+      ("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" +
+        """{"name":"$driveFileName","parents":["appDataFolder"]}""" +
+        "\r\n--$boundary\r\nContent-Type: application/octet-stream\r\n\r\n")
+        .toByteArray(StandardCharsets.UTF_8)
+    val footer = "\r\n--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8)
+    val totalLength = header.size.toLong() + file.length() + footer.size.toLong()
+
+    val url = URL("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+    val conn =
+      (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        doOutput = true
+        connectTimeout = 15_000
+        readTimeout = 120_000
+        setFixedLengthStreamingMode(totalLength)
+        setRequestProperty("Authorization", "Bearer $token")
+        setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
+      }
+    try {
+      conn.outputStream.use { out ->
+        out.write(header)
+        file.inputStream().use { input -> input.copyTo(out, bufferSize = 16 * 1024) }
+        out.write(footer)
+      }
+      val code = conn.responseCode
+      if (code !in 200..299) error("Drive book upload failed ($code)")
+    } finally {
+      conn.disconnect()
+    }
+  }
+
+  private fun bookDriveFileName(hash: String, ext: String): String = "book_${hash}.$ext"
 
   private fun downloadSyncPayload(token: String, fileId: String): SyncPayload? {
     val raw = httpGet("https://www.googleapis.com/drive/v3/files/$fileId?alt=media", token) ?: return null
@@ -369,5 +501,7 @@ class GoogleDriveSyncManager(
     const val KEY_EMAIL = "email"
     const val KEY_NAME = "name"
     const val KEY_LAST_SYNC = "last_sync"
+    const val KEY_SYNC_BOOKS = "sync_book_files"
+    const val MAX_SYNC_BOOK_BYTES = 100L * 1024L * 1024L
   }
 }

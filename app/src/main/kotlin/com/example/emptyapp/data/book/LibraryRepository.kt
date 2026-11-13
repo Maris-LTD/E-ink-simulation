@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.example.emptyapp.reader.ReadiumEngine
 import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -114,6 +115,52 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
         }
       }
     }
+  }
+
+  suspend fun importFromSyncedFile(
+    tempFile: File,
+    title: String,
+    author: String,
+    format: BookFormat,
+    contentHash: String,
+    progress: Float,
+    lastLocatorJson: String?,
+    updatedAt: Long,
+  ): Boolean {
+    if (state.value.any { it.contentHash == contentHash }) return false
+    val id = UUID.randomUUID().toString()
+    val fileName = "$id.${format.extension}"
+    val target = File(booksDir, fileName)
+    val coverName = "$id.jpg"
+    val coverFile = File(coversDir, coverName)
+    val hasCover =
+      withContext(Dispatchers.IO) {
+        booksDir.mkdirs()
+        tempFile.inputStream().use { input ->
+          target.outputStream().use { output -> input.copyTo(output) }
+        }
+        val pub = if (format == BookFormat.PDF) null else engine.open(target).getOrNull()
+        val extracted = CoverExtractor.extract(target, format, pub, coverFile)
+        pub?.close()
+        extracted
+      }
+    val entry =
+      BookEntry(
+        id = id,
+        title = title,
+        author = author,
+        fileName = fileName,
+        format = format,
+        coverFileName = if (hasCover) coverName else null,
+        lastLocatorJson = lastLocatorJson,
+        progress = progress,
+        contentHash = contentHash,
+        updatedAt = updatedAt,
+      )
+    commit { list ->
+      if (list.any { it.contentHash == contentHash }) list else list + entry
+    }
+    return true
   }
 
   private suspend fun commit(transform: (List<BookEntry>) -> List<BookEntry>) {

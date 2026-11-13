@@ -1,5 +1,6 @@
 package com.example.emptyapp.data.sync
 
+import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.data.stats.ReadingStatsData
 import kotlinx.serialization.Serializable
 
@@ -7,6 +8,8 @@ import kotlinx.serialization.Serializable
 data class SyncedBookProgress(
   val contentHash: String,
   val title: String,
+  val author: String = "",
+  val format: BookFormat = BookFormat.EPUB,
   val progress: Float,
   val lastLocatorJson: String? = null,
   val updatedAt: Long = 0L,
@@ -48,6 +51,7 @@ data class SyncUiState(
   val email: String? = null,
   val displayName: String? = null,
   val lastSyncedAt: Long = 0L,
+  val syncBookFiles: Boolean = true,
   val syncing: Boolean = false,
   val statusMessage: String? = null,
 ) {

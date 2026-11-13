@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -94,6 +95,7 @@ fun ReadingStatsScreen(
   syncState: SyncUiState = SyncUiState(),
   onSignInAndSync: suspend () -> SyncActionResult = { SyncActionResult.Synced },
   onHandleSyncConsent: suspend (Intent?) -> SyncActionResult = { SyncActionResult.Synced },
+  onToggleSyncBookFiles: (Boolean) -> Unit = {},
   onSignOutSync: () -> Unit = {},
   onChangeGoalMinutes: (Int) -> Unit,
   onBack: () -> Unit,
@@ -149,6 +151,7 @@ fun ReadingStatsScreen(
       GoogleSyncCard(
         syncState = syncState,
         onSyncOrSignIn = ::triggerSync,
+        onToggleSyncBookFiles = onToggleSyncBookFiles,
         onSignOut = onSignOutSync,
       )
       Column(
@@ -641,6 +644,7 @@ private fun StatSummaryBox(
 private fun GoogleSyncCard(
   syncState: SyncUiState,
   onSyncOrSignIn: () -> Unit,
+  onToggleSyncBookFiles: (Boolean) -> Unit,
   onSignOut: () -> Unit,
 ) {
   Column(
@@ -672,6 +676,22 @@ private fun GoogleSyncCard(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.secondary,
       )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        EInkText(
+          text = "Đồng bộ cả file sách (≤ 100 MB)",
+          style = MaterialTheme.typography.bodySmall,
+          modifier = Modifier.weight(1f),
+        )
+        Switch(
+          checked = syncState.syncBookFiles,
+          onCheckedChange = onToggleSyncBookFiles,
+          enabled = !syncState.syncing,
+        )
+      }
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
           onClick = onSyncOrSignIn,
