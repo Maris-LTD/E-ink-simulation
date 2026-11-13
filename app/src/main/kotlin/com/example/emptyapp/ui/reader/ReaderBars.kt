@@ -1,15 +1,21 @@
 package com.example.emptyapp.ui.reader
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -23,6 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.ui.eink.EInkText
@@ -31,6 +42,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun ReaderTopBar(
   title: String,
+  showFontControls: Boolean = true,
   onClose: () -> Unit,
   onOpenContents: () -> Unit,
   onBookmark: () -> Unit,
@@ -39,7 +51,11 @@ fun ReaderTopBar(
   modifier: Modifier = Modifier,
 ) {
   Column(
-    modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).statusBarsPadding(),
+    modifier =
+      modifier
+        .fillMaxWidth()
+        .background(MaterialTheme.colorScheme.background)
+        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
   ) {
     Row(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
@@ -53,9 +69,30 @@ fun ReaderTopBar(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.weight(1f).padding(end = 4.dp),
       )
-      TextButton(onClick = onDecreaseFont) { EInkText("A−", style = MaterialTheme.typography.labelLarge) }
-      TextButton(onClick = onIncreaseFont) { EInkText("A+", style = MaterialTheme.typography.labelLarge) }
-      TextButton(onClick = onBookmark) { EInkText("Lưu", style = MaterialTheme.typography.labelLarge) }
+      if (showFontControls) {
+        TextButton(onClick = onDecreaseFont) { EInkText("A−", style = MaterialTheme.typography.labelLarge) }
+        TextButton(onClick = onIncreaseFont) { EInkText("A+", style = MaterialTheme.typography.labelLarge) }
+      }
+      IconButton(
+        onClick = onBookmark,
+        modifier = Modifier.semantics { contentDescription = "Lưu dấu trang" },
+      ) {
+        val ink = MaterialTheme.colorScheme.onBackground
+        Canvas(modifier = Modifier.size(20.dp)) {
+          val w = size.width
+          val h = size.height
+          val path =
+            Path().apply {
+              moveTo(w * 0.2f, h * 0.1f)
+              lineTo(w * 0.8f, h * 0.1f)
+              lineTo(w * 0.8f, h * 0.9f)
+              lineTo(w * 0.5f, h * 0.68f)
+              lineTo(w * 0.2f, h * 0.9f)
+              close()
+            }
+          drawPath(path, color = ink, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Miter))
+        }
+      }
       TextButton(onClick = onOpenContents) { EInkText("Mục lục", style = MaterialTheme.typography.labelLarge) }
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
@@ -93,7 +130,7 @@ fun ReaderBottomBar(
         .fillMaxWidth()
         .background(MaterialTheme.colorScheme.background)
         .border(1.5.dp, MaterialTheme.colorScheme.outline)
-        .navigationBarsPadding()
+        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
         .padding(horizontal = 16.dp, vertical = 6.dp),
   ) {
     if (seekEnabled) {

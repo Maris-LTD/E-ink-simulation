@@ -1,6 +1,7 @@
 package com.example.emptyapp.reader
 
-import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.OverflowableNavigator
+import org.readium.r2.navigator.VisualNavigator
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
@@ -14,7 +15,7 @@ private class CenterTapListener(private val onCenterTap: () -> Unit) : InputList
 }
 
 @OptIn(ExperimentalReadiumApi::class)
-fun EpubNavigatorFragment.attachReaderInput(onCenterTap: () -> Unit) {
+fun <T> T.attachReaderInput(onCenterTap: () -> Unit) where T : VisualNavigator, T : OverflowableNavigator {
   addInputListener(DirectionalNavigationAdapter(this, animatedTransition = false))
   addInputListener(CenterTapListener(onCenterTap))
 }

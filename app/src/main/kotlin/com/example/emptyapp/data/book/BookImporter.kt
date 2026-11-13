@@ -2,6 +2,7 @@ package com.example.emptyapp.data.book
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import com.example.emptyapp.reader.ReadiumEngine
 import java.io.File
 import java.util.UUID
@@ -15,8 +16,11 @@ class BookImporter(
 ) {
   suspend fun import(uri: Uri): Result<BookEntry> =
     withContext(Dispatchers.IO) {
+      val displayName = resolveDisplayName(uri)
+      val format = detectFormat(uri, displayName)
+        ?: return@withContext Result.failure(IllegalArgumentException("Chỉ hỗ trợ EPUB, PDF và CBZ"))
       val id = UUID.randomUUID().toString()
-      val fileName = "$id.epub"
+      val fileName = "$id.${format.extension}"
       val target = File(booksDir, fileName)
       booksDir.mkdirs()
       val copied = runCatching {
@@ -35,14 +39,40 @@ class BookImporter(
       val entry =
         BookEntry(
           id = id,
-          title = publication.metadata.title?.takeIf { it.isNotBlank() } ?: fallbackTitle(uri),
+          title = publication.metadata.title?.takeIf { it.isNotBlank() } ?: fallbackTitle(displayName, uri),
           author = publication.metadata.authors.joinToString { it.name },
           fileName = fileName,
+          format = format,
         )
       publication.close()
       Result.success(entry)
     }
 
-  private fun fallbackTitle(uri: Uri): String =
-    uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.') ?: "Sách mới"
+  private fun resolveDisplayName(uri: Uri): String? =
+    runCatching {
+      context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+      }
+    }.getOrNull()
+
+  private fun detectFormat(uri: Uri, displayName: String?): BookFormat? {
+    val ext = (displayName ?: uri.lastPathSegment).orEmpty().substringAfterLast('.', "").lowercase()
+    when (ext) {
+      "epub" -> return BookFormat.EPUB
+      "pdf" -> return BookFormat.PDF
+      "cbz" -> return BookFormat.CBZ
+    }
+    val mime = context.contentResolver.getType(uri)?.lowercase().orEmpty()
+    return when {
+      mime == "application/epub+zip" -> BookFormat.EPUB
+      mime == "application/pdf" -> BookFormat.PDF
+      mime == "application/vnd.comicbook+zip" || mime == "application/x-cbz" -> BookFormat.CBZ
+      else -> null
+    }
+  }
+
+  private fun fallbackTitle(displayName: String?, uri: Uri): String {
+    val raw = displayName ?: uri.lastPathSegment?.substringAfterLast('/')
+    return raw?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Sách mới"
+  }
 }

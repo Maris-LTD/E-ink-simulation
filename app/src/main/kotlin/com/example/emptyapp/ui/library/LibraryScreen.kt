@@ -42,12 +42,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.ui.eink.EInkText
 
-private const val EPUB_MIME = "application/epub+zip"
+private val SUPPORTED_MIMES =
+  arrayOf(
+    "application/epub+zip",
+    "application/pdf",
+    "application/vnd.comicbook+zip",
+    "application/x-cbz",
+    "application/zip",
+    "application/octet-stream",
+  )
 
 private enum class LibraryTab(val label: String) {
   ALL("Tất cả"),
   READING("Đang đọc"),
   UNREAD("Chưa đọc"),
+  BOOKMARKS("Dấu trang"),
   HIGHLIGHTS("Highlights"),
 }
 
@@ -58,6 +67,7 @@ fun LibraryScreen(
   modifier: Modifier = Modifier,
 ) {
   val books by viewModel.books.collectAsStateWithLifecycle()
+  val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
@@ -79,7 +89,7 @@ fun LibraryScreen(
             LibraryTab.ALL -> true
             LibraryTab.READING -> book.progress > 0f && book.progress < 0.99f
             LibraryTab.UNREAD -> book.progress <= 0f
-            LibraryTab.HIGHLIGHTS -> false
+            LibraryTab.BOOKMARKS, LibraryTab.HIGHLIGHTS -> false
           }
         val authorMatch = selectedAuthor == null || book.author == selectedAuthor
         val queryMatch =
@@ -104,7 +114,7 @@ fun LibraryScreen(
           searchOpen = !searchOpen
           if (!searchOpen) query = ""
         },
-        onAddBook = { picker.launch(arrayOf(EPUB_MIME)) },
+        onAddBook = { picker.launch(SUPPORTED_MIMES) },
       )
       if (searchOpen) {
         OutlinedTextField(
@@ -116,17 +126,34 @@ fun LibraryScreen(
         )
       }
       EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
-      if (selectedTab != LibraryTab.HIGHLIGHTS && authors.isNotEmpty()) {
+      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
         AuthorFilterRow(
           totalCount = books.size,
           authors = authors,
           selectedAuthor = selectedAuthor,
           onSelect = { selectedAuthor = it },
         )
+        HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
       }
-      SectionHeader(title = selectedTab.label.uppercase())
-      HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
-      if (selectedTab == LibraryTab.HIGHLIGHTS) {
+      if (selectedTab == LibraryTab.BOOKMARKS) {
+        val bookTitlesById = remember(books) { books.associate { it.id to it.title } }
+        val filteredBookmarks =
+          remember(bookmarks, bookTitlesById, query) {
+            if (query.isBlank()) bookmarks
+            else {
+              bookmarks.filter {
+                it.title.contains(query, ignoreCase = true) ||
+                  bookTitlesById[it.bookId].orEmpty().contains(query, ignoreCase = true)
+              }
+            }
+          }
+        LibraryBookmarkList(
+          bookmarks = filteredBookmarks,
+          bookTitlesById = bookTitlesById,
+          onOpenBookmark = { bookId, locatorJson -> onOpenBook(bookId, locatorJson) },
+          onRemove = viewModel::removeBookmark,
+        )
+      } else if (selectedTab == LibraryTab.HIGHLIGHTS) {
         val filteredHighlights =
           remember(highlights, query) {
             if (query.isBlank()) highlights
@@ -189,17 +216,17 @@ private fun LibraryHeader(
 private fun EInkTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
   Column {
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
       LibraryTab.entries.forEach { tab ->
         val active = tab == selected
         Box(
           modifier =
-            Modifier.weight(1f)
+            Modifier
               .background(
                 if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
               )
               .clickable { onSelect(tab) }
-              .padding(vertical = 12.dp),
+              .padding(horizontal = 14.dp, vertical = 12.dp),
           contentAlignment = Alignment.Center,
         ) {
           EInkText(
@@ -263,26 +290,12 @@ private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-  EInkText(
-    text = title,
-    style =
-      MaterialTheme.typography.labelSmall.copy(
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.5.sp,
-      ),
-    color = MaterialTheme.colorScheme.onBackground,
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-  )
-}
-
-@Composable
 private fun EmptyLibrary(hasAnyBooks: Boolean) {
   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     EInkText(
       text =
         if (hasAnyBooks) "Không có sách phù hợp bộ lọc."
-        else "Chưa có sách nào.\nNhấn + Thêm sách để nhập tệp EPUB.",
+        else "Chưa có sách nào.\nNhấn + Thêm sách để nhập tệp EPUB, PDF hoặc CBZ.",
       style = MaterialTheme.typography.bodyLarge,
       color = MaterialTheme.colorScheme.secondary,
       strokeWidthPx = 1.5f,
@@ -322,6 +335,7 @@ private fun BookRow(book: BookEntry, onOpen: () -> Unit, onRemove: () -> Unit) {
       )
       val meta =
         listOfNotNull(
+          book.format.label,
           book.author.takeIf { it.isNotBlank() },
           "${(book.progress * 100).toInt()}%",
         ).joinToString(" · ")

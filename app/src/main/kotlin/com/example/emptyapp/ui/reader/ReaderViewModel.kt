@@ -7,9 +7,11 @@ import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.LibraryRepository
+import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkSettingsStore
 import com.example.emptyapp.reader.RefreshFlashController
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +32,7 @@ sealed interface ReaderUiState {
 
   data class Ready(
     val book: BookEntry,
+    val file: File,
     val publication: Publication,
     val initialLocator: Locator?,
     val toc: List<Link>,
@@ -42,6 +45,7 @@ class ReaderViewModel(
   private val repository: LibraryRepository,
   private val settingsStore: EInkSettingsStore,
   private val annotations: AnnotationRepository,
+  private val dictionary: DictionaryService,
   private val overrideLocatorJson: String? = null,
 ) : ViewModel() {
   private val flashController = RefreshFlashController()
@@ -55,12 +59,14 @@ class ReaderViewModel(
   private val mutableFlashTrigger = MutableStateFlow(0)
   private val mutablePageTurnTrigger = MutableStateFlow(0)
   private val mutablePagesSinceFlash = MutableStateFlow(0)
+  private val mutableDictionaryState = MutableStateFlow<DictionaryUiState?>(null)
 
   val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
   val progress: StateFlow<Float> = mutableProgress.asStateFlow()
   val flashTrigger: StateFlow<Int> = mutableFlashTrigger.asStateFlow()
   val pageTurnTrigger: StateFlow<Int> = mutablePageTurnTrigger.asStateFlow()
   val pagesSinceFlash: StateFlow<Int> = mutablePagesSinceFlash.asStateFlow()
+  val dictionaryState: StateFlow<DictionaryUiState?> = mutableDictionaryState.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
 
   val bookmarks: StateFlow<List<BookmarkEntry>> =
@@ -136,6 +142,25 @@ class ReaderViewModel(
     viewModelScope.launch { annotations.removeHighlight(id) }
   }
 
+  fun lookupWord(rawText: String) {
+    val clean = DictionaryService.normalizeQuery(rawText)
+    if (clean.isEmpty()) return
+    mutableDictionaryState.value = DictionaryUiState.Loading(clean)
+    viewModelScope.launch {
+      dictionary
+        .lookup(clean)
+        .onSuccess { entry -> mutableDictionaryState.value = DictionaryUiState.Success(clean, entry) }
+        .onFailure { err ->
+          mutableDictionaryState.value =
+            DictionaryUiState.Error(clean, err.message ?: "Không tìm thấy định nghĩa")
+        }
+    }
+  }
+
+  fun dismissDictionary() {
+    mutableDictionaryState.value = null
+  }
+
   private suspend fun load() {
     val book = repository.find(bookId)
     if (book == null) {
@@ -143,15 +168,16 @@ class ReaderViewModel(
       return
     }
     currentBookTitle = book.title
+    val file = repository.fileOf(book)
     repository
       .engine
-      .open(repository.fileOf(book))
+      .open(file)
       .onSuccess { pub ->
         publication = pub
         mutableProgress.value = book.progress
         val initial = parseLocator(overrideLocatorJson) ?: parseLocator(book.lastLocatorJson)
         val positions = runCatching { pub.positions() }.getOrDefault(emptyList())
-        mutableState.value = ReaderUiState.Ready(book, pub, initial, pub.tableOfContents, positions)
+        mutableState.value = ReaderUiState.Ready(book, file, pub, initial, pub.tableOfContents, positions)
       }
       .onFailure { mutableState.value = ReaderUiState.Error(it.message ?: "Không mở được sách") }
   }

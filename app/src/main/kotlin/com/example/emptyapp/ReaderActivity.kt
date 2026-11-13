@@ -29,22 +29,28 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.emptyapp.data.book.BookFormat
+import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.ui.eink.EInkTheme
+import com.example.emptyapp.ui.reader.PdfPagerController
 import com.example.emptyapp.ui.reader.ReaderScreen
 import com.example.emptyapp.ui.reader.ReaderUiState
 import com.example.emptyapp.ui.reader.ReaderViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.css.FontStyle
+import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderActivity : FragmentActivity() {
-  private var navigator: EpubNavigatorFragment? = null
+  private var navigator: OverflowableNavigator? = null
+  private val pdfController = PdfPagerController()
   private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
 
   private val viewModel: ReaderViewModel by lazy {
@@ -55,7 +61,14 @@ class ReaderActivity : FragmentActivity() {
       this,
       viewModelFactory {
         initializer {
-          ReaderViewModel(bookId, container.library, container.settings, container.annotations, overrideLocator)
+          ReaderViewModel(
+            bookId = bookId,
+            repository = container.library,
+            settingsStore = container.settings,
+            annotations = container.annotations,
+            dictionary = container.dictionary,
+            overrideLocatorJson = overrideLocator,
+          )
         }
       },
     )[ReaderViewModel::class.java]
@@ -77,9 +90,15 @@ class ReaderActivity : FragmentActivity() {
         ReaderUiState.Loading -> CenteredMessage("Đang mở sách...", null)
         is ReaderUiState.Error -> CenteredMessage(current.message, ::finish)
         is ReaderUiState.Ready -> {
-          remember(current.publication) { installNavigatorFactory(current) }
+          if (current.book.format != BookFormat.PDF) {
+            remember(current.publication) { installNavigatorFactory(current) }
+          }
           ReaderScreen(
             viewModel = viewModel,
+            bookFormat = current.book.format,
+            bookFile = current.file,
+            initialLocator = current.initialLocator,
+            pdfController = pdfController,
             title = current.book.title,
             toc = current.toc,
             positions = current.positions,
@@ -98,37 +117,44 @@ class ReaderActivity : FragmentActivity() {
   }
 
   private fun installNavigatorFactory(ready: ReaderUiState.Ready): Boolean {
-    val factory = EpubNavigatorFactory(ready.publication)
-    val config =
-      EpubNavigatorFragment.Configuration(
-        servedAssets = listOf("fonts/.*"),
-        selectionActionModeCallback = selectionCallback(),
-      ).apply {
-        addFontFamilyDeclaration(
-          com.example.emptyapp.reader.EInkPreferencesMapper.READER_SERIF,
-          alternates = listOf(FontFamily.SERIF),
-        ) {
-          addFontFace {
-            addSource("fonts/literata.ttf")
-            setFontStyle(FontStyle.NORMAL)
-            setFontWeight(200..900)
-          }
-          addFontFace {
-            addSource("fonts/literata_italic.ttf")
-            setFontStyle(FontStyle.ITALIC)
-            setFontWeight(200..900)
-          }
-        }
-      }
     supportFragmentManager.fragmentFactory =
-      factory.createFragmentFactory(
-        initialLocator = ready.initialLocator,
-        initialPreferences =
-          com.example.emptyapp.reader.EInkPreferencesMapper.toEpub(viewModel.settings.value),
-        configuration = config,
-      )
+      when (ready.book.format) {
+        BookFormat.EPUB, BookFormat.PDF -> epubFragmentFactory(ready)
+        BookFormat.CBZ ->
+          ImageNavigatorFragment.createFactory(
+            publication = ready.publication,
+            initialLocator = ready.initialLocator,
+          )
+      }
     return true
   }
+
+  private fun epubFragmentFactory(ready: ReaderUiState.Ready) =
+    EpubNavigatorFactory(ready.publication).createFragmentFactory(
+      initialLocator = ready.initialLocator,
+      initialPreferences = EInkPreferencesMapper.toEpub(viewModel.settings.value),
+      configuration =
+        EpubNavigatorFragment.Configuration(
+          servedAssets = listOf("fonts/.*"),
+          selectionActionModeCallback = selectionCallback(),
+        ).apply {
+          addFontFamilyDeclaration(
+            EInkPreferencesMapper.READER_SERIF,
+            alternates = listOf(FontFamily.SERIF),
+          ) {
+            addFontFace {
+              addSource("fonts/literata.ttf")
+              setFontStyle(FontStyle.NORMAL)
+              setFontWeight(200..900)
+            }
+            addFontFace {
+              addSource("fonts/literata_italic.ttf")
+              setFontStyle(FontStyle.ITALIC)
+              setFontWeight(200..900)
+            }
+          }
+        },
+    )
 
   @Composable
   private fun CenteredMessage(message: String, onBack: (() -> Unit)?) {
@@ -151,6 +177,14 @@ class ReaderActivity : FragmentActivity() {
   }
 
   override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+    val ready = viewModel.state.value as? ReaderUiState.Ready
+    if (ready?.book?.format == BookFormat.PDF) {
+      return when (keyCode) {
+        KeyEvent.KEYCODE_VOLUME_DOWN -> { pdfController.goForward(); true }
+        KeyEvent.KEYCODE_VOLUME_UP -> { pdfController.goBackward(); true }
+        else -> super.onKeyDown(keyCode, event)
+      }
+    }
     val nav = navigator ?: return super.onKeyDown(keyCode, event)
     return when (keyCode) {
       KeyEvent.KEYCODE_VOLUME_DOWN -> nav.goForward(animated = false).let { true }
@@ -171,13 +205,14 @@ class ReaderActivity : FragmentActivity() {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
         menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, "Highlight")
         menu.add(Menu.NONE, MENU_NOTE, 1, "Ghi chú")
+        menu.add(Menu.NONE, MENU_LOOKUP, 2, "Tra từ / Dịch")
         return true
       }
 
       override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
 
       override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-        val nav = navigator ?: return false
+        val nav = navigator as? EpubNavigatorFragment ?: return false
         return when (item.itemId) {
           MENU_HIGHLIGHT -> {
             lifecycleScope.launch {
@@ -195,6 +230,14 @@ class ReaderActivity : FragmentActivity() {
             mode.finish()
             true
           }
+          MENU_LOOKUP -> {
+            lifecycleScope.launch {
+              nav.currentSelection()?.locator?.text?.highlight?.let(viewModel::lookupWord)
+              nav.clearSelection()
+            }
+            mode.finish()
+            true
+          }
           else -> false
         }
       }
@@ -207,6 +250,7 @@ class ReaderActivity : FragmentActivity() {
     private const val EXTRA_LOCATOR_JSON = "locator_json"
     private const val MENU_HIGHLIGHT = 1001
     private const val MENU_NOTE = 1002
+    private const val MENU_LOOKUP = 1003
 
     fun intentFor(context: Context, bookId: String, locatorJson: String? = null): Intent =
       Intent(context, ReaderActivity::class.java)

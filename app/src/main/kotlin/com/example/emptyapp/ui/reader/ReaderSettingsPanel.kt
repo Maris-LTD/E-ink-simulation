@@ -25,6 +25,7 @@ import java.util.Locale
 @Composable
 fun ReaderSettingsPanel(
   settings: EInkSettings,
+  isReflowable: Boolean = true,
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -37,44 +38,46 @@ fun ReaderSettingsPanel(
         .verticalScroll(rememberScrollState()),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    ChoiceRow(
-      label = "Tông giấy",
-      options = EInkTone.entries,
-      selected = settings.tone,
-      nameOf = { toneName(it) },
-      onSelect = { tone -> onChange { it.copy(tone = tone) } },
-    )
-    ChoiceRow(
-      label = "Phông chữ",
-      options = EInkFont.entries,
-      selected = settings.font,
-      nameOf = { if (it == EInkFont.SERIF) "Serif" else "Sans" },
-      onSelect = { font -> onChange { it.copy(font = font) } },
-    )
-    StepperRow(
-      label = "Cỡ chữ",
-      value = "${(settings.fontScale * 100).toInt()}%",
-      onMinus = { onChange { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) } },
-      onPlus = { onChange { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(4.0)) } },
-    )
-    StepperRow(
-      label = "Độ đậm chữ",
-      value = String.format(Locale.US, "%.2f", settings.fontWeight),
-      onMinus = { onChange { it.copy(fontWeight = (it.fontWeight - 0.1).coerceAtLeast(1.0)) } },
-      onPlus = { onChange { it.copy(fontWeight = (it.fontWeight + 0.1).coerceAtMost(2.5)) } },
-    )
-    StepperRow(
-      label = "Giãn dòng",
-      value = String.format(Locale.US, "%.1f", settings.lineHeight),
-      onMinus = { onChange { it.copy(lineHeight = (it.lineHeight - 0.1).coerceAtLeast(1.0)) } },
-      onPlus = { onChange { it.copy(lineHeight = (it.lineHeight + 0.1).coerceAtMost(2.2)) } },
-    )
-    StepperRow(
-      label = "Lề trang",
-      value = String.format(Locale.US, "%.1f", settings.pageMargins),
-      onMinus = { onChange { it.copy(pageMargins = (it.pageMargins - 0.2).coerceAtLeast(0.0)) } },
-      onPlus = { onChange { it.copy(pageMargins = (it.pageMargins + 0.2).coerceAtMost(3.0)) } },
-    )
+    if (isReflowable) {
+      ChoiceRow(
+        label = "Tông giấy",
+        options = EInkTone.entries,
+        selected = settings.tone,
+        nameOf = { toneName(it) },
+        onSelect = { tone -> onChange { it.copy(tone = tone) } },
+      )
+      ChoiceRow(
+        label = "Phông chữ",
+        options = EInkFont.entries,
+        selected = settings.font,
+        nameOf = { if (it == EInkFont.SERIF) "Serif" else "Sans" },
+        onSelect = { font -> onChange { it.copy(font = font) } },
+      )
+      StepperRow(
+        label = "Cỡ chữ",
+        value = "${(settings.fontScale * 100).toInt()}%",
+        onMinus = { onChange { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) } },
+        onPlus = { onChange { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(4.0)) } },
+      )
+      StepperRow(
+        label = "Độ đậm chữ",
+        value = String.format(Locale.US, "%.2f", settings.fontWeight),
+        onMinus = { onChange { it.copy(fontWeight = (it.fontWeight - 0.1).coerceAtLeast(1.0)) } },
+        onPlus = { onChange { it.copy(fontWeight = (it.fontWeight + 0.1).coerceAtMost(2.5)) } },
+      )
+      StepperRow(
+        label = "Giãn dòng",
+        value = String.format(Locale.US, "%.1f", settings.lineHeight),
+        onMinus = { onChange { it.copy(lineHeight = (it.lineHeight - 0.1).coerceAtLeast(1.0)) } },
+        onPlus = { onChange { it.copy(lineHeight = (it.lineHeight + 0.1).coerceAtMost(2.2)) } },
+      )
+      StepperRow(
+        label = "Lề trang",
+        value = String.format(Locale.US, "%.1f", settings.pageMargins),
+        onMinus = { onChange { it.copy(pageMargins = (it.pageMargins - 0.2).coerceAtLeast(0.0)) } },
+        onPlus = { onChange { it.copy(pageMargins = (it.pageMargins + 0.2).coerceAtMost(3.0)) } },
+      )
+    }
     SwitchRow("Ảnh xám (đơn sắc)", settings.grayscale) { on -> onChange { it.copy(grayscale = on) } }
     StepperRow(
       label = "Tương phản",

@@ -2,6 +2,7 @@ package com.example.emptyapp.reader
 
 import android.content.Context
 import java.io.File
+import org.readium.adapter.pdfium.document.PdfiumDocumentFactory
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
@@ -20,7 +21,7 @@ class ReadiumEngine(context: Context) {
           context = context,
           httpClient = httpClient,
           assetRetriever = assetRetriever,
-          pdfFactory = null,
+          pdfFactory = PdfiumDocumentFactory(context),
         )
     )
 

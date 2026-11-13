@@ -1,8 +1,11 @@
 package com.example.emptyapp.reader
 
+import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.preferences.Axis
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
+import org.readium.r2.navigator.preferences.Fit
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -24,5 +27,12 @@ object EInkPreferencesMapper {
       publisherStyles = false,
       scroll = false,
       columnCount = ColumnCount.ONE,
+    )
+
+  fun toPdf(): PdfiumPreferences =
+    PdfiumPreferences(
+      fit = Fit.CONTAIN,
+      pageSpacing = 0.0,
+      scrollAxis = Axis.HORIZONTAL,
     )
 }

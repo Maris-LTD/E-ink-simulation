@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.emptyapp.data.annotation.AnnotationRepository
+import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.LibraryRepository
@@ -22,6 +23,7 @@ class LibraryViewModel(
   private val messageChannel = Channel<String>(Channel.BUFFERED)
 
   val books: StateFlow<List<BookEntry>> = repository.books
+  val bookmarks: StateFlow<List<BookmarkEntry>> = annotations.bookmarks
   val highlights: StateFlow<List<HighlightEntry>> = annotations.highlights
   val importing: StateFlow<Boolean> = mutableImporting.asStateFlow()
   val messages = messageChannel.receiveAsFlow()
@@ -42,5 +44,9 @@ class LibraryViewModel(
 
   fun removeHighlight(id: String) {
     viewModelScope.launch { annotations.removeHighlight(id) }
+  }
+
+  fun removeBookmark(id: String) {
+    viewModelScope.launch { annotations.removeBookmark(id) }
   }
 }

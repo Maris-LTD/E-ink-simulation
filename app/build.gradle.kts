@@ -94,4 +94,5 @@ dependencies {
   implementation(libs.readium.shared)
   implementation(libs.readium.streamer)
   implementation(libs.readium.navigator)
+  implementation(libs.readium.adapter.pdfium)
 }

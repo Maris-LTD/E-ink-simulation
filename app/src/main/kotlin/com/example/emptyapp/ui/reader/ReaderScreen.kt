@@ -1,9 +1,12 @@
 package com.example.emptyapp.ui.reader
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.net.Uri
 import android.view.View
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -28,6 +31,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkSettings
@@ -35,15 +39,21 @@ import com.example.emptyapp.reader.attachReaderInput
 import com.example.emptyapp.reader.awaitView
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
 import com.example.emptyapp.ui.eink.RefreshFlashOverlay
+import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.readium.r2.navigator.Decoration
+import org.readium.r2.navigator.NavigatorFragment
+import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
 
 private const val HIGHLIGHT_GRAY = 0xFFD4D4D4.toInt()
 
@@ -51,6 +61,10 @@ private const val HIGHLIGHT_GRAY = 0xFFD4D4D4.toInt()
 @Composable
 fun ReaderScreen(
   viewModel: ReaderViewModel,
+  bookFormat: BookFormat,
+  bookFile: File,
+  initialLocator: Locator?,
+  pdfController: PdfPagerController,
   title: String,
   toc: List<Link>,
   positions: List<Locator>,
@@ -58,7 +72,7 @@ fun ReaderScreen(
   onSaveNote: (Locator, String) -> Unit,
   onDismissNote: () -> Unit,
   onClose: () -> Unit,
-  onNavigatorReady: (EpubNavigatorFragment) -> Unit,
+  onNavigatorReady: (OverflowableNavigator) -> Unit,
 ) {
   val settings by viewModel.settings.collectAsStateWithLifecycle()
   val progress by viewModel.progress.collectAsStateWithLifecycle()
@@ -67,11 +81,13 @@ fun ReaderScreen(
   val pagesSinceFlash by viewModel.pagesSinceFlash.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+  val dictionaryState by viewModel.dictionaryState.collectAsStateWithLifecycle()
+  val context = LocalContext.current
 
   var chromeVisible by remember { mutableStateOf(false) }
   var settingsOpen by remember { mutableStateOf(false) }
   var contentsOpen by remember { mutableStateOf(false) }
-  var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
+  var navigator by remember { mutableStateOf<NavigatorFragment?>(null) }
   var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
   var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
   val snackbarHostState = remember { SnackbarHostState() }
@@ -88,34 +104,44 @@ fun ReaderScreen(
   navigator?.let { nav ->
     LaunchedEffect(nav) {
       nav.awaitView()
-      nav.attachReaderInput(onCenterTap = {
+      val toggleChrome = {
         chromeVisible = !chromeVisible
         settingsOpen = false
-      })
-      onNavigatorReady(nav)
+      }
+      when (nav) {
+        is EpubNavigatorFragment -> nav.attachReaderInput(onCenterTap = toggleChrome)
+        is ImageNavigatorFragment -> nav.attachReaderInput(onCenterTap = toggleChrome)
+      }
+      (nav as? OverflowableNavigator)?.let(onNavigatorReady)
     }
     LaunchedEffect(nav, settings) {
       val view = nav.awaitView()
-      nav.submitPreferences(EInkPreferencesMapper.toEpub(settings))
       view.setLayerType(View.LAYER_TYPE_HARDWARE, EInkColorFilter.paintOf(settings))
-      delay(120L)
-      applyReaderStrokeStyle(nav, settings)
+      if (nav is EpubNavigatorFragment) {
+        nav.submitPreferences(EInkPreferencesMapper.toEpub(settings))
+        delay(120L)
+        applyReaderStrokeStyle(nav, settings)
+      }
     }
     LaunchedEffect(nav) {
       nav.currentLocator.collect { locator ->
         viewModel.onLocatorChanged(locator)
-        applyReaderStrokeStyle(nav, viewModel.settings.value)
+        if (nav is EpubNavigatorFragment) {
+          applyReaderStrokeStyle(nav, viewModel.settings.value)
+        }
       }
     }
     LaunchedEffect(nav, highlights) {
-      nav.awaitView()
-      val decorations =
-        highlights.mapNotNull { entry ->
-          runCatching { Locator.fromJSON(JSONObject(entry.locatorJson)) }
-            .getOrNull()
-            ?.let { Decoration(entry.id, it, Decoration.Style.Highlight(HIGHLIGHT_GRAY, isActive = true)) }
-        }
-      nav.applyDecorations(decorations, "highlights")
+      if (nav is EpubNavigatorFragment) {
+        nav.awaitView()
+        val decorations =
+          highlights.mapNotNull { entry ->
+            runCatching { Locator.fromJSON(JSONObject(entry.locatorJson)) }
+              .getOrNull()
+              ?.let { Decoration(entry.id, it, Decoration.Style.Highlight(HIGHLIGHT_GRAY, isActive = true)) }
+          }
+        nav.applyDecorations(decorations, "highlights")
+      }
     }
     LaunchedEffect(nav, pageTurnTrigger, flashTrigger, settings.ghosting) {
       activeGhost = if (settings.ghosting && pagesSinceFlash > 0) latestSnapshot else null
@@ -129,10 +155,33 @@ fun ReaderScreen(
     if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
 
   Box(modifier = Modifier.fillMaxSize().background(Color(settings.tone.background))) {
-    AndroidFragment<EpubNavigatorFragment>(
-      modifier = Modifier.fillMaxSize(),
-      onUpdate = { fragment -> if (navigator == null) navigator = fragment },
-    )
+    when (bookFormat) {
+      BookFormat.EPUB ->
+        AndroidFragment<EpubNavigatorFragment>(
+          modifier = Modifier.fillMaxSize(),
+          onUpdate = { fragment -> if (navigator == null) navigator = fragment },
+        )
+      BookFormat.PDF ->
+        PdfPagerReader(
+          file = bookFile,
+          initialPage = remember(initialLocator, positions) { resolvePdfPageIndex(initialLocator, positions) },
+          settings = settings,
+          controller = pdfController,
+          onPageChanged = { pageIndex, pageCount ->
+            viewModel.onLocatorChanged(locatorForPdfPage(pageIndex, pageCount, positions))
+          },
+          onCenterTap = {
+            chromeVisible = !chromeVisible
+            settingsOpen = false
+          },
+          modifier = Modifier.fillMaxSize(),
+        )
+      BookFormat.CBZ ->
+        AndroidFragment<ImageNavigatorFragment>(
+          modifier = Modifier.fillMaxSize(),
+          onUpdate = { fragment -> if (navigator == null) navigator = fragment },
+        )
+    }
     RefreshFlashOverlay(ghostBitmap = activeGhost, ghostAlpha = ghostAlpha)
     if (settings.paperGrain) PaperGrainOverlay()
     if (!chromeVisible && settings.readerFooter) {
@@ -146,6 +195,7 @@ fun ReaderScreen(
     if (chromeVisible) {
       ReaderTopBar(
         title = title,
+        showFontControls = bookFormat == BookFormat.EPUB,
         onClose = onClose,
         onOpenContents = { contentsOpen = true; settingsOpen = false },
         onBookmark = {
@@ -166,7 +216,11 @@ fun ReaderScreen(
         onSeekToProgress = { fraction ->
           if (positions.isNotEmpty()) {
             val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
-            navigator?.go(positions[index], animated = false)
+            if (bookFormat == BookFormat.PDF) {
+              pdfController.jumpToPage(index)
+            } else {
+              navigator?.go(positions[index], animated = false)
+            }
           }
         },
         onToggleSettings = { settingsOpen = !settingsOpen },
@@ -176,6 +230,7 @@ fun ReaderScreen(
     if (settingsOpen) {
       ReaderSettingsPanel(
         settings = settings,
+        isReflowable = bookFormat == BookFormat.EPUB,
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
@@ -191,13 +246,21 @@ fun ReaderScreen(
         bookmarks = bookmarks,
         highlights = highlights,
         onSelectToc = { link ->
-          navigator?.go(link, animated = false)
+          if (bookFormat == BookFormat.PDF) {
+            resolvePdfTocPage(link, positions)?.let(pdfController::jumpToPage)
+          } else {
+            navigator?.go(link, animated = false)
+          }
           contentsOpen = false
           chromeVisible = false
         },
         onSelectLocatorJson = { jsonText ->
-          runCatching { Locator.fromJSON(JSONObject(jsonText)) }.getOrNull()?.let {
-            navigator?.go(it, animated = false)
+          runCatching { Locator.fromJSON(JSONObject(jsonText)) }.getOrNull()?.let { locator ->
+            if (bookFormat == BookFormat.PDF) {
+              pdfController.jumpToPage(resolvePdfPageIndex(locator, positions))
+            } else {
+              navigator?.go(locator, animated = false)
+            }
           }
           contentsOpen = false
           chromeVisible = false
@@ -212,6 +275,21 @@ fun ReaderScreen(
         quote = locator.text.highlight.orEmpty(),
         onSave = { note -> onSaveNote(locator, note) },
         onDismiss = onDismissNote,
+      )
+    }
+    dictionaryState?.let { dictState ->
+      DictionaryDialog(
+        state = dictState,
+        onTranslateExternal = { query ->
+          val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+          val intent =
+            Intent(
+              Intent.ACTION_VIEW,
+              Uri.parse("https://translate.google.com/?sl=auto&tl=vi&text=$encoded"),
+            )
+          runCatching { context.startActivity(intent) }
+        },
+        onDismiss = viewModel::dismissDictionary,
       )
     }
     SnackbarHost(
@@ -248,4 +326,32 @@ private fun captureGhostSnapshot(view: View): ImageBitmap? {
     view.draw(canvas)
     bitmap.asImageBitmap()
   }.getOrNull()
+}
+
+private fun resolvePdfPageIndex(locator: Locator?, positions: List<Locator>): Int {
+  locator?.locations?.position?.let { pos -> if (pos >= 1) return pos - 1 }
+  val total = locator?.locations?.totalProgression
+  if (total != null && positions.size > 1) {
+    return (total * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
+  }
+  return 0
+}
+
+private fun resolvePdfTocPage(link: Link, positions: List<Locator>): Int? {
+  val href = link.href.toString()
+  href.substringAfter("#page=", "").substringBefore('&').toIntOrNull()?.let { page ->
+    if (page >= 1) return page - 1
+  }
+  val idx = positions.indexOfFirst { it.href == link.href }
+  return if (idx >= 0) idx else null
+}
+
+private fun locatorForPdfPage(pageIndex: Int, pageCount: Int, positions: List<Locator>): Locator {
+  positions.getOrNull(pageIndex)?.let { return it }
+  val progression = if (pageCount > 1) pageIndex.toDouble() / (pageCount - 1) else 0.0
+  return Locator(
+    href = Url("page-${pageIndex + 1}")!!,
+    mediaType = MediaType.PDF,
+    locations = Locator.Locations(position = pageIndex + 1, totalProgression = progression),
+  )
 }
