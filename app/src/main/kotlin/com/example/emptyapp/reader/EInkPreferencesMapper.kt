@@ -7,6 +7,7 @@ import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.Fit
 import org.readium.r2.navigator.preferences.FontFamily
+import org.readium.r2.navigator.preferences.TextAlign
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
 
@@ -23,6 +24,8 @@ object EInkPreferencesMapper {
       fontSize = settings.fontScale,
       fontWeight = settings.fontWeight,
       lineHeight = settings.lineHeight,
+      paragraphSpacing = settings.paragraphSpacing,
+      textAlign = if (settings.justifyText) TextAlign.JUSTIFY else TextAlign.START,
       pageMargins = settings.pageMargins,
       publisherStyles = false,
       scroll = false,

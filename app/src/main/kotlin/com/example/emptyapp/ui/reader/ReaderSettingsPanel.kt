@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
+import com.example.emptyapp.reader.OrientationLock
 import java.util.Locale
 
 @Composable
@@ -65,6 +66,15 @@ fun ReaderSettingsPanel(
         onPlus = { onChange { it.copy(lineHeight = (it.lineHeight + 0.1).coerceAtMost(2.2)) } },
       )
       StepperRow(
+        label = "Khoảng cách đoạn",
+        value = String.format(Locale.US, "%.1f", settings.paragraphSpacing),
+        onMinus = { onChange { it.copy(paragraphSpacing = (it.paragraphSpacing - 0.2).coerceAtLeast(0.0)) } },
+        onPlus = { onChange { it.copy(paragraphSpacing = (it.paragraphSpacing + 0.2).coerceAtMost(2.0)) } },
+      )
+      SwitchRow("Căn đều hai bên (Justify)", settings.justifyText) { on ->
+        onChange { it.copy(justifyText = on) }
+      }
+      StepperRow(
         label = "Lề trang",
         value = String.format(Locale.US, "%.1f", settings.pageMargins),
         onMinus = { onChange { it.copy(pageMargins = (it.pageMargins - 0.2).coerceAtLeast(0.0)) } },
@@ -81,6 +91,19 @@ fun ReaderSettingsPanel(
     SwitchRow("Vân giấy E-Ink", settings.paperGrain) { on -> onChange { it.copy(paperGrain = on) } }
     SwitchRow("Lưu ảnh mờ (Ghosting)", settings.ghosting) { on -> onChange { it.copy(ghosting = on) } }
     SwitchRow("Thanh tiến độ E-Reader", settings.readerFooter) { on -> onChange { it.copy(readerFooter = on) } }
+    ChoiceRow(
+      label = "Hướng màn hình",
+      options = OrientationLock.entries,
+      selected = settings.orientationLock,
+      nameOf = {
+        when (it) {
+          OrientationLock.AUTO -> "Tự động"
+          OrientationLock.PORTRAIT -> "Dọc"
+          OrientationLock.LANDSCAPE -> "Ngang"
+        }
+      },
+      onSelect = { lock -> onChange { it.copy(orientationLock = lock) } },
+    )
   }
 }
 

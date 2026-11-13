@@ -2,6 +2,7 @@ package com.example.emptyapp
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.ActionMode
 import android.view.KeyEvent
@@ -34,6 +35,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkTone
+import com.example.emptyapp.reader.OrientationLock
 import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.reader.PdfPagerController
 import com.example.emptyapp.ui.reader.ReaderScreen
@@ -90,6 +92,14 @@ class ReaderActivity : FragmentActivity() {
           isAppearanceLightStatusBars = !isDark
           isAppearanceLightNavigationBars = !isDark
         }
+      }
+      LaunchedEffect(settings.orientationLock) {
+        requestedOrientation =
+          when (settings.orientationLock) {
+            OrientationLock.AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            OrientationLock.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+          }
       }
       EInkTheme(tone = settings.tone) { ReaderRoot() }
     }

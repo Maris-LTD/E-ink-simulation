@@ -10,20 +10,25 @@ enum class EInkTone(val background: Int, val text: Int) {
 
 enum class EInkFont { SERIF, SANS_SERIF }
 
+enum class OrientationLock { AUTO, PORTRAIT, LANDSCAPE }
+
 data class EInkSettings(
   val tone: EInkTone = EInkTone.HIGH_CONTRAST,
   val font: EInkFont = EInkFont.SERIF,
   val fontScale: Double = 1.2,
   val fontWeight: Double = 1.25,
   val lineHeight: Double = 1.5,
+  val paragraphSpacing: Double = 0.0,
+  val justifyText: Boolean = true,
   val pageMargins: Double = 1.5,
   val grayscale: Boolean = true,
   val contrast: Float = 1.25f,
   val brightness: Float = -1f,
+  val orientationLock: OrientationLock = OrientationLock.AUTO,
   val flashEnabled: Boolean = false,
   val flashEveryPages: Int = 6,
   val animations: Boolean = false,
-  val paperGrain: Boolean = false,
+  val paperGrain: Boolean = true,
   val ghosting: Boolean = false,
   val readerFooter: Boolean = true,
 )

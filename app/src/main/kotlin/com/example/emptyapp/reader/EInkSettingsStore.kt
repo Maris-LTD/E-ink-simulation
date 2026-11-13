@@ -29,10 +29,13 @@ class EInkSettingsStore(context: Context) {
       fontScale = prefs.getFloat(KEY_FONT_SCALE, defaults.fontScale.toFloat()).toDouble(),
       fontWeight = prefs.getFloat(KEY_FONT_WEIGHT, defaults.fontWeight.toFloat()).toDouble(),
       lineHeight = prefs.getFloat(KEY_LINE_HEIGHT, defaults.lineHeight.toFloat()).toDouble(),
+      paragraphSpacing = prefs.getFloat(KEY_PARAGRAPH_SPACING, defaults.paragraphSpacing.toFloat()).toDouble(),
+      justifyText = prefs.getBoolean(KEY_JUSTIFY_TEXT, defaults.justifyText),
       pageMargins = prefs.getFloat(KEY_MARGINS, defaults.pageMargins.toFloat()).toDouble(),
       grayscale = prefs.getBoolean(KEY_GRAYSCALE, defaults.grayscale),
       contrast = prefs.getFloat(KEY_CONTRAST, defaults.contrast),
       brightness = prefs.getFloat(KEY_BRIGHTNESS, defaults.brightness),
+      orientationLock = enumOf(prefs.getString(KEY_ORIENTATION_LOCK, null), defaults.orientationLock),
       flashEnabled = prefs.getBoolean(KEY_FLASH, defaults.flashEnabled),
       flashEveryPages = prefs.getInt(KEY_FLASH_EVERY, defaults.flashEveryPages),
       animations = prefs.getBoolean(KEY_ANIMATIONS, defaults.animations),
@@ -51,10 +54,13 @@ class EInkSettingsStore(context: Context) {
       .putFloat(KEY_FONT_SCALE, value.fontScale.toFloat())
       .putFloat(KEY_FONT_WEIGHT, value.fontWeight.toFloat())
       .putFloat(KEY_LINE_HEIGHT, value.lineHeight.toFloat())
+      .putFloat(KEY_PARAGRAPH_SPACING, value.paragraphSpacing.toFloat())
+      .putBoolean(KEY_JUSTIFY_TEXT, value.justifyText)
       .putFloat(KEY_MARGINS, value.pageMargins.toFloat())
       .putBoolean(KEY_GRAYSCALE, value.grayscale)
       .putFloat(KEY_CONTRAST, value.contrast)
       .putFloat(KEY_BRIGHTNESS, value.brightness)
+      .putString(KEY_ORIENTATION_LOCK, value.orientationLock.name)
       .putBoolean(KEY_FLASH, value.flashEnabled)
       .putInt(KEY_FLASH_EVERY, value.flashEveryPages)
       .putBoolean(KEY_ANIMATIONS, value.animations)
@@ -68,17 +74,20 @@ class EInkSettingsStore(context: Context) {
     enumValues<T>().firstOrNull { it.name == name } ?: fallback
 
   private companion object {
-    const val SETTINGS_VERSION = 5
+    const val SETTINGS_VERSION = 6
     const val KEY_VERSION = "settings_version"
     const val KEY_TONE = "tone"
     const val KEY_FONT = "font"
     const val KEY_FONT_SCALE = "font_scale"
     const val KEY_FONT_WEIGHT = "font_weight"
     const val KEY_LINE_HEIGHT = "line_height"
+    const val KEY_PARAGRAPH_SPACING = "paragraph_spacing"
+    const val KEY_JUSTIFY_TEXT = "justify_text"
     const val KEY_MARGINS = "page_margins"
     const val KEY_GRAYSCALE = "grayscale"
     const val KEY_CONTRAST = "contrast"
     const val KEY_BRIGHTNESS = "brightness"
+    const val KEY_ORIENTATION_LOCK = "orientation_lock"
     const val KEY_FLASH = "flash"
     const val KEY_FLASH_EVERY = "flash_every"
     const val KEY_ANIMATIONS = "animations"
