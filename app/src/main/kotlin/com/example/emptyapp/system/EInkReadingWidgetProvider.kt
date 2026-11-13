@@ -1,0 +1,74 @@
+package com.example.emptyapp.system
+
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
+import android.content.Context
+import android.widget.RemoteViews
+import com.example.emptyapp.EmptyApplication
+import com.example.emptyapp.MainActivity
+import com.example.emptyapp.R
+import com.example.emptyapp.ReaderActivity
+
+class EInkReadingWidgetProvider : AppWidgetProvider() {
+  override fun onUpdate(
+    context: Context,
+    appWidgetManager: AppWidgetManager,
+    appWidgetIds: IntArray,
+  ) {
+    appWidgetIds.forEach { widgetId ->
+      updateWidget(context, appWidgetManager, widgetId)
+    }
+  }
+
+  companion object {
+    fun refreshAll(context: Context) {
+      val manager = AppWidgetManager.getInstance(context)
+      val ids = manager.getAppWidgetIds(ComponentName(context, EInkReadingWidgetProvider::class.java))
+      ids.forEach { updateWidget(context, manager, it) }
+    }
+
+    private fun updateWidget(
+      context: Context,
+      manager: AppWidgetManager,
+      widgetId: Int,
+    ) {
+      val container = (context.applicationContext as? EmptyApplication)?.container
+      val books = container?.library?.books?.value.orEmpty()
+      val currentBook =
+        books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull()
+      val stats = container?.stats?.stats?.value
+      val todayMin = (stats?.todaySeconds() ?: 0) / 60
+      val goalMin = stats?.dailyGoalMinutes ?: 20
+      val streak = stats?.currentStreak ?: 0
+
+      val views = RemoteViews(context.packageName, R.layout.widget_eink_reading)
+      if (currentBook != null) {
+        val pct = (currentBook.progress * 100).toInt()
+        views.setTextViewText(R.id.widget_book_title, currentBook.title)
+        views.setTextViewText(R.id.widget_book_progress, "Tiến độ: $pct% · Chạm để đọc tiếp")
+      } else {
+        views.setTextViewText(R.id.widget_book_title, "Chưa có sách đang đọc")
+        views.setTextViewText(R.id.widget_book_progress, "Chạm để mở thư viện")
+      }
+      views.setTextViewText(
+        R.id.widget_today_stats,
+        "Hôm nay: $todayMin/${goalMin}p · Chuỗi: $streak ngày",
+      )
+
+      val launchIntent =
+        if (currentBook != null) ReaderActivity.intentFor(context, currentBook.id)
+        else android.content.Intent(context, MainActivity::class.java)
+      val pendingIntent =
+        PendingIntent.getActivity(
+          context,
+          widgetId,
+          launchIntent,
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+      views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+      manager.updateAppWidget(widgetId, views)
+    }
+  }
+}

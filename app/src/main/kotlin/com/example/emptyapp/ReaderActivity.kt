@@ -1,8 +1,10 @@
 package com.example.emptyapp
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.os.Bundle
 import android.view.ActionMode
 import android.view.KeyEvent
@@ -11,6 +13,7 @@ import android.view.MenuItem
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +38,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkTone
+import com.example.emptyapp.reader.LockScreenReadingNotifier
 import com.example.emptyapp.reader.OrientationLock
+import com.example.emptyapp.system.EInkReadingWidgetProvider
 import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.reader.PdfPagerController
 import com.example.emptyapp.ui.reader.ReaderScreen
@@ -57,6 +62,10 @@ class ReaderActivity : FragmentActivity() {
   private var navigator: OverflowableNavigator? = null
   private val pdfController = PdfPagerController()
   private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
+  private val requestNotificationPermission =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      if (granted) postLockScreenNotification()
+    }
 
   private val viewModel: ReaderViewModel by lazy {
     val container = (application as EmptyApplication).container
@@ -102,8 +111,44 @@ class ReaderActivity : FragmentActivity() {
             OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
           }
       }
+      LaunchedEffect(settings.lockScreenReader) {
+        applyLockScreenMode(settings.lockScreenReader)
+        if (settings.lockScreenReader) {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !LockScreenReadingNotifier.hasPermission(this@ReaderActivity)) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+          } else {
+            postLockScreenNotification()
+          }
+        } else {
+          LockScreenReadingNotifier.cancel(this@ReaderActivity)
+        }
+      }
+      LaunchedEffect(viewModel.state.collectAsStateWithLifecycle().value is ReaderUiState.Ready, settings.lockScreenReader) {
+        if (settings.lockScreenReader) postLockScreenNotification()
+      }
       EInkTheme(tone = settings.tone) { ReaderRoot() }
     }
+  }
+
+  private fun applyLockScreenMode(enabled: Boolean) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(enabled)
+    } else {
+      @Suppress("DEPRECATION")
+      if (enabled) window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+      else window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+    }
+  }
+
+  private fun postLockScreenNotification() {
+    if (!viewModel.settings.value.lockScreenReader) return
+    val ready = viewModel.state.value as? ReaderUiState.Ready ?: return
+    LockScreenReadingNotifier.show(
+      context = this,
+      bookId = ready.book.id,
+      title = ready.book.title,
+      progress = viewModel.progress.value,
+    )
   }
 
   override fun onResume() {
@@ -113,6 +158,8 @@ class ReaderActivity : FragmentActivity() {
 
   override fun onPause() {
     viewModel.onReaderForegroundChanged(false)
+    postLockScreenNotification()
+    EInkReadingWidgetProvider.refreshAll(this)
     super.onPause()
   }
 

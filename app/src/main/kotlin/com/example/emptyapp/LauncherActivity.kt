@@ -1,0 +1,814 @@
+package com.example.emptyapp
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.os.BatteryManager
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.stats.ReadingGamification
+import com.example.emptyapp.data.stats.ReadingStatsData
+import com.example.emptyapp.reader.EInkTone
+import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.eink.EInkTheme
+import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private data class LaunchableApp(
+  val label: String,
+  val packageName: String,
+)
+
+private enum class DrawerViewMode(val label: String) {
+  LIST("Danh sách"),
+  GRID_3("Lưới 3"),
+  GRID_4("Lưới 4"),
+  TEXT_ONLY("Chỉ chữ");
+
+  fun next(): DrawerViewMode = entries[(ordinal + 1) % entries.size]
+}
+
+class LauncherActivity : ComponentActivity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    enableEdgeToEdge()
+    setContent {
+      val container = (application as EmptyApplication).container
+      val settings by container.settings.settings.collectAsStateWithLifecycle()
+      val books by container.library.books.collectAsStateWithLifecycle()
+      val highlights by container.annotations.highlights.collectAsStateWithLifecycle()
+      val stats by container.stats.stats.collectAsStateWithLifecycle()
+      val isDark = settings.tone == EInkTone.DARK
+
+      LaunchedEffect(settings.tone) {
+        window.decorView.setBackgroundColor(settings.tone.background)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+          isAppearanceLightStatusBars = !isDark
+          isAppearanceLightNavigationBars = !isDark
+        }
+      }
+
+      EInkTheme(tone = settings.tone) {
+        Surface(
+          modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+          color = MaterialTheme.colorScheme.background,
+        ) {
+          EInkHomePager(
+            books = books,
+            highlightsCount = highlights.size,
+            stats = stats,
+            tone = settings.tone,
+            coverOf = container.library::coverFileOf,
+            onToneChange = { tone -> container.settings.update { it.copy(tone = tone) } },
+            onOpenLibrary = { startActivity(Intent(this, MainActivity::class.java)) },
+            onOpenBook = { id -> startActivity(ReaderActivity.intentFor(this, id)) },
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun EInkHomePager(
+  books: List<BookEntry>,
+  highlightsCount: Int,
+  stats: ReadingStatsData,
+  tone: EInkTone,
+  coverOf: (BookEntry) -> File?,
+  onToneChange: (EInkTone) -> Unit,
+  onOpenLibrary: () -> Unit,
+  onOpenBook: (String) -> Unit,
+) {
+  val context = LocalContext.current
+  val prefs = remember { context.getSharedPreferences("eink_launcher_prefs", Context.MODE_PRIVATE) }
+  val pagerState = rememberPagerState(pageCount = { 2 })
+  val scope = rememberCoroutineScope()
+  val snackbarHostState = remember { SnackbarHostState() }
+  val apps = remember { queryLaunchableApps(context) }
+
+  var pinnedPackages by remember {
+    mutableStateOf(
+      prefs.getStringSet("pinned_packages", null)
+        ?: apps.take(4).map { it.packageName }.toSet()
+    )
+  }
+  var drawerViewMode by remember {
+    val saved = prefs.getString("drawer_view_mode", DrawerViewMode.GRID_3.name)
+    mutableStateOf(DrawerViewMode.entries.firstOrNull { it.name == saved } ?: DrawerViewMode.GRID_3)
+  }
+
+  fun togglePin(app: LaunchableApp) {
+    val next =
+      if (app.packageName in pinnedPackages) pinnedPackages - app.packageName
+      else pinnedPackages + app.packageName
+    pinnedPackages = next
+    prefs.edit().putStringSet("pinned_packages", next).apply()
+    val msg =
+      if (app.packageName in next) "Đã ghim ${app.label} ra Màn hình chính"
+      else "Đã bỏ ghim ${app.label}"
+    scope.launch { snackbarHostState.showSnackbar(msg) }
+  }
+
+  fun cycleViewMode() {
+    val next = drawerViewMode.next()
+    drawerViewMode = next
+    prefs.edit().putString("drawer_view_mode", next.name).apply()
+  }
+
+  BackHandler(enabled = true) {
+    if (pagerState.currentPage != 0) {
+      scope.launch { pagerState.animateScrollToPage(0) }
+    }
+  }
+
+  Scaffold(
+    modifier = Modifier.fillMaxSize(),
+    containerColor = MaterialTheme.colorScheme.background,
+    contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
+    snackbarHost = { SnackbarHost(snackbarHostState) },
+  ) { padding ->
+    HorizontalPager(
+      state = pagerState,
+      verticalAlignment = Alignment.Top,
+      modifier = Modifier.padding(padding).fillMaxSize(),
+    ) { page ->
+      if (page == 0) {
+        MinimalistHomePage(
+          books = books,
+          highlightsCount = highlightsCount,
+          stats = stats,
+          tone = tone,
+          pinnedApps = apps.filter { it.packageName in pinnedPackages },
+          coverOf = coverOf,
+          onToneChange = onToneChange,
+          onOpenLibrary = onOpenLibrary,
+          onOpenBook = onOpenBook,
+          onOpenDrawer = { scope.launch { pagerState.animateScrollToPage(1) } },
+          onLaunchApp = { pkg -> launchPackage(context, pkg) },
+          onUnpinApp = { app -> togglePin(app) },
+        )
+      } else {
+        MinimalistAppDrawerPage(
+          apps = apps,
+          pinnedPackages = pinnedPackages,
+          viewMode = drawerViewMode,
+          onCycleViewMode = ::cycleViewMode,
+          onLaunchApp = { pkg -> launchPackage(context, pkg) },
+          onTogglePin = ::togglePin,
+          onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun MinimalistHomePage(
+  books: List<BookEntry>,
+  highlightsCount: Int,
+  stats: ReadingStatsData,
+  tone: EInkTone,
+  pinnedApps: List<LaunchableApp>,
+  coverOf: (BookEntry) -> File?,
+  onToneChange: (EInkTone) -> Unit,
+  onOpenLibrary: () -> Unit,
+  onOpenBook: (String) -> Unit,
+  onOpenDrawer: () -> Unit,
+  onLaunchApp: (String) -> Unit,
+  onUnpinApp: (LaunchableApp) -> Unit,
+) {
+  val context = LocalContext.current
+  var now by remember { mutableStateOf(LocalDateTime.now()) }
+  var batteryPct by remember { mutableStateOf(readBatteryPercent(context)) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      now = LocalDateTime.now()
+      batteryPct = readBatteryPercent(context)
+      delay(15_000L)
+    }
+  }
+
+  val timeText = remember(now) { now.format(DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())) }
+  val dateText =
+    remember(now) { now.format(DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale("vi", "VN"))) }
+  val currentBook = books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull()
+  val completedCount = books.count { it.progress >= 0.99f }
+  val rank = ReadingGamification.rankFor(stats, completedCount, highlightsCount)
+  val todayMin = stats.todaySeconds() / 60
+  val goalMin = stats.dailyGoalMinutes.coerceAtLeast(5)
+  val goalProgress = (stats.todaySeconds().toFloat() / (goalMin * 60f)).coerceIn(0f, 1f)
+
+  Column(
+    modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp),
+    verticalArrangement = Arrangement.SpaceBetween,
+  ) {
+    // 1. Top status bar: Battery + Streak + Quick Tone Swatches
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText(
+        text = "Pin ${batteryPct}% · Chuỗi ${stats.currentStreak}d",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        EInkTone.entries.forEach { option ->
+          val selected = option == tone
+          Box(
+            modifier =
+              Modifier.size(18.dp)
+                .clip(CircleShape)
+                .background(Color(option.background))
+                .border(
+                  width = if (selected) 2.2.dp else 1.dp,
+                  color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                  shape = CircleShape,
+                )
+                .clickable { onToneChange(option) },
+          )
+        }
+      }
+    }
+
+    // 2. Hero Clock + Rank + Daily Goal
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      EInkText(
+        text = timeText,
+        style = MaterialTheme.typography.displayMedium.copy(fontSize = 46.sp),
+      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        EInkText(
+          text = dateText,
+          style = MaterialTheme.typography.bodyLarge,
+          color = MaterialTheme.colorScheme.secondary,
+        )
+        EInkText(
+          text = "Cấp ${rank.level} · ${rank.title}",
+          style = MaterialTheme.typography.labelMedium,
+          modifier =
+            Modifier.border(1.dp, MaterialTheme.colorScheme.outline)
+              .padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+      }
+      Spacer(modifier = Modifier.height(4.dp))
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+          EInkText(
+            text = "Mục tiêu hôm nay",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.secondary,
+          )
+          EInkText(
+            text = "$todayMin / ${goalMin}p",
+            style = MaterialTheme.typography.labelSmall,
+          )
+        }
+        Box(
+          modifier =
+            Modifier.fillMaxWidth()
+              .height(8.dp)
+              .border(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+          if (goalProgress > 0f) {
+            Box(
+              modifier =
+                Modifier.fillMaxWidth(goalProgress)
+                  .fillMaxHeight()
+                  .background(MaterialTheme.colorScheme.primary),
+            )
+          }
+        }
+      }
+    }
+
+    // 3. Currently Reading Card with Real Book Cover
+    CurrentBookHeroCard(
+      book = currentBook,
+      coverFile = currentBook?.let(coverOf),
+      onClick = {
+        if (currentBook != null) onOpenBook(currentBook.id) else onOpenLibrary()
+      },
+    )
+
+    // 4. Pinned Apps Strip / Grid
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        EInkText(
+          text = "ỨNG DỤNG GHIM",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.secondary,
+        )
+        EInkText(
+          text = "Nhấn giữ để bỏ",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.secondary,
+        )
+      }
+      if (pinnedApps.isEmpty()) {
+        EInkText(
+          text = "Chưa ghim app nào — vuốt sang Ngăn ứng dụng và nhấn giữ để ghim.",
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.secondary,
+        )
+      } else {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          pinnedApps.take(4).forEach { app ->
+            PinnedAppTile(
+              app = app,
+              onClick = { onLaunchApp(app.packageName) },
+              onLongClick = { onUnpinApp(app) },
+              modifier = Modifier.weight(1f),
+            )
+          }
+        }
+      }
+    }
+
+    // 5. Bottom E-Ink Dock
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      OutlinedButton(onClick = onOpenLibrary, modifier = Modifier.weight(1f)) {
+        EInkText("Thư viện sách")
+      }
+      OutlinedButton(onClick = onOpenDrawer, modifier = Modifier.weight(1f)) {
+        EInkText("Ứng dụng ›")
+      }
+    }
+  }
+}
+
+@Composable
+private fun CurrentBookHeroCard(
+  book: BookEntry?,
+  coverFile: File?,
+  onClick: () -> Unit,
+) {
+  val coverBitmap =
+    remember(coverFile?.absolutePath) {
+      coverFile?.takeIf { it.exists() }?.let { file ->
+        runCatching { BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() }.getOrNull()
+      }
+    }
+  val pct = ((book?.progress ?: 0f) * 100).toInt()
+
+  Row(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clickable(onClick = onClick)
+        .padding(12.dp),
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(
+      modifier =
+        Modifier.width(62.dp)
+          .aspectRatio(2f / 3f)
+          .border(1.dp, MaterialTheme.colorScheme.outline)
+          .background(MaterialTheme.colorScheme.surfaceVariant),
+      contentAlignment = Alignment.Center,
+    ) {
+      if (coverBitmap != null) {
+        Image(
+          bitmap = coverBitmap,
+          contentDescription = book?.title,
+          contentScale = ContentScale.Crop,
+          colorFilter = ColorFilter.colorMatrix(EINK_MONOCHROME_MATRIX),
+          modifier = Modifier.fillMaxSize(),
+        )
+      } else {
+        EInkText(
+          text = book?.format?.label ?: "BOOK",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.secondary,
+        )
+      }
+    }
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+      EInkText(
+        text = "ĐANG ĐỌC",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+      EInkText(
+        text = book?.title ?: "Chưa có sách — chạm để mở Thư viện",
+        style = MaterialTheme.typography.titleMedium,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+      )
+      if (book != null) {
+        if (book.author.isNotBlank()) {
+          EInkText(
+            text = book.author,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          EInkText("$pct%", style = MaterialTheme.typography.labelMedium)
+          EInkText("Đọc tiếp ›", style = MaterialTheme.typography.labelLarge)
+        }
+      }
+    }
+  }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PinnedAppTile(
+  app: LaunchableApp,
+  onClick: () -> Unit,
+  onLongClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Column(
+    modifier =
+      modifier
+        .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        .padding(horizontal = 6.dp, vertical = 10.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    MonochromeAppIcon(packageName = app.packageName, size = 34.dp)
+    EInkText(
+      text = app.label,
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MinimalistAppDrawerPage(
+  apps: List<LaunchableApp>,
+  pinnedPackages: Set<String>,
+  viewMode: DrawerViewMode,
+  onCycleViewMode: () -> Unit,
+  onLaunchApp: (String) -> Unit,
+  onTogglePin: (LaunchableApp) -> Unit,
+  onBack: () -> Unit,
+) {
+  var query by remember { mutableStateOf("") }
+  val filtered =
+    remember(apps, query) {
+      if (query.isBlank()) apps else apps.filter { it.label.contains(query, ignoreCase = true) }
+    }
+  val ink = MaterialTheme.colorScheme.onBackground
+
+  Column(modifier = Modifier.fillMaxSize()) {
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      OutlinedButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+        EInkText("‹ Home")
+      }
+      Box(
+        modifier =
+          Modifier.weight(1f)
+            .border(1.5.dp, MaterialTheme.colorScheme.outline)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+      ) {
+        if (query.isEmpty()) {
+          EInkText(
+            "Tìm ứng dụng...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary,
+          )
+        }
+        BasicTextField(
+          value = query,
+          onValueChange = { query = it },
+          singleLine = true,
+          textStyle = MaterialTheme.typography.bodyMedium.copy(color = ink),
+          cursorBrush = SolidColor(ink),
+          modifier = Modifier.fillMaxWidth(),
+        )
+      }
+      IconButton(
+        onClick = onCycleViewMode,
+        modifier =
+          Modifier.size(40.dp)
+            .border(1.5.dp, MaterialTheme.colorScheme.outline)
+            .semantics { contentDescription = viewMode.label },
+      ) {
+        DrawerViewModeIcon(viewMode = viewMode)
+      }
+    }
+    EInkText(
+      text = "Chế độ: ${viewMode.label} · Nhấn giữ để ghim/bỏ ghim ra Home",
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.secondary,
+      modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+
+    when (viewMode) {
+      DrawerViewMode.LIST, DrawerViewMode.TEXT_ONLY -> {
+        val showIcons = viewMode == DrawerViewMode.LIST
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+          items(filtered, key = { it.packageName }) { app ->
+            val pinned = app.packageName in pinnedPackages
+            Row(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .combinedClickable(
+                    onClick = { onLaunchApp(app.packageName) },
+                    onLongClick = { onTogglePin(app) },
+                  )
+                  .padding(horizontal = 16.dp, vertical = 12.dp),
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              if (showIcons) {
+                MonochromeAppIcon(packageName = app.packageName, size = 32.dp)
+              }
+              EInkText(
+                text = app.label,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+              )
+              if (pinned) {
+                EInkText(
+                  text = "Ghim",
+                  style = MaterialTheme.typography.labelSmall,
+                  modifier =
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outline)
+                      .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+              }
+              EInkText("›", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.secondary)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+          }
+        }
+      }
+      DrawerViewMode.GRID_3, DrawerViewMode.GRID_4 -> {
+        val columns = if (viewMode == DrawerViewMode.GRID_3) 3 else 4
+        val iconSize = if (columns == 3) 44.dp else 38.dp
+        LazyVerticalGrid(
+          columns = GridCells.Fixed(columns),
+          contentPadding = PaddingValues(12.dp),
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+          verticalArrangement = Arrangement.spacedBy(14.dp),
+          modifier = Modifier.fillMaxSize(),
+        ) {
+          gridItems(filtered, key = { it.packageName }) { app ->
+            val pinned = app.packageName in pinnedPackages
+            Column(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .border(
+                    width = if (pinned) 1.5.dp else 1.dp,
+                    color = if (pinned) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
+                  )
+                  .combinedClickable(
+                    onClick = { onLaunchApp(app.packageName) },
+                    onLongClick = { onTogglePin(app) },
+                  )
+                  .padding(horizontal = 6.dp, vertical = 10.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+              MonochromeAppIcon(packageName = app.packageName, size = iconSize)
+              EInkText(
+                text = app.label,
+                style = MaterialTheme.typography.labelSmall.copy(textAlign = TextAlign.Center),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun MonochromeAppIcon(
+  packageName: String,
+  size: Dp,
+) {
+  val context = LocalContext.current
+  val iconBitmap by
+    produceState<ImageBitmap?>(initialValue = null, packageName) {
+      value =
+        withContext(Dispatchers.IO) {
+          runCatching {
+            context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96).asImageBitmap()
+          }.getOrNull()
+        }
+    }
+
+  Box(
+    modifier =
+      Modifier.size(size)
+        .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        .padding(3.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    iconBitmap?.let { bmp ->
+      Image(
+        bitmap = bmp,
+        contentDescription = null,
+        colorFilter = ColorFilter.colorMatrix(EINK_MONOCHROME_MATRIX),
+        modifier = Modifier.fillMaxSize(),
+      )
+    }
+  }
+}
+
+@Composable
+private fun DrawerViewModeIcon(viewMode: DrawerViewMode) {
+  val ink = MaterialTheme.colorScheme.onBackground
+  Canvas(modifier = Modifier.size(18.dp)) {
+    val w = size.width
+    val h = size.height
+    when (viewMode) {
+      DrawerViewMode.LIST -> {
+        for (i in 0 until 3) {
+          val y = h * (0.2f + i * 0.3f)
+          drawRect(ink, topLeft = Offset(0f, y - 2f), size = Size(4.dp.toPx(), 4.dp.toPx()))
+          drawLine(ink, Offset(6.dp.toPx(), y), Offset(w, y), strokeWidth = 1.8.dp.toPx())
+        }
+      }
+      DrawerViewMode.TEXT_ONLY -> {
+        for (i in 0 until 3) {
+          val y = h * (0.2f + i * 0.3f)
+          drawLine(ink, Offset(0f, y), Offset(w, y), strokeWidth = 2.dp.toPx())
+        }
+      }
+      DrawerViewMode.GRID_3 -> drawGridCells(ink, 3)
+      DrawerViewMode.GRID_4 -> drawGridCells(ink, 4)
+    }
+  }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGridCells(
+  ink: Color,
+  count: Int,
+) {
+  val gap = 2.dp.toPx()
+  val cellW = (size.width - gap * (count - 1)) / count
+  val rows = 2
+  val cellH = (size.height - gap * (rows - 1)) / rows
+  for (r in 0 until rows) {
+    for (c in 0 until count) {
+      drawRect(
+        color = ink,
+        topLeft = Offset(c * (cellW + gap), r * (cellH + gap)),
+        size = Size(cellW, cellH),
+      )
+    }
+  }
+}
+
+private val EINK_MONOCHROME_MATRIX =
+  ColorMatrix().apply {
+    setToSaturation(0f)
+  }
+
+private fun readBatteryPercent(context: Context): Int {
+  val manager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return 100
+  val pct = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+  return if (pct in 0..100) pct else 100
+}
+
+private fun queryLaunchableApps(context: Context): List<LaunchableApp> {
+  val pm = context.packageManager
+  val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+  return pm
+    .queryIntentActivities(intent, 0)
+    .asSequence()
+    .filter { it.activityInfo.packageName != context.packageName }
+    .map {
+      LaunchableApp(
+        label = it.loadLabel(pm).toString(),
+        packageName = it.activityInfo.packageName,
+      )
+    }
+    .distinctBy { it.packageName }
+    .sortedBy { it.label.lowercase(Locale.getDefault()) }
+    .toList()
+}
+
+private fun launchPackage(
+  context: Context,
+  packageName: String,
+) {
+  val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return
+  launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+  runCatching { context.startActivity(launchIntent) }
+}

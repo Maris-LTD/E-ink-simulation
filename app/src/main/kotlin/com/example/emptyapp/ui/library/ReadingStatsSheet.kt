@@ -1,5 +1,10 @@
 package com.example.emptyapp.ui.library
 
+import android.app.WallpaperManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,6 +38,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.data.stats.DailyReadingStat
@@ -39,6 +46,7 @@ import com.example.emptyapp.data.stats.ReadingBadge
 import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
+import com.example.emptyapp.system.EInkWallpaperService
 import com.example.emptyapp.ui.eink.EInkText
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -255,7 +263,59 @@ fun ReadingStatsScreen(
       )
 
       AchievementsCard(badges = badges)
+
+      SystemEInkModeCard()
     }
+  }
+}
+
+@Composable
+private fun SystemEInkModeCard() {
+  val context = LocalContext.current
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    EInkText("Giao diện E-Ink toàn máy", style = MaterialTheme.typography.titleSmall)
+    EInkText(
+      text = "Đặt làm Màn hình chính tối giản hoặc bật Hình nền động & Widget E-Ink.",
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    OutlinedButton(
+      onClick = { openHomeLauncherSettings(context) },
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      EInkText("Đặt làm Màn hình chính (E-Ink Launcher)")
+    }
+    OutlinedButton(
+      onClick = { openLiveWallpaperPicker(context) },
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      EInkText("Đặt Hình nền động E-Ink")
+    }
+  }
+}
+
+private fun openHomeLauncherSettings(context: Context) {
+  val intent = Intent(Settings.ACTION_HOME_SETTINGS)
+  runCatching { context.startActivity(intent) }
+}
+
+private fun openLiveWallpaperPicker(context: Context) {
+  val direct =
+    Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+      putExtra(
+        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+        ComponentName(context, EInkWallpaperService::class.java),
+      )
+    }
+  val launched = runCatching { context.startActivity(direct) }.isSuccess
+  if (!launched) {
+    runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) }
   }
 }
 

@@ -31,4 +31,5 @@ data class EInkSettings(
   val paperGrain: Boolean = true,
   val ghosting: Boolean = false,
   val readerFooter: Boolean = true,
+  val lockScreenReader: Boolean = true,
 )

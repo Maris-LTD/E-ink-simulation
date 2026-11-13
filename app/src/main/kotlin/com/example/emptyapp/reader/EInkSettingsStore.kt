@@ -42,6 +42,7 @@ class EInkSettingsStore(context: Context) {
       paperGrain = prefs.getBoolean(KEY_PAPER_GRAIN, defaults.paperGrain),
       ghosting = prefs.getBoolean(KEY_GHOSTING, defaults.ghosting),
       readerFooter = prefs.getBoolean(KEY_READER_FOOTER, defaults.readerFooter),
+      lockScreenReader = prefs.getBoolean(KEY_LOCK_SCREEN_READER, defaults.lockScreenReader),
     )
   }
 
@@ -67,6 +68,7 @@ class EInkSettingsStore(context: Context) {
       .putBoolean(KEY_PAPER_GRAIN, value.paperGrain)
       .putBoolean(KEY_GHOSTING, value.ghosting)
       .putBoolean(KEY_READER_FOOTER, value.readerFooter)
+      .putBoolean(KEY_LOCK_SCREEN_READER, value.lockScreenReader)
       .apply()
   }
 
@@ -94,5 +96,6 @@ class EInkSettingsStore(context: Context) {
     const val KEY_PAPER_GRAIN = "paper_grain"
     const val KEY_GHOSTING = "ghosting"
     const val KEY_READER_FOOTER = "reader_footer"
+    const val KEY_LOCK_SCREEN_READER = "lock_screen_reader"
   }
 }
