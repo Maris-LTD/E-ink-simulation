@@ -9,12 +9,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -29,11 +31,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.data.stats.DailyReadingStat
 import com.example.emptyapp.data.stats.ReadingStatsData
+import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.ui.eink.EInkText
+import java.time.DayOfWeek
+import java.time.LocalDate
 
 @Composable
 fun ReaderAvatarIcon(modifier: Modifier = Modifier) {
@@ -72,7 +78,14 @@ fun ReadingStatsScreen(
   val todayMinutes = todaySeconds / 60
   val goalMinutes = stats.dailyGoalMinutes.coerceAtLeast(5)
   val progress = (todaySeconds.toFloat() / (goalMinutes * 60f)).coerceIn(0f, 1f)
-  val recentDays = stats.dailyStats.sortedByDescending { it.date }.take(7)
+  val today = LocalDate.now()
+  val weekSeries = ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 7, today = today)
+  val heatmapDays = ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 84, today = today)
+  val activeDaysCount = stats.dailyStats.count { it.secondsRead > 0 }
+  val avgMinutes7d = (weekSeries.sumOf { it.secondsRead } / 60) / 7
+  val pagesPerHour =
+    if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
+    else 0
 
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -195,24 +208,90 @@ fun ReadingStatsScreen(
         )
       }
 
-      Column(
-        modifier =
-          Modifier.fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-      ) {
-        EInkText("7 ngày gần nhất", style = MaterialTheme.typography.titleSmall)
-        if (recentDays.isEmpty()) {
+      SevenDayBarChartCard(
+        weekSeries = weekSeries,
+        goalMinutes = goalMinutes,
+        avgMinutes7d = avgMinutes7d,
+        pagesPerHour = pagesPerHour,
+      )
+
+      ReadingHeatmapCard(
+        days = heatmapDays,
+        goalSeconds = goalMinutes * 60,
+        activeDaysCount = activeDaysCount,
+      )
+    }
+  }
+}
+
+@Composable
+private fun SevenDayBarChartCard(
+  weekSeries: List<DailyReadingStat>,
+  goalMinutes: Int,
+  avgMinutes7d: Int,
+  pagesPerHour: Int,
+) {
+  val maxMinutes = maxOf(goalMinutes, weekSeries.maxOfOrNull { it.secondsRead / 60 } ?: 0, 1)
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText("Biểu đồ 7 ngày", style = MaterialTheme.typography.titleSmall)
+      EInkText(
+        text = "TB ${avgMinutes7d}p/ngày · ${pagesPerHour} trang/giờ",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth().height(128.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.Bottom,
+    ) {
+      weekSeries.forEach { stat ->
+        val minutes = stat.secondsRead / 60
+        val fraction = (minutes.toFloat() / maxMinutes.toFloat()).coerceIn(0f, 1f)
+        val metGoal = minutes >= goalMinutes
+        Column(
+          modifier = Modifier.weight(1f).fillMaxHeight(),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.Bottom,
+        ) {
           EInkText(
-            text = "Chưa có dữ liệu đọc. Hãy mở một cuốn sách để bắt đầu ghi nhận.",
-            style = MaterialTheme.typography.bodyMedium,
+            text = if (minutes > 0) "${minutes}p" else "0",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (metGoal) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.secondary,
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Box(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.BottomCenter,
+          ) {
+            Box(
+              modifier =
+                Modifier.fillMaxWidth(0.62f)
+                  .fillMaxHeight(fraction.coerceAtLeast(if (minutes > 0) 0.08f else 0.03f))
+                  .background(
+                    if (metGoal) MaterialTheme.colorScheme.primary
+                    else if (minutes > 0) lerp(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.onBackground, 0.45f)
+                    else MaterialTheme.colorScheme.outlineVariant
+                  ),
+            )
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          EInkText(
+            text = shortWeekdayLabel(stat.date),
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.secondary,
           )
-        } else {
-          recentDays.forEach { day ->
-            RecentDayRow(stat = day, goalSeconds = goalMinutes * 60)
-          }
         }
       }
     }
@@ -220,23 +299,95 @@ fun ReadingStatsScreen(
 }
 
 @Composable
-private fun RecentDayRow(
-  stat: DailyReadingStat,
+private fun ReadingHeatmapCard(
+  days: List<DailyReadingStat>,
   goalSeconds: Int,
+  activeDaysCount: Int,
 ) {
-  val minutes = stat.secondsRead / 60
-  val metGoal = stat.secondsRead >= goalSeconds
-  Row(
-    modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically,
+  val bg = MaterialTheme.colorScheme.background
+  val fg = MaterialTheme.colorScheme.onBackground
+  val border = MaterialTheme.colorScheme.outlineVariant
+  val weeks = days.chunked(7)
+
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    EInkText(stat.date, style = MaterialTheme.typography.bodyMedium)
-    EInkText(
-      text = "${minutes}p · ${stat.pagesTurned} trang${if (metGoal) " · Đạt" else ""}",
-      style = MaterialTheme.typography.labelMedium,
-      color = if (metGoal) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.secondary,
-    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText("Lịch sử 12 tuần", style = MaterialTheme.typography.titleSmall)
+      EInkText(
+        text = "$activeDaysCount ngày đã đọc",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      weeks.forEach { week ->
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          week.forEach { stat ->
+            val cellColor = heatmapCellColor(stat.secondsRead, goalSeconds, bg, fg)
+            Box(
+              modifier =
+                Modifier.size(16.dp)
+                  .background(cellColor)
+                  .border(1.dp, border),
+            )
+          }
+        }
+      }
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.End,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText("Ít", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+      Spacer(modifier = Modifier.width(6.dp))
+      listOf(0f, 0.28f, 0.6f, 1f).forEach { level ->
+        val c = if (level == 0f) bg else lerp(bg, fg, level)
+        Box(modifier = Modifier.size(12.dp).background(c).border(1.dp, border))
+        Spacer(modifier = Modifier.width(4.dp))
+      }
+      EInkText("Nhiều", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+    }
+  }
+}
+
+private fun heatmapCellColor(
+  seconds: Int,
+  goalSeconds: Int,
+  bg: androidx.compose.ui.graphics.Color,
+  fg: androidx.compose.ui.graphics.Color,
+): androidx.compose.ui.graphics.Color {
+  if (seconds <= 0) return bg
+  val ratio = seconds.toFloat() / goalSeconds.coerceAtLeast(60).toFloat()
+  return when {
+    ratio >= 1f -> fg
+    ratio >= 0.5f -> lerp(bg, fg, 0.6f)
+    else -> lerp(bg, fg, 0.28f)
+  }
+}
+
+private fun shortWeekdayLabel(isoDate: String): String {
+  val date = runCatching { LocalDate.parse(isoDate) }.getOrNull() ?: return isoDate
+  return when (date.dayOfWeek) {
+    DayOfWeek.MONDAY -> "T2"
+    DayOfWeek.TUESDAY -> "T3"
+    DayOfWeek.WEDNESDAY -> "T4"
+    DayOfWeek.THURSDAY -> "T5"
+    DayOfWeek.FRIDAY -> "T6"
+    DayOfWeek.SATURDAY -> "T7"
+    DayOfWeek.SUNDAY -> "CN"
   }
 }
 

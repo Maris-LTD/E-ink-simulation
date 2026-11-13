@@ -151,5 +151,17 @@ class ReadingStatsRepository(
       }
       return current to best
     }
+
+    fun recentDaysSeries(
+      dailyStats: List<DailyReadingStat>,
+      days: Int = 7,
+      today: LocalDate = LocalDate.now(),
+    ): List<DailyReadingStat> {
+      val byDate = dailyStats.associateBy { it.date }
+      return (days - 1 downTo 0).map { offset ->
+        val date = today.minusDays(offset.toLong()).toString()
+        byDate[date] ?: DailyReadingStat(date = date)
+      }
+    }
   }
 }

@@ -54,4 +54,20 @@ class ReadingStatsTest {
     assertEquals(0, current)
     assertEquals(3, best)
   }
+
+  @Test
+  fun recentDaysSeriesFillsMissingDatesInOrder() {
+    val today = LocalDate.of(2026, 11, 14)
+    val series =
+      ReadingStatsRepository.recentDaysSeries(
+        dailyStats = listOf(DailyReadingStat("2026-11-12", secondsRead = 300, pagesTurned = 4)),
+        days = 7,
+        today = today,
+      )
+    assertEquals(7, series.size)
+    assertEquals("2026-11-08", series.first().date)
+    assertEquals("2026-11-14", series.last().date)
+    assertEquals(300, series[4].secondsRead)
+    assertEquals(0, series[0].secondsRead)
+  }
 }
