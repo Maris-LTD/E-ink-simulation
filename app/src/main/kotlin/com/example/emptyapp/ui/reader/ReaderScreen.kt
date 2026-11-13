@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -83,6 +85,8 @@ fun ReaderScreen(
   onDismissNote: () -> Unit,
   onClose: () -> Unit,
   onNavigatorReady: (OverflowableNavigator) -> Unit,
+  hasDndPermission: () -> Boolean = { true },
+  onOpenDndPermissionSettings: () -> Unit = {},
 ) {
   val settings by viewModel.settings.collectAsStateWithLifecycle()
   val progress by viewModel.progress.collectAsStateWithLifecycle()
@@ -207,7 +211,7 @@ fun ReaderScreen(
     }
     RefreshFlashOverlay(ghostBitmap = activeGhost, ghostAlpha = ghostAlpha)
     if (settings.paperGrain) PaperGrainOverlay()
-    if (!chromeVisible && settings.readerFooter) {
+    if (!chromeVisible && settings.readerFooter && !settings.focusMode) {
       ReaderFooterBar(
         title = title,
         progress = progress,
@@ -248,6 +252,34 @@ fun ReaderScreen(
               pdfController.jumpToPage(index)
             } else {
               navigator?.go(positions[index], animated = false)
+            }
+          }
+        },
+        focusMode = settings.focusMode,
+        onToggleFocusMode = {
+          val next = !settings.focusMode
+          viewModel.updateSettings { it.copy(focusMode = next) }
+          if (next) {
+            settingsOpen = false
+            chromeVisible = false
+            scope.launch {
+              if (hasDndPermission()) {
+                snackbarHostState.showSnackbar("Đã bật Focus Mode", duration = SnackbarDuration.Short)
+              } else {
+                val res =
+                  snackbarHostState.showSnackbar(
+                    message = "Đã bật Focus Mode — Cấp quyền Không làm phiền để chặn thông báo",
+                    actionLabel = "Cấp quyền",
+                    duration = SnackbarDuration.Long,
+                  )
+                if (res == SnackbarResult.ActionPerformed) {
+                  onOpenDndPermissionSettings()
+                }
+              }
+            }
+          } else {
+            scope.launch {
+              snackbarHostState.showSnackbar("Đã tắt Focus Mode", duration = SnackbarDuration.Short)
             }
           }
         },

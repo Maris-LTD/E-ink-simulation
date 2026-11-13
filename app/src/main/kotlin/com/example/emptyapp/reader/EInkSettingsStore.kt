@@ -43,6 +43,7 @@ class EInkSettingsStore(context: Context) {
       ghosting = prefs.getBoolean(KEY_GHOSTING, defaults.ghosting),
       readerFooter = prefs.getBoolean(KEY_READER_FOOTER, defaults.readerFooter),
       lockScreenReader = prefs.getBoolean(KEY_LOCK_SCREEN_READER, defaults.lockScreenReader),
+      focusMode = prefs.getBoolean(KEY_FOCUS_MODE, defaults.focusMode),
     )
   }
 
@@ -69,6 +70,7 @@ class EInkSettingsStore(context: Context) {
       .putBoolean(KEY_GHOSTING, value.ghosting)
       .putBoolean(KEY_READER_FOOTER, value.readerFooter)
       .putBoolean(KEY_LOCK_SCREEN_READER, value.lockScreenReader)
+      .putBoolean(KEY_FOCUS_MODE, value.focusMode)
       .apply()
   }
 
@@ -97,5 +99,6 @@ class EInkSettingsStore(context: Context) {
     const val KEY_GHOSTING = "ghosting"
     const val KEY_READER_FOOTER = "reader_footer"
     const val KEY_LOCK_SCREEN_READER = "lock_screen_reader"
+    const val KEY_FOCUS_MODE = "focus_mode"
   }
 }

@@ -38,6 +38,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkTone
+import com.example.emptyapp.reader.FocusModeController
 import com.example.emptyapp.reader.LockScreenReadingNotifier
 import com.example.emptyapp.reader.OrientationLock
 import com.example.emptyapp.system.EInkReadingWidgetProvider
@@ -62,6 +63,7 @@ class ReaderActivity : FragmentActivity() {
   private var navigator: OverflowableNavigator? = null
   private val pdfController = PdfPagerController()
   private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
+  private val focusModeController by lazy { FocusModeController(this) }
   private val requestNotificationPermission =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
       if (granted) postLockScreenNotification()
@@ -126,6 +128,9 @@ class ReaderActivity : FragmentActivity() {
       LaunchedEffect(viewModel.state.collectAsStateWithLifecycle().value is ReaderUiState.Ready, settings.lockScreenReader) {
         if (settings.lockScreenReader) postLockScreenNotification()
       }
+      LaunchedEffect(settings.focusMode) {
+        focusModeController.applyFocusMode(settings.focusMode)
+      }
       EInkTheme(tone = settings.tone) { ReaderRoot() }
     }
   }
@@ -154,6 +159,9 @@ class ReaderActivity : FragmentActivity() {
   override fun onResume() {
     super.onResume()
     viewModel.onReaderForegroundChanged(true)
+    if (viewModel.settings.value.focusMode) {
+      focusModeController.applyFocusMode(true)
+    }
   }
 
   override fun onPause() {
@@ -161,6 +169,11 @@ class ReaderActivity : FragmentActivity() {
     postLockScreenNotification()
     EInkReadingWidgetProvider.refreshAll(this)
     super.onPause()
+  }
+
+  override fun onStop() {
+    focusModeController.onLeaveForeground()
+    super.onStop()
   }
 
   override fun onUserInteraction() {
@@ -204,6 +217,8 @@ class ReaderActivity : FragmentActivity() {
             onDismissNote = { pendingNoteLocator.value = null },
             onClose = ::finish,
             onNavigatorReady = { navigator = it },
+            hasDndPermission = focusModeController::hasDndPermission,
+            onOpenDndPermissionSettings = focusModeController::openDndPermissionSettings,
           )
         }
       }

@@ -142,6 +142,8 @@ fun ReaderBottomBar(
   onToneChange: (EInkTone) -> Unit,
   onBrightnessChange: (Float) -> Unit,
   onSeekToProgress: (Float) -> Unit,
+  focusMode: Boolean,
+  onToggleFocusMode: () -> Unit,
   onToggleSettings: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -204,8 +206,41 @@ fun ReaderBottomBar(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       EInkText("${(sliderValue * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
-      TextButton(onClick = onToggleSettings) { EInkText("Cài đặt") }
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        FocusModeToggleChip(enabled = focusMode, onToggle = onToggleFocusMode)
+        TextButton(onClick = onToggleSettings) { EInkText("Cài đặt") }
+      }
     }
+  }
+}
+
+@Composable
+private fun FocusModeToggleChip(
+  enabled: Boolean,
+  onToggle: () -> Unit,
+) {
+  val bg = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.background
+  val fg = if (enabled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onBackground
+  Box(
+    modifier =
+      Modifier
+        .background(bg)
+        .border(1.5.dp, MaterialTheme.colorScheme.onBackground)
+        .clickable(onClick = onToggle)
+        .padding(horizontal = 10.dp, vertical = 6.dp)
+        .semantics {
+          contentDescription = if (enabled) "Tắt Focus Mode" else "Bật Focus Mode"
+        },
+    contentAlignment = Alignment.Center,
+  ) {
+    EInkText(
+      text = if (enabled) "Focus: BẬT" else "Focus",
+      color = fg,
+      style = MaterialTheme.typography.labelLarge,
+    )
   }
 }
 

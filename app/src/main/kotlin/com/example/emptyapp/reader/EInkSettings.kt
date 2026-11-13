@@ -32,4 +32,5 @@ data class EInkSettings(
   val ghosting: Boolean = false,
   val readerFooter: Boolean = true,
   val lockScreenReader: Boolean = true,
+  val focusMode: Boolean = false,
 )

@@ -91,6 +91,7 @@ fun ReaderSettingsPanel(
     SwitchRow("Vân giấy E-Ink", settings.paperGrain) { on -> onChange { it.copy(paperGrain = on) } }
     SwitchRow("Lưu ảnh mờ (Ghosting)", settings.ghosting) { on -> onChange { it.copy(ghosting = on) } }
     SwitchRow("Thanh tiến độ E-Reader", settings.readerFooter) { on -> onChange { it.copy(readerFooter = on) } }
+    SwitchRow("Chế độ Tập trung (Focus)", settings.focusMode) { on -> onChange { it.copy(focusMode = on) } }
     SwitchRow("Đọc trên màn hình khóa", settings.lockScreenReader) { on ->
       onChange { it.copy(lockScreenReader = on) }
     }
