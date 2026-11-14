@@ -228,7 +228,7 @@ fun ReaderScreen(
         onOpenContents = { contentsOpen = true; searchOpen = false; settingsOpen = false },
         onBookmark = {
           viewModel.addBookmark()
-          scope.launch { snackbarHostState.showSnackbar("Đã lưu dấu trang") }
+          scope.launch { snackbarHostState.showSnackbar(context.getString(com.example.emptyapp.R.string.reader_bookmark_saved)) }
         },
         onDecreaseFont = {
           viewModel.updateSettings { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) }
@@ -264,12 +264,15 @@ fun ReaderScreen(
             chromeVisible = false
             scope.launch {
               if (hasDndPermission()) {
-                snackbarHostState.showSnackbar("Đã bật Focus Mode", duration = SnackbarDuration.Short)
+                snackbarHostState.showSnackbar(
+                  context.getString(com.example.emptyapp.R.string.reader_focus_enabled),
+                  duration = SnackbarDuration.Short,
+                )
               } else {
                 val res =
                   snackbarHostState.showSnackbar(
-                    message = "Đã bật Focus Mode — Cấp quyền Không làm phiền để chặn thông báo",
-                    actionLabel = "Cấp quyền",
+                    message = context.getString(com.example.emptyapp.R.string.reader_focus_needs_dnd),
+                    actionLabel = context.getString(com.example.emptyapp.R.string.action_grant_permission),
                     duration = SnackbarDuration.Long,
                   )
                 if (res == SnackbarResult.ActionPerformed) {
@@ -279,7 +282,10 @@ fun ReaderScreen(
             }
           } else {
             scope.launch {
-              snackbarHostState.showSnackbar("Đã tắt Focus Mode", duration = SnackbarDuration.Short)
+              snackbarHostState.showSnackbar(
+                context.getString(com.example.emptyapp.R.string.reader_focus_disabled),
+                duration = SnackbarDuration.Short,
+              )
             }
           }
         },
@@ -359,10 +365,11 @@ fun ReaderScreen(
         state = dictState,
         onTranslateExternal = { query ->
           val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+          val tl = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(context)
           val intent =
             Intent(
               Intent.ACTION_VIEW,
-              Uri.parse("https://translate.google.com/?sl=auto&tl=vi&text=$encoded"),
+              Uri.parse("https://translate.google.com/?sl=auto&tl=$tl&text=$encoded"),
             )
           runCatching { context.startActivity(intent) }
         },
@@ -404,7 +411,7 @@ fun ReaderScreen(
             .padding(horizontal = 14.dp, vertical = 8.dp)
       ) {
         Text(
-          text = "Độ sáng: $pct%",
+          text = androidx.compose.ui.res.stringResource(com.example.emptyapp.R.string.reader_brightness_hud, pct),
           style = MaterialTheme.typography.labelLarge,
           color = MaterialTheme.colorScheme.onSurface,
         )

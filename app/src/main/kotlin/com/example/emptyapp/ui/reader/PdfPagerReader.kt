@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
+import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkSettings
 import java.io.File
@@ -89,7 +91,7 @@ fun PdfPagerReader(
 
   if (holder == null || holder.pageCount <= 0) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text("Không mở được tệp PDF", style = MaterialTheme.typography.bodyLarge)
+      Text(stringResource(R.string.pdf_load_error), style = MaterialTheme.typography.bodyLarge)
     }
     return
   }

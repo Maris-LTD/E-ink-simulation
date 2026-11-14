@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer book outline for monochrome themed icons -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M30.5,31 L77.5,31 Q80.5,31 80.5,34 L80.5,73 Q80.5,76 77.5,76 L30.5,76 Q27.5,76 27.5,73 L27.5,34 Q27.5,31 30.5,31 Z"
+        android:strokeColor="#000000"
+        android:strokeWidth="3.2" />
+
+    <!-- Center spine -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,32 L54,75"
+        android:strokeColor="#000000"
+        android:strokeWidth="2.2" />
+
+    <!-- Left page lines -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M34.5,41 L46.5,41 M34.5,48 L48.5,48 M34.5,55 L48.5,55 M34.5,62 L44,62"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.2" />
+
+    <!-- Right page lines -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59.5,48 L73.5,48 M59.5,55 L73.5,55 M59.5,62 L69,62"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.2" />
+
+    <!-- Bookmark ribbon -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M64,28 L72,28 L72,42.5 L68,38.7 L64,42.5 Z" />
+</vector>

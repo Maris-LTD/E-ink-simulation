@@ -27,15 +27,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.ui.eink.EInkText
 import org.readium.r2.shared.publication.Link
 
-private enum class ContentsTab(val label: String) {
-  TOC("Mục lục"),
-  BOOKMARKS("Dấu trang"),
-  HIGHLIGHTS("Highlight"),
+private enum class ContentsTab(val labelRes: Int) {
+  TOC(R.string.tab_toc),
+  BOOKMARKS(R.string.tab_bookmarks),
+  HIGHLIGHTS(R.string.tab_highlights),
 }
 
 private data class TocItem(val link: Link, val depth: Int)
@@ -68,8 +70,8 @@ fun ReaderContentsSheet(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText("Nội dung sách", style = MaterialTheme.typography.titleLarge)
-      TextButton(onClick = onDismiss) { EInkText("Đóng") }
+      EInkText(stringResource(R.string.contents_title), style = MaterialTheme.typography.titleLarge)
+      TextButton(onClick = onDismiss) { EInkText(stringResource(R.string.action_close)) }
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
     Row(modifier = Modifier.fillMaxWidth()) {
@@ -84,7 +86,7 @@ fun ReaderContentsSheet(
           contentAlignment = Alignment.Center,
         ) {
           EInkText(
-            text = tab.label,
+            text = stringResource(tab.labelRes),
             style = MaterialTheme.typography.labelLarge,
             color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
@@ -105,7 +107,7 @@ fun ReaderContentsSheet(
 @Composable
 private fun TocList(items: List<TocItem>, onSelect: (Link) -> Unit) {
   if (items.isEmpty()) {
-    EmptySection("Sách không có mục lục.")
+    EmptySection(stringResource(R.string.toc_empty))
     return
   }
   LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -135,7 +137,7 @@ private fun BookmarkList(
   onRemove: (String) -> Unit,
 ) {
   if (bookmarks.isEmpty()) {
-    EmptySection("Chưa có dấu trang nào.\nNhấn Lưu khi đọc để đánh dấu trang.")
+    EmptySection(stringResource(R.string.bookmarks_empty))
     return
   }
   LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -148,16 +150,19 @@ private fun BookmarkList(
         verticalAlignment = Alignment.CenterVertically,
       ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          EInkText(item.title, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+          EInkText(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
           EInkText(
             "${(item.progress * 100).toInt()}%",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary,
-            strokeWidthPx = 1.5f,
           )
         }
         TextButton(onClick = { onRemove(item.id) }) {
-          EInkText("Xóa", color = MaterialTheme.colorScheme.secondary, strokeWidthPx = 1.5f)
+          EInkText(
+            text = stringResource(R.string.action_delete),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+          )
         }
       }
       HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -172,7 +177,7 @@ private fun HighlightList(
   onRemove: (String) -> Unit,
 ) {
   if (highlights.isEmpty()) {
-    EmptySection("Chưa có highlight nào.\nChạm giữ để bôi đen đoạn văn bản khi đọc.")
+    EmptySection(stringResource(R.string.highlights_empty))
     return
   }
   LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -193,21 +198,23 @@ private fun HighlightList(
           )
           if (item.note.isNotBlank()) {
             EInkText(
-              text = "Ghi chú: ${item.note}",
+              text = stringResource(R.string.highlight_note_prefix, item.note),
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.secondary,
-              strokeWidthPx = 1.5f,
             )
           }
           EInkText(
             text = "${(item.progress * 100).toInt()}%",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary,
-            strokeWidthPx = 1.5f,
           )
         }
         TextButton(onClick = { onRemove(item.id) }) {
-          EInkText("Xóa", color = MaterialTheme.colorScheme.secondary, strokeWidthPx = 1.5f)
+          EInkText(
+            text = stringResource(R.string.action_delete),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+          )
         }
       }
       HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -220,9 +227,8 @@ private fun EmptySection(message: String) {
   Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
     EInkText(
       text = message,
-      style = MaterialTheme.typography.bodyLarge,
+      style = MaterialTheme.typography.titleSmall,
       color = MaterialTheme.colorScheme.secondary,
-      strokeWidthPx = 1.5f,
     )
   }
 }

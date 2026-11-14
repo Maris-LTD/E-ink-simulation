@@ -24,7 +24,7 @@
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="2"
-        android:text="Chưa có sách đang đọc"
+        android:text="@string/widget_no_book"
         android:textColor="#111111"
         android:textSize="16sp"
         android:textStyle="bold" />
@@ -34,7 +34,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:text="Chạm để mở thư viện"
+        android:text="@string/widget_tap_to_open"
         android:textColor="#333333"
         android:textSize="12sp" />
 
@@ -43,7 +43,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Hôm nay: 0/20p · Chuỗi: 0 ngày"
+        android:text="@string/widget_default_stats"
         android:textColor="#555555"
         android:textSize="11sp" />
 

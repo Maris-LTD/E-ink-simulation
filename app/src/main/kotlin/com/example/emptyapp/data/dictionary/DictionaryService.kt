@@ -1,5 +1,8 @@
 package com.example.emptyapp.data.dictionary
 
+import android.content.Context
+import com.example.emptyapp.LocaleHelper
+import com.example.emptyapp.R
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -63,26 +66,42 @@ private data class MyMemoryData(
   val translatedText: String? = null,
 )
 
-class DictionaryService {
+class DictionaryService(private val context: Context? = null) {
   private val json = Json { ignoreUnknownKeys = true }
   private val listSerializer = ListSerializer(ApiEntry.serializer())
 
-  suspend fun lookup(rawText: String): Result<DictionaryEntry> =
+  private fun str(resId: Int, fallback: String): String =
+    context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
+
+  suspend fun lookup(
+    rawText: String,
+    targetLang: String = context?.let(LocaleHelper::effectiveLanguageCode) ?: "vi",
+  ): Result<DictionaryEntry> =
     withContext(Dispatchers.IO) {
       val query = normalizeQuery(rawText)
       if (query.isEmpty()) {
-        return@withContext Result.failure(IllegalArgumentException("Không có nội dung hợp lệ để tra"))
+        return@withContext Result.failure(
+          IllegalArgumentException(str(R.string.dict_invalid_query, "Không có nội dung hợp lệ để tra"))
+        )
       }
       val isSingleWord = !query.contains(' ')
-      val translationDeferred = async { translateToVietnamese(query) }
+      val translationDeferred = async { translate(query, targetLang) }
       val dictionaryDeferred = async {
         if (isSingleWord) lookupEnglishDictionary(query).getOrNull() else null
       }
-      val translation = translationDeferred.await()
+      val rawTranslation = translationDeferred.await()
       val dict = dictionaryDeferred.await()
+      val translation =
+        if (targetLang == "en" && dict != null && rawTranslation.equals(query, ignoreCase = true)) {
+          null
+        } else {
+          rawTranslation
+        }
       if (translation == null && dict == null) {
         return@withContext Result.failure(
-          IllegalStateException("Không dịch hoặc tra được nội dung này (kiểm tra kết nối mạng)")
+          IllegalStateException(
+            str(R.string.dict_lookup_failed, "Không dịch hoặc tra được nội dung này (kiểm tra kết nối mạng)")
+          )
         )
       }
       Result.success(
@@ -98,19 +117,20 @@ class DictionaryService {
   private fun lookupEnglishDictionary(word: String): Result<DictionaryEntry> {
     val encoded = URLEncoder.encode(word.lowercase(), "UTF-8").replace("+", "%20")
     val body = httpGet("https://api.dictionaryapi.dev/api/v2/entries/en/$encoded")
-      ?: return Result.failure(NoSuchElementException("Không tìm thấy định nghĩa"))
+      ?: return Result.failure(NoSuchElementException(str(R.string.dict_not_found, "Không tìm thấy định nghĩa")))
     return parseResponse(body)
   }
 
-  private fun translateToVietnamese(text: String): String? {
+  private fun translate(text: String, targetLang: String): String? {
     val encoded = URLEncoder.encode(text, "UTF-8")
     val googleBody =
-      httpGet("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=$encoded")
+      httpGet("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLang&dt=t&q=$encoded")
     if (googleBody != null) {
       parseGoogleTranslate(googleBody)?.let { return it }
     }
+    val langPair = if (targetLang == "en") "vi|en" else "en|vi"
     val myMemoryBody =
-      httpGet("https://api.mymemory.translated.net/get?q=$encoded&langpair=en|vi")
+      httpGet("https://api.mymemory.translated.net/get?q=$encoded&langpair=$langPair")
     if (myMemoryBody != null) {
       parseMyMemory(myMemoryBody)?.let { return it }
     }

@@ -21,9 +21,21 @@ fun EInkText(
   minLines: Int = 1,
   maxLines: Int = Int.MAX_VALUE,
   overflow: TextOverflow = TextOverflow.Clip,
-  strokeWidthPx: Float = 2.0f,
+  strokeWidthPx: Float = 0f,
 ) {
   val resolvedColor = if (color != Color.Unspecified) color else style.color
+  if (strokeWidthPx <= 0f) {
+    Text(
+      text = text,
+      modifier = modifier,
+      color = resolvedColor,
+      style = style,
+      minLines = minLines,
+      maxLines = maxLines,
+      overflow = overflow,
+    )
+    return
+  }
   val strokeStyle =
     remember(style, strokeWidthPx) {
       style.copy(drawStyle = Stroke(width = strokeWidthPx, join = StrokeJoin.Round))

@@ -18,9 +18,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.example.emptyapp.R
 import com.example.emptyapp.ui.eink.EInkText
 
 @Composable
@@ -39,26 +41,25 @@ fun HighlightNoteDialog(
           .padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      EInkText("Ghi chú Highlight", style = MaterialTheme.typography.titleMedium)
+      EInkText(stringResource(R.string.highlight_note_title), style = MaterialTheme.typography.titleMedium)
       EInkText(
         text = "“$quote”",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.secondary,
         maxLines = 3,
         overflow = TextOverflow.Ellipsis,
-        strokeWidthPx = 1.5f,
       )
       OutlinedTextField(
         value = note,
         onValueChange = { note = it },
-        placeholder = { Text("Nhập ghi chú (tùy chọn)...") },
+        placeholder = { Text(stringResource(R.string.highlight_note_placeholder)) },
         minLines = 2,
         maxLines = 4,
         modifier = Modifier.fillMaxWidth(),
       )
       Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Hủy") }
-        Button(onClick = { onSave(note) }, modifier = Modifier.weight(1f)) { Text("Lưu") }
+        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_cancel)) }
+        Button(onClick = { onSave(note) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_save)) }
       }
     }
   }

@@ -21,8 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.ui.eink.EInkText
 
@@ -36,10 +38,9 @@ fun LibraryBookmarkList(
   if (bookmarks.isEmpty()) {
     Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
       EInkText(
-        text = "Chưa có dấu trang nào.\nNhấn biểu tượng dấu trang khi đọc sách để lưu.",
-        style = MaterialTheme.typography.bodyLarge,
+        text = stringResource(R.string.lib_bookmarks_empty),
+        style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.secondary,
-        strokeWidthPx = 1.5f,
       )
     }
     return
@@ -72,7 +73,7 @@ fun LibraryBookmarkList(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
           EInkText(
             text = item.title,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
           )
@@ -85,11 +86,14 @@ fun LibraryBookmarkList(
             text = meta,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary,
-            strokeWidthPx = 1.4f,
           )
         }
         TextButton(onClick = { onRemove(item.id) }) {
-          EInkText("Xóa", color = MaterialTheme.colorScheme.secondary, strokeWidthPx = 1.5f)
+          EInkText(
+            text = stringResource(R.string.action_delete),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+          )
         }
       }
       HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)

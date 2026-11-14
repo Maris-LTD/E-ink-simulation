@@ -21,8 +21,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.ui.eink.EInkText
 
@@ -35,10 +37,9 @@ fun LibraryHighlightList(
   if (highlights.isEmpty()) {
     Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
       EInkText(
-        text = "Chưa có highlight nào.\nChạm giữ để bôi đen đoạn văn bản khi đọc sách.",
-        style = MaterialTheme.typography.bodyLarge,
+        text = stringResource(R.string.lib_highlights_empty),
+        style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.secondary,
-        strokeWidthPx = 1.5f,
       )
     }
     return
@@ -68,26 +69,27 @@ fun LibraryHighlightList(
               style = MaterialTheme.typography.bodyLarge,
               maxLines = 4,
               overflow = TextOverflow.Ellipsis,
-              strokeWidthPx = 1.6f,
             )
             if (item.note.isNotBlank()) {
               EInkText(
-                text = "Ghi chú: ${item.note}",
+                text = stringResource(R.string.highlight_note_prefix, item.note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.secondary,
-                strokeWidthPx = 1.4f,
               )
             }
             EInkText(
               text = "${item.bookTitle} · ${(item.progress * 100).toInt()}%",
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.secondary,
-              strokeWidthPx = 1.4f,
             )
           }
         }
         TextButton(onClick = { onRemove(item.id) }) {
-          EInkText("Xóa", color = MaterialTheme.colorScheme.secondary, strokeWidthPx = 1.5f)
+          EInkText(
+            text = stringResource(R.string.action_delete),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+          )
         }
       }
       HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)

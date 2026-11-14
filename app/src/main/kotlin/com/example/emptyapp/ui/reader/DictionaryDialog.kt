@@ -17,11 +17,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.example.emptyapp.R
 import com.example.emptyapp.data.dictionary.DictionaryEntry
 import com.example.emptyapp.ui.eink.EInkText
 
@@ -59,10 +61,9 @@ fun DictionaryDialog(
             overflow = TextOverflow.Ellipsis,
           )
           EInkText(
-            text = "Đang dịch & tra từ...",
+            text = stringResource(R.string.dict_loading),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
-            strokeWidthPx = 1.5f,
           )
         }
         is DictionaryUiState.Error -> {
@@ -76,7 +77,6 @@ fun DictionaryDialog(
             text = state.message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
-            strokeWidthPx = 1.5f,
           )
         }
         is DictionaryUiState.Success -> {
@@ -92,7 +92,6 @@ fun DictionaryDialog(
                 text = phonetic,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
-                strokeWidthPx = 1.5f,
               )
             }
           }
@@ -110,7 +109,7 @@ fun DictionaryDialog(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
               ) {
                 Text(
-                  text = "Tiếng Việt",
+                  text = stringResource(R.string.dict_translation_label),
                   style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                   color = MaterialTheme.colorScheme.secondary,
                 )
@@ -155,10 +154,10 @@ fun DictionaryDialog(
           onClick = { onTranslateExternal(state.query) },
           modifier = Modifier.weight(1f),
         ) {
-          Text("Dịch ngoài")
+          Text(stringResource(R.string.dict_open_external))
         }
         Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-          Text("Đóng")
+          Text(stringResource(R.string.action_close))
         }
       }
     }

@@ -15,7 +15,9 @@ import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
+import androidx.core.content.res.ResourcesCompat
 import com.example.emptyapp.EmptyApplication
+import com.example.emptyapp.R
 import com.example.emptyapp.data.stats.ReadingGamification
 import java.io.File
 import java.time.LocalDateTime
@@ -137,25 +139,27 @@ class EInkWallpaperService : WallpaperService() {
       val goalMin = (stats?.dailyGoalMinutes ?: 20).coerceAtLeast(5)
       val goalProgress = (todaySec.toFloat() / (goalMin * 60f)).coerceIn(0f, 1f)
       val streak = stats?.currentStreak ?: 0
+      val localized = com.example.emptyapp.LocaleHelper.wrap(applicationContext)
       val rank =
-        if (stats != null) ReadingGamification.rankFor(stats, completedCount, highlightsCount)
+        if (stats != null) ReadingGamification.rankFor(stats, completedCount, highlightsCount, localized)
         else null
       val batteryPct = readBatteryPercent(applicationContext)
       val now = LocalDateTime.now()
+      val baseTypeface = ResourcesCompat.getFont(this@EInkWallpaperService, R.font.rubik) ?: Typeface.SANS_SERIF
 
       val statusPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
           color = fgColor
           alpha = 175
           textSize = w * 0.033f
-          typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
           textAlign = Paint.Align.CENTER
         }
       val clockPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
           color = fgColor
           textSize = w * 0.21f
-          typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
           textAlign = Paint.Align.CENTER
         }
       val datePaint =
@@ -163,12 +167,12 @@ class EInkWallpaperService : WallpaperService() {
           color = fgColor
           alpha = 185
           textSize = w * 0.042f
-          typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+          typeface = Typeface.create(baseTypeface, Typeface.NORMAL)
           textAlign = Paint.Align.CENTER
         }
-      val rankText = rank?.let { "Cấp ${it.level} · ${it.title}" } ?: "eInk Reader"
+      val rankText = rank?.let { localized.getString(com.example.emptyapp.R.string.wallpaper_rank_format, it.level, it.title) } ?: "eInk Reader"
       canvas.drawText(
-        "Pin $batteryPct% · Chuỗi ${streak}d · $rankText",
+        localized.getString(com.example.emptyapp.R.string.wallpaper_status_format, batteryPct, streak, rankText),
         w / 2f,
         h * 0.14f,
         statusPaint,
@@ -198,15 +202,15 @@ class EInkWallpaperService : WallpaperService() {
           color = fgColor
           alpha = 175
           textSize = w * 0.032f
-          typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
           textAlign = Paint.Align.LEFT
         }
       val rightPaint =
         Paint(leftPaint).apply {
           textAlign = Paint.Align.RIGHT
         }
-      canvas.drawText("MỤC TIÊU HÔM NAY", padX, goalTop - w * 0.02f, leftPaint)
-      canvas.drawText("$todayMin / ${goalMin}p", w - padX, goalTop - w * 0.02f, rightPaint)
+      canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_daily_goal), padX, goalTop - w * 0.02f, leftPaint)
+      canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_minutes_format, todayMin, goalMin), w - padX, goalTop - w * 0.02f, rightPaint)
       canvas.drawRect(padX, goalTop, w - padX, goalTop + goalBarH, borderPaint)
       if (goalProgress > 0f) {
         val fillW = (w - 2f * padX) * goalProgress
@@ -251,7 +255,7 @@ class EInkWallpaperService : WallpaperService() {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
           color = fgColor
           textSize = w * 0.044f
-          typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
           textAlign = Paint.Align.LEFT
         }
       val subPaint =
@@ -259,12 +263,12 @@ class EInkWallpaperService : WallpaperService() {
           color = fgColor
           alpha = 180
           textSize = w * 0.034f
-          typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+          typeface = Typeface.create(baseTypeface, Typeface.NORMAL)
           textAlign = Paint.Align.LEFT
         }
 
-      canvas.drawText("ĐANG ĐỌC", textX, cardTop + innerPad + w * 0.032f, leftPaint)
-      val rawTitle = currentBook?.title ?: "Chưa có sách đang đọc"
+      canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_currently_reading), textX, cardTop + innerPad + w * 0.032f, leftPaint)
+      val rawTitle = currentBook?.title ?: localized.getString(com.example.emptyapp.R.string.wallpaper_no_book)
       val clippedTitle = ellipsize(rawTitle, titlePaint, maxTextW)
       canvas.drawText(clippedTitle, textX, cardTop + innerPad + w * 0.095f, titlePaint)
 

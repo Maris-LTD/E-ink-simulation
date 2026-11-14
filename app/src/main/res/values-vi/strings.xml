@@ -1,0 +1,283 @@
+<resources>
+    <string name="app_name">eInk Reader</string>
+    <string name="eink_wallpaper_desc">Hình nền giấy E-Ink tối giản kèm đồng hồ và tiến độ đọc sách</string>
+    <string name="eink_launcher_label">eInk Launcher</string>
+    <string name="contact_email">letuandat556@gmail.com</string>
+
+    <!-- Common actions -->
+    <string name="action_close">Đóng</string>
+    <string name="action_cancel">Hủy</string>
+    <string name="action_save">Lưu</string>
+    <string name="action_delete">Xóa</string>
+    <string name="action_back">Quay lại</string>
+    <string name="action_search">Tìm</string>
+    <string name="action_grant_permission">Cấp quyền</string>
+
+    <!-- Widget -->
+    <string name="widget_no_book">Chưa có sách đang đọc</string>
+    <string name="widget_tap_to_open">Chạm để mở thư viện</string>
+    <string name="widget_default_stats">Hôm nay: 0/20p · Chuỗi: 0 ngày</string>
+    <string name="widget_stats_format">Hôm nay: %1$d/%2$dp · Chuỗi: %3$d ngày</string>
+    <string name="widget_progress_format">Tiến độ: %1$d%% · Chạm để đọc tiếp</string>
+
+    <!-- Lock screen notification -->
+    <string name="lockscreen_channel_name">Đọc trên màn hình khóa</string>
+    <string name="lockscreen_reading_text">Đang đọc · %1$d%% — Chạm để đọc tiếp</string>
+
+    <!-- Wallpaper -->
+    <string name="wallpaper_no_book">Chưa có sách đang đọc</string>
+    <string name="wallpaper_streak">Chuỗi: %1$d ngày</string>
+    <string name="wallpaper_status_format">Pin %1$d%% · Chuỗi %2$dd · %3$s</string>
+    <string name="wallpaper_rank_format">Cấp %1$d · %2$s</string>
+    <string name="wallpaper_daily_goal">MỤC TIÊU HÔM NAY</string>
+    <string name="wallpaper_minutes_format">%1$d / %2$dp</string>
+    <string name="wallpaper_currently_reading">ĐANG ĐỌC</string>
+
+    <!-- Gamification -->
+    <string name="rank_1">Tân binh</string>
+    <string name="rank_2">Độc giả</string>
+    <string name="rank_3">Mọt sách</string>
+    <string name="rank_4">Học giả</string>
+    <string name="rank_5">Triết gia</string>
+    <string name="badge_first_page_title">Trang đầu tiên</string>
+    <string name="badge_first_page_desc">Đọc ít nhất 1 phút</string>
+    <string name="badge_streak_3_title">Nhịp đều 3 ngày</string>
+    <string name="badge_streak_3_desc">Chuỗi 3 ngày liên tiếp</string>
+    <string name="badge_streak_7_title">Tuần lễ vàng</string>
+    <string name="badge_streak_7_desc">Chuỗi 7 ngày liên tiếp</string>
+    <string name="badge_streak_30_title">Kỷ luật thép</string>
+    <string name="badge_streak_30_desc">Chuỗi 30 ngày liên tiếp</string>
+    <string name="badge_pages_100_title">Trăm trang sách</string>
+    <string name="badge_pages_100_desc">Lật ít nhất 100 trang</string>
+    <string name="badge_hours_5_title">5 giờ nghiền ngẫm</string>
+    <string name="badge_hours_5_desc">Tổng thời gian đọc ≥ 5 giờ</string>
+    <string name="badge_book_done_title">Khép trang cuối</string>
+    <string name="badge_book_done_desc">Hoàn thành 1 cuốn sách</string>
+    <string name="badge_annotator_title">Người ghi chú</string>
+    <string name="badge_annotator_desc">Tạo ít nhất 5 highlights</string>
+
+    <!-- Book importer -->
+    <string name="import_unsupported_format">Chỉ hỗ trợ EPUB, PDF và CBZ</string>
+    <string name="import_cannot_open_file">Không mở được tệp</string>
+    <string name="import_default_title">Sách mới</string>
+
+    <!-- Dictionary & Translation -->
+    <string name="dict_invalid_query">Không có nội dung hợp lệ để tra</string>
+    <string name="dict_lookup_failed">Không dịch hoặc tra được nội dung này (kiểm tra kết nối mạng)</string>
+    <string name="dict_not_found">Không tìm thấy định nghĩa</string>
+    <string name="dict_no_data">Không có dữ liệu từ điển</string>
+    <string name="dict_no_definition">Không có định nghĩa</string>
+    <string name="dict_loading">Đang dịch &amp; tra từ...</string>
+    <string name="dict_translation_label">Tiếng Việt</string>
+    <string name="dict_open_external">Dịch ngoài</string>
+
+    <!-- Language settings -->
+    <string name="settings_language">Ngôn ngữ</string>
+    <string name="language_system">Hệ thống</string>
+    <string name="language_vi">Tiếng Việt</string>
+    <string name="language_en">English</string>
+
+    <!-- Reader Activity & Screen -->
+    <string name="reader_opening">Đang mở sách...</string>
+    <string name="reader_menu_note">Ghi chú</string>
+    <string name="reader_menu_lookup">Tra từ / Dịch</string>
+    <string name="reader_bookmark_saved">Đã lưu dấu trang</string>
+    <string name="reader_focus_enabled">Đã bật Focus Mode</string>
+    <string name="reader_focus_needs_dnd">Đã bật Focus Mode — Cấp quyền Không làm phiền để chặn thông báo</string>
+    <string name="reader_focus_disabled">Đã tắt Focus Mode</string>
+    <string name="reader_brightness_hud">Độ sáng: %1$d%%</string>
+    <string name="reader_search_unsupported">Định dạng sách này không hỗ trợ tìm kiếm chữ.</string>
+    <string name="reader_search_error">Lỗi khi tải kết quả</string>
+    <string name="reader_book_not_found">Không tìm thấy sách</string>
+    <string name="reader_cannot_open_book">Không mở được sách</string>
+    <string name="pdf_load_error">Không mở được PDF</string>
+    <string name="highlight_note_title">Ghi chú Highlight</string>
+    <string name="highlight_note_placeholder">Nhập ghi chú (tùy chọn)...</string>
+
+    <!-- Reader Bars -->
+    <string name="cd_search_in_book">Tìm trong sách</string>
+    <string name="cd_save_bookmark">Lưu dấu trang</string>
+    <string name="reader_contents_button">Mục lục</string>
+    <string name="cd_brightness_auto">Độ sáng tự động</string>
+    <string name="cd_brightness_pct">Độ sáng %1$d%%</string>
+    <string name="tone_paper">Giấy</string>
+    <string name="tone_warm">Ấm</string>
+    <string name="tone_white">Trắng</string>
+    <string name="tone_gray">Xám</string>
+    <string name="tone_dark">Đêm</string>
+
+    <!-- Reader Settings Panel -->
+    <string name="settings_font">Phông chữ</string>
+    <string name="settings_font_size">Cỡ chữ</string>
+    <string name="settings_font_weight">Độ đậm chữ</string>
+    <string name="settings_line_height">Giãn dòng</string>
+    <string name="settings_paragraph_spacing">Khoảng cách đoạn</string>
+    <string name="settings_justify">Căn đều hai bên (Justify)</string>
+    <string name="settings_margins">Lề trang</string>
+    <string name="settings_grayscale">Ảnh xám (đơn sắc)</string>
+    <string name="settings_contrast">Tương phản</string>
+    <string name="settings_paper_grain">Vân giấy E-Ink</string>
+    <string name="settings_ghosting">Lưu ảnh mờ (Ghosting)</string>
+    <string name="settings_reader_footer">Thanh tiến độ E-Reader</string>
+    <string name="settings_focus_mode">Chế độ Tập trung (Focus)</string>
+    <string name="settings_lockscreen_reader">Đọc trên màn hình khóa</string>
+    <string name="settings_orientation">Hướng màn hình</string>
+    <string name="orientation_auto">Tự động</string>
+    <string name="orientation_portrait">Dọc</string>
+    <string name="orientation_landscape">Ngang</string>
+
+    <!-- Reader Search Sheet -->
+    <string name="search_in_book_title">Tìm trong sách</string>
+    <string name="search_in_book_placeholder">Nhập từ, cụm từ hoặc tên nhân vật...</string>
+    <string name="search_in_book_hint">Nhập từ khóa để tìm vị trí và chương xuất hiện trong sách.</string>
+    <string name="search_in_book_loading">Đang tìm \"%1$s\"...</string>
+    <string name="search_in_book_empty">Không tìm thấy \"%1$s\" trong sách.</string>
+    <string name="search_in_book_count">Tìm thấy %1$d%2$s kết quả</string>
+    <string name="search_in_book_load_more">Tải thêm kết quả</string>
+    <string name="search_chapter_fallback">Chương / Vị trí</string>
+
+    <!-- Reader Contents Sheet -->
+    <string name="contents_title">Nội dung sách</string>
+    <string name="tab_toc">Mục lục</string>
+    <string name="tab_bookmarks">Dấu trang</string>
+    <string name="tab_highlights">Highlight</string>
+    <string name="toc_empty">Sách không có mục lục.</string>
+    <string name="bookmarks_empty">Chưa có dấu trang nào.\nNhấn Lưu khi đọc để đánh dấu trang.</string>
+    <string name="highlights_empty">Chưa có highlight nào.\nChạm giữ để bôi đen đoạn văn bản khi đọc.</string>
+    <string name="highlight_note_prefix">Ghi chú: %1$s</string>
+
+    <!-- Library -->
+    <string name="lib_tab_all">Tất cả</string>
+    <string name="lib_tab_reading">Đang đọc</string>
+    <string name="lib_tab_unread">Chưa đọc</string>
+    <string name="lib_tab_bookmarks">Dấu trang</string>
+    <string name="lib_tab_highlights">Highlights</string>
+    <string name="lib_view_list">Danh sách</string>
+    <string name="lib_view_grid_2">Lưới 2</string>
+    <string name="lib_view_grid_3">Lưới 3</string>
+    <string name="lib_view_grid_4">Lưới 4</string>
+    <string name="cd_tutorial">Hướng dẫn sử dụng</string>
+    <string name="cd_reading_stats">Thống kê thói quen đọc</string>
+    <string name="cd_add_book">Thêm sách</string>
+    <string name="cd_clear_search">Xóa tìm kiếm</string>
+    <string name="lib_search_placeholder">Tìm kiếm...</string>
+    <string name="lib_empty_filtered">Không có sách phù hợp bộ lọc.</string>
+    <string name="lib_empty_all">Chưa có sách nào.\nNhấn + Thêm sách để nhập tệp EPUB, PDF hoặc CBZ.</string>
+    <string name="lib_bookmarks_empty">Chưa có dấu trang nào.\nNhấn biểu tượng dấu trang khi đọc sách để lưu.</string>
+    <string name="lib_highlights_empty">Chưa có highlight nào.\nChạm giữ để bôi đen đoạn văn bản khi đọc sách.</string>
+    <string name="lib_import_error">Không nhập được sách: %1$s</string>
+    <string name="lib_import_invalid_file">tệp không hợp lệ</string>
+
+    <!-- Google Drive Sync -->
+    <string name="sync_connecting">Đang kết nối Google...</string>
+    <string name="sync_play_services_error">Không thể kết nối Google Play Services</string>
+    <string name="sync_consent_open_error">Không mở được màn hình đăng nhập Google</string>
+    <string name="sync_no_token">Không lấy được access token từ Google</string>
+    <string name="sync_cancelled">Đã hủy đăng nhập Google</string>
+    <string name="sync_verifying">Đang xác thực...</string>
+    <string name="sync_auth_failed">Xác thực Google thất bại</string>
+    <string name="sync_no_drive_permission">Không nhận được quyền Google Drive</string>
+    <string name="sync_syncing_drive">Đang đồng bộ Drive...</string>
+    <string name="sync_success">Đồng bộ thành công</string>
+    <string name="sync_failed">Đồng bộ thất bại</string>
+
+    <!-- Tutorial -->
+    <string name="tutorial_header">Hướng dẫn sử dụng</string>
+    <string name="tutorial_skip">Bỏ qua</string>
+    <string name="tutorial_prev">‹ Trước</string>
+    <string name="tutorial_next">Tiếp ›</string>
+    <string name="tutorial_start">Bắt đầu đọc</string>
+    <string name="tutorial_s1_tag">BƯỚC 1 / 4 · THƯ VIỆN</string>
+    <string name="tutorial_s1_title">Nhập sách từ máy &amp; Google Drive</string>
+    <string name="tutorial_s1_b1_t">Thêm sách nhanh</string>
+    <string name="tutorial_s1_b1_d">Chạm nút (+) ở góc dưới phải để nhập tệp EPUB, PDF hoặc CBZ từ bộ nhớ máy.</string>
+    <string name="tutorial_s1_b2_t">Mở từ Google Drive</string>
+    <string name="tutorial_s1_b2_d">Trong trình chọn tệp, bấm menu ≡ (góc trên trái) → chọn Drive để tải sách trực tiếp về đọc offline.</string>
+    <string name="tutorial_s1_b3_t">Lọc &amp; Sắp xếp</string>
+    <string name="tutorial_s1_b3_d">Đổi kiểu xem Danh sách / Lưới 2-3-4 cột, lọc theo tác giả hoặc tìm trong Dấu trang &amp; Highlights.</string>
+    <string name="tutorial_s2_tag">BƯỚC 2 / 4 · ĐỌC SÁCH</string>
+    <string name="tutorial_s2_title">Cử chỉ đọc &amp; Focus Mode</string>
+    <string name="tutorial_s2_b1_t">Lật trang &amp; Công cụ</string>
+    <string name="tutorial_s2_b1_d">Chạm mép trái/phải (hoặc phím âm lượng) để lật trang; chạm giữa màn hình để mở thanh công cụ.</string>
+    <string name="tutorial_s2_b2_t">Độ sáng &amp; Ghi chú</string>
+    <string name="tutorial_s2_b2_d">Vuốt dọc mép trái để chỉnh nhanh độ sáng; nhấn giữ chọn chữ để Highlight, Ghi chú hoặc Tra từ điển.</string>
+    <string name="tutorial_s2_b3_t">Focus Mode</string>
+    <string name="tutorial_s2_b3_d">Bật nút Focus trên thanh công cụ để ẩn mọi thanh hệ thống, giữ sáng màn hình và tự bật Không làm phiền (DND).</string>
+    <string name="tutorial_s3_tag">BƯỚC 3 / 4 · HỆ THỐNG E-INK</string>
+    <string name="tutorial_s3_title">Launcher, Màn hình khóa &amp; Hình nền</string>
+    <string name="tutorial_s3_b1_t">E-Ink Launcher</string>
+    <string name="tutorial_s3_b1_d">Đặt app làm Màn hình chính mặc định để dùng giao diện tối giản đen trắng; vuốt sang phải mở Ngăn ứng dụng.</string>
+    <string name="tutorial_s3_b2_t">Ghim &amp; Chế độ xem</string>
+    <string name="tutorial_s3_b2_d">Ở Ngăn ứng dụng, đổi giữa Danh sách / Lưới 3-4 / Chỉ chữ và nhấn giữ app để ghim ra Home.</string>
+    <string name="tutorial_s3_b3_t">Màn hình khóa &amp; Wallpaper</string>
+    <string name="tutorial_s3_b3_d">Bật \"Đọc trên màn hình khóa\" trong Cài đặt đọc, hoặc đặt Hình nền động E-Ink trong Hồ sơ &amp; Thống kê.</string>
+    <string name="tutorial_s4_tag">BƯỚC 4 / 4 · ĐỒNG BỘ</string>
+    <string name="tutorial_s4_title">Đăng nhập Google &amp; Đồng bộ đa máy</string>
+    <string name="tutorial_s4_b1_t">Mở Hồ sơ &amp; Thống kê</string>
+    <string name="tutorial_s4_b1_d">Chạm biểu tượng Hồ sơ ở góc trên phải (hoặc vuốt sang phải từ Thư viện).</string>
+    <string name="tutorial_s4_b2_t">Đăng nhập Google (0đ)</string>
+    <string name="tutorial_s4_b2_d">Bấm \"Đăng nhập với Google\" để tự động lưu tiến độ đọc, dấu trang, highlight và chuỗi ngày đọc lên Drive AppData.</string>
+    <string name="tutorial_s4_b3_t">Đồng bộ cả tủ sách</string>
+    <string name="tutorial_s4_b3_d">Bật \"Đồng bộ cả file sách\" để sang máy khác chỉ cần đăng nhập là tự tải lại toàn bộ sách và trang đang đọc.</string>
+
+    <!-- Reading Stats & Profile -->
+    <string name="stats_title">Hồ sơ &amp; Thống kê</string>
+    <string name="stats_rank_format">Cấp %1$d · %2$s</string>
+    <string name="stats_xp_streak_format">%1$d XP · Chuỗi: %2$d ngày (Kỷ lục: %3$d)</string>
+    <string name="stats_xp_to_next">Còn %1$d XP để lên %2$s</string>
+    <string name="stats_max_rank">Đã đạt cấp bậc cao nhất</string>
+    <string name="stats_daily_goal">Mục tiêu hôm nay</string>
+    <string name="stats_goal_progress">%1$d / %2$d phút (%3$d%%)</string>
+    <string name="stats_set_daily_goal">Đặt mục tiêu hằng ngày</string>
+    <string name="stats_goal_chip_min">%1$dp</string>
+    <string name="stats_total_time">Tổng thời gian</string>
+    <string name="stats_pages_turned">Trang đã lật</string>
+    <string name="stats_books_finished">Sách đã xong</string>
+    <string name="stats_eink_system_title">Giao diện E-Ink toàn máy</string>
+    <string name="stats_eink_system_desc">Đặt làm Màn hình chính tối giản hoặc bật Hình nền động &amp; Widget E-Ink.</string>
+    <string name="stats_set_launcher">Đặt làm Màn hình chính (E-Ink Launcher)</string>
+    <string name="stats_set_wallpaper">Đặt Hình nền động E-Ink</string>
+    <string name="stats_badges">Huy hiệu thành tựu</string>
+    <string name="stats_chart_7d">Biểu đồ 7 ngày</string>
+    <string name="stats_chart_7d_sub">TB %1$dp/ngày · %2$d trang/giờ</string>
+    <string name="stats_heatmap_12w">Lịch sử 12 tuần</string>
+    <string name="stats_heatmap_days">%1$d ngày đã đọc</string>
+    <string name="stats_less">Ít</string>
+    <string name="stats_more">Nhiều</string>
+    <string name="stats_sync_header">ĐỒNG BỘ GOOGLE DRIVE</string>
+    <string name="stats_sync_last">Lần đồng bộ cuối: %1$s</string>
+    <string name="stats_sync_never">Chưa đồng bộ</string>
+    <string name="stats_sync_books">Đồng bộ cả file sách (≤ 100 MB)</string>
+    <string name="stats_sync_syncing">Đang đồng bộ...</string>
+    <string name="stats_sync_now">Đồng bộ ngay</string>
+    <string name="stats_sign_out">Đăng xuất</string>
+    <string name="stats_sync_intro">Đăng nhập Google để tự động đồng bộ tiến độ đọc, dấu trang, highlight và thống kê giữa các thiết bị (0đ, lưu trên Drive AppData riêng).</string>
+    <string name="stats_sync_connecting">Đang kết nối...</string>
+    <string name="stats_sign_in_google">Đăng nhập với Google</string>
+    <string name="stats_contact_header">LIÊN HỆ &amp; PHẢN HỒI</string>
+    <string name="stats_contact_desc">Góp ý tính năng hoặc báo lỗi qua email:</string>
+    <string name="stats_email_subject">[eInk Reader] Góp ý / Phản hồi</string>
+    <string name="stats_no_email_app">Không tìm thấy ứng dụng Email trên máy</string>
+    <string name="stats_send_email">Gửi email</string>
+    <string name="stats_copied_email">Đã sao chép %1$s</string>
+    <string name="stats_copy">Sao chép</string>
+    <string name="stats_language_header">NGÔN NGỮ ỨNG DỤNG</string>
+
+    <!-- Launcher -->
+    <string name="launcher_view_list">Danh sách</string>
+    <string name="launcher_view_grid_3">Lưới 3</string>
+    <string name="launcher_view_grid_4">Lưới 4</string>
+    <string name="launcher_view_text">Chỉ chữ</string>
+    <string name="launcher_pinned_toast">Đã ghim %1$s ra Màn hình chính</string>
+    <string name="launcher_unpinned_toast">Đã bỏ ghim %1$s</string>
+    <string name="launcher_status_format">Pin %1$d%% · Chuỗi %2$dd</string>
+    <string name="launcher_pinned_apps">ỨNG DỤNG GHIM</string>
+    <string name="launcher_long_press_unpin">Nhấn giữ để bỏ</string>
+    <string name="launcher_no_pinned">Chưa ghim app nào — vuốt sang Ngăn ứng dụng và nhấn giữ để ghim.</string>
+    <string name="launcher_library_btn">Thư viện sách</string>
+    <string name="launcher_apps_btn">Ứng dụng ›</string>
+    <string name="launcher_no_book">Chưa có sách — chạm để mở Thư viện</string>
+    <string name="launcher_resume">Đọc tiếp ›</string>
+    <string name="launcher_search_apps">Tìm ứng dụng...</string>
+    <string name="launcher_drawer_hint">Chế độ: %1$s · Nhấn giữ để ghim/bỏ ghim ra Home</string>
+</resources>

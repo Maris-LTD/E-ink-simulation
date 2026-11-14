@@ -14,7 +14,7 @@ class AppContainer(context: Context) {
   val library = LibraryRepository(context, engine)
   val settings = EInkSettingsStore(context)
   val annotations = AnnotationRepository(context)
-  val dictionary = DictionaryService()
+  val dictionary = DictionaryService(context)
   val stats = ReadingStatsRepository(context)
   val sync = GoogleDriveSyncManager(context, library, annotations, stats)
 }

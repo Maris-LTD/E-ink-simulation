@@ -7,9 +7,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
@@ -40,11 +42,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.EInkText
 import kotlin.math.PI
@@ -76,7 +80,13 @@ fun ReaderTopBar(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      TextButton(onClick = onClose) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
+      TextButton(
+        onClick = onClose,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 40.dp),
+      ) {
+        EInkText("‹", style = MaterialTheme.typography.titleLarge)
+      }
       EInkText(
         text = title,
         style = MaterialTheme.typography.titleMedium,
@@ -85,12 +95,25 @@ fun ReaderTopBar(
         modifier = Modifier.weight(1f).padding(end = 4.dp),
       )
       if (showFontControls) {
-        TextButton(onClick = onDecreaseFont) { EInkText("A−", style = MaterialTheme.typography.labelLarge) }
-        TextButton(onClick = onIncreaseFont) { EInkText("A+", style = MaterialTheme.typography.labelLarge) }
+        TextButton(
+          onClick = onDecreaseFont,
+          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+          modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 40.dp),
+        ) {
+          EInkText("A−", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
+        TextButton(
+          onClick = onIncreaseFont,
+          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+          modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 40.dp),
+        ) {
+          EInkText("A+", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
       }
+      val searchCd = stringResource(R.string.cd_search_in_book)
       IconButton(
         onClick = onOpenSearch,
-        modifier = Modifier.semantics { contentDescription = "Tìm trong sách" },
+        modifier = Modifier.size(40.dp).semantics { contentDescription = searchCd },
       ) {
         val ink = MaterialTheme.colorScheme.onBackground
         Canvas(modifier = Modifier.size(19.dp)) {
@@ -107,9 +130,10 @@ fun ReaderTopBar(
           )
         }
       }
+      val bookmarkCd = stringResource(R.string.cd_save_bookmark)
       IconButton(
         onClick = onBookmark,
-        modifier = Modifier.semantics { contentDescription = "Lưu dấu trang" },
+        modifier = Modifier.size(40.dp).semantics { contentDescription = bookmarkCd },
       ) {
         val ink = MaterialTheme.colorScheme.onBackground
         Canvas(modifier = Modifier.size(20.dp)) {
@@ -127,7 +151,17 @@ fun ReaderTopBar(
           drawPath(path, color = ink, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Miter))
         }
       }
-      TextButton(onClick = onOpenContents) { EInkText("Mục lục", style = MaterialTheme.typography.labelLarge) }
+      TextButton(
+        onClick = onOpenContents,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 40.dp),
+      ) {
+        EInkText(
+          text = stringResource(R.string.reader_contents_button),
+          style = MaterialTheme.typography.labelLarge,
+          maxLines = 1,
+        )
+      }
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
   }
@@ -264,6 +298,7 @@ private fun ThemeAndBrightnessRow(
     ) {
       EInkTone.entries.forEach { option ->
         val selected = option == tone
+        val optionLabel = toneLabel(option)
         Box(
           modifier =
             Modifier.size(22.dp)
@@ -275,7 +310,7 @@ private fun ThemeAndBrightnessRow(
                 shape = CircleShape,
               )
               .clickable { onToneChange(option) }
-              .semantics { contentDescription = toneLabel(option) }
+              .semantics { contentDescription = optionLabel }
         )
       }
     }
@@ -293,7 +328,9 @@ private fun ThemeAndBrightnessRow(
     )
     BrightnessSunBadge(
       label = if (isAuto) "A" else "${(displayValue * 100).roundToInt()}",
-      contentDescription = if (isAuto) "Độ sáng tự động" else "Độ sáng ${(displayValue * 100).roundToInt()}%",
+      contentDescription =
+        if (isAuto) stringResource(R.string.cd_brightness_auto)
+        else stringResource(R.string.cd_brightness_pct, (displayValue * 100).roundToInt()),
       onClick = { onBrightnessChange(if (isAuto) 0.5f else -1f) },
     )
   }
@@ -342,11 +379,12 @@ private fun BrightnessSunBadge(
   }
 }
 
+@Composable
 private fun toneLabel(tone: EInkTone): String =
   when (tone) {
-    EInkTone.PAPER -> "Giấy"
-    EInkTone.WARM -> "Ấm"
-    EInkTone.HIGH_CONTRAST -> "Trắng"
-    EInkTone.SOFT_GRAY -> "Xám"
-    EInkTone.DARK -> "Đêm"
+    EInkTone.PAPER -> stringResource(R.string.tone_paper)
+    EInkTone.WARM -> stringResource(R.string.tone_warm)
+    EInkTone.HIGH_CONTRAST -> stringResource(R.string.tone_white)
+    EInkTone.SOFT_GRAY -> stringResource(R.string.tone_gray)
+    EInkTone.DARK -> stringResource(R.string.tone_dark)
   }

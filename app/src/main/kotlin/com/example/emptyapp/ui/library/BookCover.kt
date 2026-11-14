@@ -67,7 +67,6 @@ fun BookCover(
           text = book.format.label,
           style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
           color = MaterialTheme.colorScheme.secondary,
-          strokeWidthPx = 1.2f,
         )
         if (!compact) {
           EInkText(

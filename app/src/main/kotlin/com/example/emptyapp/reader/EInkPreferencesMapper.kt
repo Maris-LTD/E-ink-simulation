@@ -14,13 +14,14 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 @OptIn(ExperimentalReadiumApi::class)
 object EInkPreferencesMapper {
   val READER_SERIF = FontFamily("Literata")
+  val READER_SANS = FontFamily("Rubik")
 
   fun toEpub(settings: EInkSettings): EpubPreferences =
     EpubPreferences(
       backgroundColor = Color(settings.tone.background),
       textColor = Color(settings.tone.text),
       theme = if (settings.tone == EInkTone.DARK) Theme.DARK else Theme.LIGHT,
-      fontFamily = if (settings.font == EInkFont.SERIF) READER_SERIF else FontFamily.SANS_SERIF,
+      fontFamily = if (settings.font == EInkFont.SERIF) READER_SERIF else READER_SANS,
       fontSize = settings.fontScale,
       fontWeight = settings.fontWeight,
       lineHeight = settings.lineHeight,

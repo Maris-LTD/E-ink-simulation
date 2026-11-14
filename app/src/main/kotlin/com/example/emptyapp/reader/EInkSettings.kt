@@ -12,6 +12,8 @@ enum class EInkFont { SERIF, SANS_SERIF }
 
 enum class OrientationLock { AUTO, PORTRAIT, LANDSCAPE }
 
+enum class AppLanguage { SYSTEM, VI, EN }
+
 data class EInkSettings(
   val tone: EInkTone = EInkTone.HIGH_CONTRAST,
   val font: EInkFont = EInkFont.SERIF,
@@ -33,4 +35,5 @@ data class EInkSettings(
   val readerFooter: Boolean = true,
   val lockScreenReader: Boolean = true,
   val focusMode: Boolean = false,
+  val appLanguage: AppLanguage = AppLanguage.SYSTEM,
 )

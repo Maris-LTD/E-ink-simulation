@@ -1,8 +1,11 @@
 package com.example.emptyapp.ui.library
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.emptyapp.LocaleHelper
+import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.AnnotationRepository
 import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
@@ -22,6 +25,7 @@ class LibraryViewModel(
   private val repository: LibraryRepository,
   private val annotations: AnnotationRepository,
   private val statsRepository: ReadingStatsRepository,
+  private val context: Context? = null,
 ) : ViewModel() {
   private val mutableImporting = MutableStateFlow(false)
   private val messageChannel = Channel<String>(Channel.BUFFERED)
@@ -40,7 +44,13 @@ class LibraryViewModel(
       mutableImporting.value = true
       repository
         .import(uri)
-        .onFailure { messageChannel.send("Không nhập được sách: ${it.message ?: "tệp không hợp lệ"}") }
+        .onFailure {
+          val localized = context?.let(LocaleHelper::wrap)
+          val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "tệp không hợp lệ"
+          val reason = it.message ?: fallbackInvalid
+          val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Không nhập được sách: $reason"
+          messageChannel.send(msg)
+        }
       mutableImporting.value = false
     }
   }

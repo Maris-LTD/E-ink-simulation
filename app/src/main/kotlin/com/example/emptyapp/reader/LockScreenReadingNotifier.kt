@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.example.emptyapp.LocaleHelper
 import com.example.emptyapp.R
 import com.example.emptyapp.ReaderActivity
 
@@ -39,12 +40,13 @@ object LockScreenReadingNotifier {
         intent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
+    val localized = LocaleHelper.wrap(context)
     val pct = (progress.coerceIn(0f, 1f) * 100).toInt()
     val notification =
       NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(R.mipmap.ic_launcher)
         .setContentTitle(title)
-        .setContentText("Đang đọc · $pct% — Chạm để đọc tiếp")
+        .setContentText(localized.getString(R.string.lockscreen_reading_text, pct))
         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setOnlyAlertOnce(true)
@@ -64,7 +66,7 @@ object LockScreenReadingNotifier {
     val channel =
       NotificationChannel(
         CHANNEL_ID,
-        "Đọc trên màn hình khóa",
+        LocaleHelper.wrap(context).getString(R.string.lockscreen_channel_name),
         NotificationManager.IMPORTANCE_LOW,
       ).apply {
         lockscreenVisibility = Notification.VISIBILITY_PUBLIC

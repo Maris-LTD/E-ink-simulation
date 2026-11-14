@@ -58,23 +58,33 @@ private val EInkSansFamily =
   FontFamily(
     Font(
       resId = R.font.rubik,
+      weight = FontWeight.Light,
+      variationSettings = FontVariation.Settings(FontVariation.weight(300)),
+    ),
+    Font(
+      resId = R.font.rubik,
       weight = FontWeight.Normal,
-      variationSettings = FontVariation.Settings(FontVariation.weight(800)),
+      variationSettings = FontVariation.Settings(FontVariation.weight(400)),
     ),
     Font(
       resId = R.font.rubik,
       weight = FontWeight.Medium,
-      variationSettings = FontVariation.Settings(FontVariation.weight(850)),
+      variationSettings = FontVariation.Settings(FontVariation.weight(500)),
     ),
     Font(
       resId = R.font.rubik,
       weight = FontWeight.SemiBold,
-      variationSettings = FontVariation.Settings(FontVariation.weight(900)),
+      variationSettings = FontVariation.Settings(FontVariation.weight(600)),
     ),
     Font(
       resId = R.font.rubik,
       weight = FontWeight.Bold,
-      variationSettings = FontVariation.Settings(FontVariation.weight(900)),
+      variationSettings = FontVariation.Settings(FontVariation.weight(700)),
+    ),
+    Font(
+      resId = R.font.rubik,
+      weight = FontWeight.ExtraBold,
+      variationSettings = FontVariation.Settings(FontVariation.weight(800)),
     ),
   )
 
@@ -91,47 +101,65 @@ private fun TextStyle.sans() = copy(fontFamily = EInkSansFamily)
 private fun eInkTypography(): Typography {
   val base = Typography()
   return base.copy(
+    displayLarge = base.displayLarge.sans(),
+    displayMedium = base.displayMedium.sans(),
+    displaySmall = base.displaySmall.sans(),
+    headlineLarge =
+      base.headlineLarge.sans().copy(
+        fontSize = 26.sp,
+        lineHeight = 32.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = (-0.4).sp,
+      ),
     headlineMedium =
       base.headlineMedium.sans().copy(
         fontSize = 22.sp,
         lineHeight = 28.sp,
         fontWeight = FontWeight.Bold,
-        letterSpacing = (-0.4).sp,
+        letterSpacing = (-0.3).sp,
       ),
+    headlineSmall = base.headlineSmall.sans(),
     titleLarge =
       base.titleLarge.sans().copy(
         fontSize = 20.sp,
         lineHeight = 26.sp,
         fontWeight = FontWeight.Bold,
-        letterSpacing = (-0.3).sp,
+        letterSpacing = (-0.2).sp,
       ),
     titleMedium =
       base.titleMedium.sans().copy(
         fontSize = 17.sp,
         lineHeight = 22.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = (-0.2).sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = (-0.1).sp,
       ),
-    bodyLarge = base.bodyLarge.sans().copy(fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
-    bodyMedium = base.bodyMedium.sans().copy(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
-    bodySmall = base.bodySmall.sans().copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp),
+    titleSmall =
+      base.titleSmall.sans().copy(
+        fontSize = 15.sp,
+        lineHeight = 20.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.sp,
+      ),
+    bodyLarge = base.bodyLarge.sans().copy(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.sp),
+    bodyMedium = base.bodyMedium.sans().copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.sp),
+    bodySmall = base.bodySmall.sans().copy(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.sp),
     labelLarge =
       base.labelLarge.sans().copy(
         fontSize = 14.sp,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         letterSpacing = 0.sp,
       ),
     labelMedium =
       base.labelMedium.sans().copy(
         fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Normal,
         letterSpacing = 0.sp,
       ),
     labelSmall =
       base.labelSmall.sans().copy(
         fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.4.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 0.4.sp,
       ),
   )
 }

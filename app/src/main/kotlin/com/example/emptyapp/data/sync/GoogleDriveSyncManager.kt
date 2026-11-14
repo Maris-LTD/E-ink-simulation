@@ -3,6 +3,8 @@ package com.example.emptyapp.data.sync
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.example.emptyapp.LocaleHelper
+import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.AnnotationRepository
 import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
@@ -48,6 +50,7 @@ class GoogleDriveSyncManager(
   private val stats: ReadingStatsRepository,
 ) {
   private val appContext = context.applicationContext
+  private fun str(resId: Int): String = LocaleHelper.wrap(appContext).getString(resId)
   private val prefs = appContext.getSharedPreferences("eink_google_sync", Context.MODE_PRIVATE)
   private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private val mutex = Mutex()
@@ -71,10 +74,10 @@ class GoogleDriveSyncManager(
   }
 
   suspend fun signInAndSync(): SyncActionResult {
-    state.update { it.copy(syncing = true, statusMessage = "Đang kết nối Google...") }
+    state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_connecting)) }
     val authResult =
       runCatching { authorizeScopes() }.getOrElse { err ->
-        val msg = err.localizedMessage ?: "Không thể kết nối Google Play Services"
+        val msg = err.localizedMessage ?: str(R.string.sync_play_services_error)
         state.update { it.copy(syncing = false, statusMessage = msg) }
         return SyncActionResult.Error(msg)
       }
@@ -85,13 +88,13 @@ class GoogleDriveSyncManager(
       return if (pending != null) {
         SyncActionResult.NeedsConsent(pending)
       } else {
-        SyncActionResult.Error("Không mở được màn hình đăng nhập Google")
+        SyncActionResult.Error(str(R.string.sync_consent_open_error))
       }
     }
 
     val token = authResult.accessToken
     if (token.isNullOrBlank()) {
-      val msg = "Không lấy được access token từ Google"
+      val msg = str(R.string.sync_no_token)
       state.update { it.copy(syncing = false, statusMessage = msg) }
       return SyncActionResult.Error(msg)
     }
@@ -101,21 +104,22 @@ class GoogleDriveSyncManager(
 
   suspend fun handleConsentResult(data: Intent?): SyncActionResult {
     if (data == null) {
-      state.update { it.copy(syncing = false, statusMessage = "Đã hủy đăng nhập Google") }
-      return SyncActionResult.Error("Đã hủy đăng nhập Google")
+      val cancelled = str(R.string.sync_cancelled)
+      state.update { it.copy(syncing = false, statusMessage = cancelled) }
+      return SyncActionResult.Error(cancelled)
     }
-    state.update { it.copy(syncing = true, statusMessage = "Đang xác thực...") }
+    state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_verifying)) }
     val authResult =
       runCatching {
         Identity.getAuthorizationClient(appContext).getAuthorizationResultFromIntent(data)
       }.getOrElse { err ->
-        val msg = err.localizedMessage ?: "Xác thực Google thất bại"
+        val msg = err.localizedMessage ?: str(R.string.sync_auth_failed)
         state.update { it.copy(syncing = false, statusMessage = msg) }
         return SyncActionResult.Error(msg)
       }
     val token = authResult.accessToken
     if (token.isNullOrBlank()) {
-      val msg = "Không nhận được quyền Google Drive"
+      val msg = str(R.string.sync_no_drive_permission)
       state.update { it.copy(syncing = false, statusMessage = msg) }
       return SyncActionResult.Error(msg)
     }
@@ -146,7 +150,7 @@ class GoogleDriveSyncManager(
     mutex.withLock {
       withContext(Dispatchers.IO) {
         runCatching {
-          state.update { it.copy(syncing = true, statusMessage = "Đang đồng bộ Drive...") }
+          state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_syncing_drive)) }
           fetchUserProfile(token)
           library.ensureContentHashes()
 
@@ -175,12 +179,12 @@ class GoogleDriveSyncManager(
             it.copy(
               syncing = false,
               lastSyncedAt = now,
-              statusMessage = "Đồng bộ thành công",
+              statusMessage = str(R.string.sync_success),
             )
           }
           SyncActionResult.Synced
         }.getOrElse { err ->
-          val msg = err.localizedMessage ?: "Đồng bộ thất bại"
+          val msg = err.localizedMessage ?: str(R.string.sync_failed)
           state.update { it.copy(syncing = false, statusMessage = msg) }
           SyncActionResult.Error(msg)
         }

@@ -48,6 +48,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.example.emptyapp.reader.AppLanguage
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
@@ -103,9 +105,12 @@ fun ReadingStatsScreen(
   onToggleSyncBookFiles: (Boolean) -> Unit = {},
   onSignOutSync: () -> Unit = {},
   onChangeGoalMinutes: (Int) -> Unit,
+  currentLanguage: AppLanguage = AppLanguage.SYSTEM,
+  onChangeLanguage: (AppLanguage) -> Unit = {},
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val consentLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
@@ -131,8 +136,8 @@ fun ReadingStatsScreen(
   val pagesPerHour =
     if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
     else 0
-  val rank = ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount)
-  val badges = ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount)
+  val rank = ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount, context)
+  val badges = ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
 
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -142,7 +147,7 @@ fun ReadingStatsScreen(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       TextButton(onClick = onBack) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
-      EInkText("Hồ sơ & Thống kê", style = MaterialTheme.typography.titleLarge)
+      EInkText(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge)
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
 
@@ -153,6 +158,7 @@ fun ReadingStatsScreen(
           .padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+      LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
       GoogleSyncCard(
         syncState = syncState,
         onSyncOrSignIn = ::triggerSync,
@@ -182,11 +188,11 @@ fun ReadingStatsScreen(
           }
           Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             EInkText(
-              text = "Cấp ${rank.level} · ${rank.title}",
+              text = stringResource(R.string.stats_rank_format, rank.level, rank.title),
               style = MaterialTheme.typography.titleMedium,
             )
             EInkText(
-              text = "${rank.xp} XP · Chuỗi: ${stats.currentStreak} ngày (Kỷ lục: ${stats.longestStreak})",
+              text = stringResource(R.string.stats_xp_streak_format, rank.xp, stats.currentStreak, stats.longestStreak),
               style = MaterialTheme.typography.labelMedium,
               color = MaterialTheme.colorScheme.secondary,
             )
@@ -208,9 +214,11 @@ fun ReadingStatsScreen(
           }
         }
         val nextLabel =
-          rank.nextLevelXp?.let { target ->
-            "Còn ${(target - rank.xp).coerceAtLeast(0)} XP để lên ${rank.nextLevelTitle}"
-          } ?: "Đã đạt cấp bậc cao nhất"
+          if (rank.nextLevelXp != null && rank.nextLevelTitle != null) {
+            stringResource(R.string.stats_xp_to_next, (rank.nextLevelXp - rank.xp).coerceAtLeast(0), rank.nextLevelTitle)
+          } else {
+            stringResource(R.string.stats_max_rank)
+          }
         EInkText(
           text = nextLabel,
           style = MaterialTheme.typography.labelSmall,
@@ -230,9 +238,9 @@ fun ReadingStatsScreen(
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically,
         ) {
-          EInkText("Mục tiêu hôm nay", style = MaterialTheme.typography.titleSmall)
+          EInkText(stringResource(R.string.stats_daily_goal), style = MaterialTheme.typography.titleSmall)
           EInkText(
-            text = "$todayMinutes / $goalMinutes phút (${(progress * 100).toInt()}%)",
+            text = stringResource(R.string.stats_goal_progress, todayMinutes, goalMinutes, (progress * 100).toInt()),
             style = MaterialTheme.typography.labelLarge,
           )
         }
@@ -256,13 +264,13 @@ fun ReadingStatsScreen(
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically,
         ) {
-          EInkText("Đặt mục tiêu hằng ngày", style = MaterialTheme.typography.bodyMedium)
+          EInkText(stringResource(R.string.stats_set_daily_goal), style = MaterialTheme.typography.bodyMedium)
           Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
           ) {
             GoalStepCircleButton(label = "−5", onClick = { onChangeGoalMinutes(goalMinutes - 5) })
-            EInkText("${goalMinutes}p", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            EInkText(stringResource(R.string.stats_goal_chip_min, goalMinutes), style = MaterialTheme.typography.labelLarge, maxLines = 1)
             GoalStepCircleButton(label = "+5", onClick = { onChangeGoalMinutes(goalMinutes + 5) })
           }
         }
@@ -273,17 +281,17 @@ fun ReadingStatsScreen(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
       ) {
         StatSummaryBox(
-          label = "Tổng thời gian",
+          label = stringResource(R.string.stats_total_time),
           value = formatDuration(stats.totalSeconds),
           modifier = Modifier.weight(1f).fillMaxHeight(),
         )
         StatSummaryBox(
-          label = "Trang đã lật",
+          label = stringResource(R.string.stats_pages_turned),
           value = "${stats.totalPagesTurned}",
           modifier = Modifier.weight(1f).fillMaxHeight(),
         )
         StatSummaryBox(
-          label = "Sách đã xong",
+          label = stringResource(R.string.stats_books_finished),
           value = "$completedBooksCount",
           modifier = Modifier.weight(1f).fillMaxHeight(),
         )
@@ -321,9 +329,9 @@ private fun SystemEInkModeCard() {
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    EInkText("Giao diện E-Ink toàn máy", style = MaterialTheme.typography.titleSmall)
+    EInkText(stringResource(R.string.stats_eink_system_title), style = MaterialTheme.typography.titleSmall)
     EInkText(
-      text = "Đặt làm Màn hình chính tối giản hoặc bật Hình nền động & Widget E-Ink.",
+      text = stringResource(R.string.stats_eink_system_desc),
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.secondary,
     )
@@ -331,13 +339,13 @@ private fun SystemEInkModeCard() {
       onClick = { openHomeLauncherSettings(context) },
       modifier = Modifier.fillMaxWidth(),
     ) {
-      EInkText("Đặt làm Màn hình chính (E-Ink Launcher)")
+      EInkText(stringResource(R.string.stats_set_launcher))
     }
     OutlinedButton(
       onClick = { openLiveWallpaperPicker(context) },
       modifier = Modifier.fillMaxWidth(),
     ) {
-      EInkText("Đặt Hình nền động E-Ink")
+      EInkText(stringResource(R.string.stats_set_wallpaper))
     }
   }
 }
@@ -376,7 +384,7 @@ private fun AchievementsCard(badges: List<ReadingBadge>) {
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText("Huy hiệu thành tựu", style = MaterialTheme.typography.titleSmall)
+      EInkText(stringResource(R.string.stats_badges), style = MaterialTheme.typography.titleSmall)
       EInkText(
         text = "$unlockedCount / ${badges.size}",
         style = MaterialTheme.typography.labelMedium,
@@ -460,9 +468,9 @@ private fun SevenDayBarChartCard(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText("Biểu đồ 7 ngày", style = MaterialTheme.typography.titleSmall)
+      EInkText(stringResource(R.string.stats_chart_7d), style = MaterialTheme.typography.titleSmall)
       EInkText(
-        text = "TB ${avgMinutes7d}p/ngày · ${pagesPerHour} trang/giờ",
+        text = stringResource(R.string.stats_chart_7d_sub, avgMinutes7d, pagesPerHour),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
@@ -537,9 +545,9 @@ private fun ReadingHeatmapCard(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText("Lịch sử 12 tuần", style = MaterialTheme.typography.titleSmall)
+      EInkText(stringResource(R.string.stats_heatmap_12w), style = MaterialTheme.typography.titleSmall)
       EInkText(
-        text = "$activeDaysCount ngày đã đọc",
+        text = stringResource(R.string.stats_heatmap_days, activeDaysCount),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
@@ -567,14 +575,14 @@ private fun ReadingHeatmapCard(
       horizontalArrangement = Arrangement.End,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText("Ít", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+      EInkText(stringResource(R.string.stats_less), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
       Spacer(modifier = Modifier.width(6.dp))
       listOf(0f, 0.28f, 0.6f, 1f).forEach { level ->
         val c = if (level == 0f) bg else lerp(bg, fg, level)
         Box(modifier = Modifier.size(12.dp).background(c).border(1.dp, border))
         Spacer(modifier = Modifier.width(4.dp))
       }
-      EInkText("Nhiều", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+      EInkText(stringResource(R.string.stats_more), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
     }
   }
 }
@@ -662,7 +670,7 @@ private fun GoogleSyncCard(
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     EInkText(
-      text = "ĐỒNG BỘ GOOGLE DRIVE",
+      text = stringResource(R.string.stats_sync_header),
       style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.secondary,
     )
@@ -674,9 +682,9 @@ private fun GoogleSyncCard(
       val syncTimeText =
         if (syncState.lastSyncedAt > 0L) {
           val formatted = SimpleDateFormat("HH:mm dd/MM", Locale.getDefault()).format(Date(syncState.lastSyncedAt))
-          "Lần đồng bộ cuối: $formatted"
+          stringResource(R.string.stats_sync_last, formatted)
         } else {
-          "Chưa đồng bộ"
+          stringResource(R.string.stats_sync_never)
         }
       EInkText(
         text = syncState.statusMessage ?: syncTimeText,
@@ -689,7 +697,7 @@ private fun GoogleSyncCard(
         verticalAlignment = Alignment.CenterVertically,
       ) {
         EInkText(
-          text = "Đồng bộ cả file sách (≤ 100 MB)",
+          text = stringResource(R.string.stats_sync_books),
           style = MaterialTheme.typography.bodySmall,
           modifier = Modifier.weight(1f),
         )
@@ -704,18 +712,18 @@ private fun GoogleSyncCard(
           onClick = onSyncOrSignIn,
           enabled = !syncState.syncing,
         ) {
-          EInkText(if (syncState.syncing) "Đang đồng bộ..." else "Đồng bộ ngay")
+          EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_syncing) else stringResource(R.string.stats_sync_now))
         }
         TextButton(
           onClick = onSignOut,
           enabled = !syncState.syncing,
         ) {
-          EInkText("Đăng xuất", color = MaterialTheme.colorScheme.secondary)
+          EInkText(stringResource(R.string.stats_sign_out), color = MaterialTheme.colorScheme.secondary)
         }
       }
     } else {
       EInkText(
-        text = "Đăng nhập Google để tự động đồng bộ tiến độ đọc, dấu trang, highlight và thống kê giữa các thiết bị (0đ, lưu trên Drive AppData riêng).",
+        text = stringResource(R.string.stats_sync_intro),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.secondary,
       )
@@ -730,7 +738,60 @@ private fun GoogleSyncCard(
         onClick = onSyncOrSignIn,
         enabled = !syncState.syncing,
       ) {
-        EInkText(if (syncState.syncing) "Đang kết nối..." else "Đăng nhập với Google")
+        EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_connecting) else stringResource(R.string.stats_sign_in_google))
+      }
+    }
+  }
+}
+
+@Composable
+private fun LanguageCard(
+  currentLanguage: AppLanguage,
+  onChangeLanguage: (AppLanguage) -> Unit,
+) {
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    EInkText(
+      text = stringResource(R.string.stats_language_header),
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      AppLanguage.entries.forEach { lang ->
+        val selected = lang == currentLanguage
+        val label =
+          when (lang) {
+            AppLanguage.SYSTEM -> stringResource(R.string.language_system)
+            AppLanguage.VI -> stringResource(R.string.language_vi)
+            AppLanguage.EN -> stringResource(R.string.language_en)
+          }
+        Box(
+          modifier =
+            Modifier.weight(1f)
+              .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+              )
+              .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+              .clickable { if (!selected) onChangeLanguage(lang) }
+              .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          EInkText(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+          )
+        }
       }
     }
   }
@@ -748,12 +809,12 @@ private fun ContactCard() {
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     EInkText(
-      text = "LIÊN HỆ & PHẢN HỒI",
+      text = stringResource(R.string.stats_contact_header),
       style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.secondary,
     )
     EInkText(
-      text = "Góp ý tính năng hoặc báo lỗi qua email:",
+      text = stringResource(R.string.stats_contact_desc),
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.secondary,
     )
@@ -761,34 +822,39 @@ private fun ContactCard() {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       OutlinedButton(
         onClick = {
+          val subject = context.getString(R.string.stats_email_subject)
           val intent =
             Intent(Intent.ACTION_SENDTO).apply {
-              data = Uri.parse("mailto:$email?subject=${Uri.encode("[eInk Reader] Góp ý / Phản hồi")}")
+              data = Uri.parse("mailto:$email?subject=${Uri.encode(subject)}")
             }
           val launched = runCatching { context.startActivity(intent) }.isSuccess
           if (!launched) {
-            Toast.makeText(context, "Không tìm thấy ứng dụng Email trên máy", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.stats_no_email_app), Toast.LENGTH_SHORT).show()
           }
         },
       ) {
-        EInkText("Gửi email")
+        EInkText(stringResource(R.string.stats_send_email))
       }
       TextButton(
         onClick = {
           val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
           clipboard.setPrimaryClip(ClipData.newPlainText("Email", email))
-          Toast.makeText(context, "Đã sao chép $email", Toast.LENGTH_SHORT).show()
+          Toast.makeText(context, context.getString(R.string.stats_copied_email, email), Toast.LENGTH_SHORT).show()
         },
       ) {
-        EInkText("Sao chép", color = MaterialTheme.colorScheme.secondary)
+        EInkText(stringResource(R.string.stats_copy), color = MaterialTheme.colorScheme.secondary)
       }
     }
   }
 }
 
+@Composable
 private fun formatDuration(totalSeconds: Long): String {
   val totalMinutes = totalSeconds / 60L
   val hours = totalMinutes / 60L
   val minutes = totalMinutes % 60L
-  return if (hours > 0L) "${hours}g ${minutes}p" else "${minutes}p"
+  val isEn = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(LocalContext.current) == "en"
+  val hUnit = if (isEn) "h" else "g"
+  val mUnit = if (isEn) "m" else "p"
+  return if (hours > 0L) "${hours}$hUnit ${minutes}$mUnit" else "${minutes}$mUnit"
 }

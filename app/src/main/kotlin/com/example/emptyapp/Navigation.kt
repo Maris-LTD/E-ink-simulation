@@ -32,10 +32,13 @@ fun MainNavigation() {
     entryProvider =
       entryProvider {
         entry<Library> {
-          val viewModel = viewModel { LibraryViewModel(container.library, container.annotations, container.stats) }
+          val viewModel = viewModel {
+            LibraryViewModel(container.library, container.annotations, container.stats, context.applicationContext)
+          }
           val books by viewModel.books.collectAsStateWithLifecycle()
           val highlights by viewModel.highlights.collectAsStateWithLifecycle()
           val stats by viewModel.stats.collectAsStateWithLifecycle()
+          val settings by container.settings.settings.collectAsStateWithLifecycle()
           val syncState by container.sync.uiState.collectAsStateWithLifecycle()
           val pagerState = rememberPagerState(pageCount = { 2 })
           val scope = rememberCoroutineScope()
@@ -69,6 +72,11 @@ fun MainNavigation() {
                 onToggleSyncBookFiles = { enabled -> container.sync.setSyncBookFiles(enabled) },
                 onSignOutSync = { container.sync.signOut() },
                 onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
+                currentLanguage = settings.appLanguage,
+                onChangeLanguage = { lang ->
+                  container.settings.update { it.copy(appLanguage = lang) }
+                  (context as? android.app.Activity)?.recreate()
+                },
                 onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
               )
             }

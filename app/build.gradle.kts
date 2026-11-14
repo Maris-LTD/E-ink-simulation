@@ -12,7 +12,7 @@ android {
     }
   }
   defaultConfig {
-    applicationId = "com.example.emptyapp"
+    applicationId = "com.eink.reader.app"
     minSdk = 24
     targetSdk = 37
     versionCode = 1

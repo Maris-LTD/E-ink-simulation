@@ -17,7 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.OrientationLock
@@ -41,69 +43,72 @@ fun ReaderSettingsPanel(
   ) {
     if (isReflowable) {
       ChoiceRow(
-        label = "Phông chữ",
+        label = stringResource(R.string.settings_font),
         options = EInkFont.entries,
         selected = settings.font,
         nameOf = { if (it == EInkFont.SERIF) "Serif" else "Sans" },
         onSelect = { font -> onChange { it.copy(font = font) } },
       )
       StepperRow(
-        label = "Cỡ chữ",
+        label = stringResource(R.string.settings_font_size),
         value = "${(settings.fontScale * 100).toInt()}%",
         onMinus = { onChange { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) } },
         onPlus = { onChange { it.copy(fontScale = (it.fontScale + 0.1).coerceAtMost(4.0)) } },
       )
       StepperRow(
-        label = "Độ đậm chữ",
+        label = stringResource(R.string.settings_font_weight),
         value = String.format(Locale.US, "%.2f", settings.fontWeight),
         onMinus = { onChange { it.copy(fontWeight = (it.fontWeight - 0.1).coerceAtLeast(1.0)) } },
         onPlus = { onChange { it.copy(fontWeight = (it.fontWeight + 0.1).coerceAtMost(2.5)) } },
       )
       StepperRow(
-        label = "Giãn dòng",
+        label = stringResource(R.string.settings_line_height),
         value = String.format(Locale.US, "%.1f", settings.lineHeight),
         onMinus = { onChange { it.copy(lineHeight = (it.lineHeight - 0.1).coerceAtLeast(1.0)) } },
         onPlus = { onChange { it.copy(lineHeight = (it.lineHeight + 0.1).coerceAtMost(2.2)) } },
       )
       StepperRow(
-        label = "Khoảng cách đoạn",
+        label = stringResource(R.string.settings_paragraph_spacing),
         value = String.format(Locale.US, "%.1f", settings.paragraphSpacing),
         onMinus = { onChange { it.copy(paragraphSpacing = (it.paragraphSpacing - 0.2).coerceAtLeast(0.0)) } },
         onPlus = { onChange { it.copy(paragraphSpacing = (it.paragraphSpacing + 0.2).coerceAtMost(2.0)) } },
       )
-      SwitchRow("Căn đều hai bên (Justify)", settings.justifyText) { on ->
+      SwitchRow(stringResource(R.string.settings_justify), settings.justifyText) { on ->
         onChange { it.copy(justifyText = on) }
       }
       StepperRow(
-        label = "Lề trang",
+        label = stringResource(R.string.settings_margins),
         value = String.format(Locale.US, "%.1f", settings.pageMargins),
         onMinus = { onChange { it.copy(pageMargins = (it.pageMargins - 0.2).coerceAtLeast(0.0)) } },
         onPlus = { onChange { it.copy(pageMargins = (it.pageMargins + 0.2).coerceAtMost(3.0)) } },
       )
     }
-    SwitchRow("Ảnh xám (đơn sắc)", settings.grayscale) { on -> onChange { it.copy(grayscale = on) } }
+    SwitchRow(stringResource(R.string.settings_grayscale), settings.grayscale) { on -> onChange { it.copy(grayscale = on) } }
     StepperRow(
-      label = "Tương phản",
+      label = stringResource(R.string.settings_contrast),
       value = String.format(Locale.US, "%.2f", settings.contrast),
       onMinus = { onChange { it.copy(contrast = (it.contrast - 0.05f).coerceAtLeast(0.8f)) } },
       onPlus = { onChange { it.copy(contrast = (it.contrast + 0.05f).coerceAtMost(1.8f)) } },
     )
-    SwitchRow("Vân giấy E-Ink", settings.paperGrain) { on -> onChange { it.copy(paperGrain = on) } }
-    SwitchRow("Lưu ảnh mờ (Ghosting)", settings.ghosting) { on -> onChange { it.copy(ghosting = on) } }
-    SwitchRow("Thanh tiến độ E-Reader", settings.readerFooter) { on -> onChange { it.copy(readerFooter = on) } }
-    SwitchRow("Chế độ Tập trung (Focus)", settings.focusMode) { on -> onChange { it.copy(focusMode = on) } }
-    SwitchRow("Đọc trên màn hình khóa", settings.lockScreenReader) { on ->
+    SwitchRow(stringResource(R.string.settings_paper_grain), settings.paperGrain) { on -> onChange { it.copy(paperGrain = on) } }
+    SwitchRow(stringResource(R.string.settings_ghosting), settings.ghosting) { on -> onChange { it.copy(ghosting = on) } }
+    SwitchRow(stringResource(R.string.settings_reader_footer), settings.readerFooter) { on -> onChange { it.copy(readerFooter = on) } }
+    SwitchRow(stringResource(R.string.settings_focus_mode), settings.focusMode) { on -> onChange { it.copy(focusMode = on) } }
+    SwitchRow(stringResource(R.string.settings_lockscreen_reader), settings.lockScreenReader) { on ->
       onChange { it.copy(lockScreenReader = on) }
     }
+    val autoLabel = stringResource(R.string.orientation_auto)
+    val portraitLabel = stringResource(R.string.orientation_portrait)
+    val landscapeLabel = stringResource(R.string.orientation_landscape)
     ChoiceRow(
-      label = "Hướng màn hình",
+      label = stringResource(R.string.settings_orientation),
       options = OrientationLock.entries,
       selected = settings.orientationLock,
       nameOf = {
         when (it) {
-          OrientationLock.AUTO -> "Tự động"
-          OrientationLock.PORTRAIT -> "Dọc"
-          OrientationLock.LANDSCAPE -> "Ngang"
+          OrientationLock.AUTO -> autoLabel
+          OrientationLock.PORTRAIT -> portraitLabel
+          OrientationLock.LANDSCAPE -> landscapeLabel
         }
       },
       onSelect = { lock -> onChange { it.copy(orientationLock = lock) } },

@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.widget.RemoteViews
 import com.example.emptyapp.EmptyApplication
+import com.example.emptyapp.LocaleHelper
 import com.example.emptyapp.MainActivity
 import com.example.emptyapp.R
 import com.example.emptyapp.ReaderActivity
@@ -43,18 +44,22 @@ class EInkReadingWidgetProvider : AppWidgetProvider() {
       val goalMin = stats?.dailyGoalMinutes ?: 20
       val streak = stats?.currentStreak ?: 0
 
+      val localized = LocaleHelper.wrap(context)
       val views = RemoteViews(context.packageName, R.layout.widget_eink_reading)
       if (currentBook != null) {
         val pct = (currentBook.progress * 100).toInt()
         views.setTextViewText(R.id.widget_book_title, currentBook.title)
-        views.setTextViewText(R.id.widget_book_progress, "Tiến độ: $pct% · Chạm để đọc tiếp")
+        views.setTextViewText(
+          R.id.widget_book_progress,
+          localized.getString(R.string.widget_progress_format, pct),
+        )
       } else {
-        views.setTextViewText(R.id.widget_book_title, "Chưa có sách đang đọc")
-        views.setTextViewText(R.id.widget_book_progress, "Chạm để mở thư viện")
+        views.setTextViewText(R.id.widget_book_title, localized.getString(R.string.widget_no_book))
+        views.setTextViewText(R.id.widget_book_progress, localized.getString(R.string.widget_tap_to_open))
       }
       views.setTextViewText(
         R.id.widget_today_stats,
-        "Hôm nay: $todayMin/${goalMin}p · Chuỗi: $streak ngày",
+        localized.getString(R.string.widget_stats_format, todayMin, goalMin, streak),
       )
 
       val launchIntent =

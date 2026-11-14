@@ -60,6 +60,10 @@ import org.readium.r2.shared.publication.Locator
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderActivity : FragmentActivity() {
+  override fun attachBaseContext(newBase: Context) {
+    super.attachBaseContext(LocaleHelper.wrap(newBase))
+  }
+
   private var navigator: OverflowableNavigator? = null
   private val pdfController = PdfPagerController()
   private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
@@ -85,6 +89,7 @@ class ReaderActivity : FragmentActivity() {
             dictionary = container.dictionary,
             statsRepository = container.stats,
             overrideLocatorJson = overrideLocator,
+            context = applicationContext,
           )
         }
       },
@@ -195,7 +200,7 @@ class ReaderActivity : FragmentActivity() {
     }
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
       when (val current = state) {
-        ReaderUiState.Loading -> CenteredMessage("Đang mở sách...", null)
+        ReaderUiState.Loading -> CenteredMessage(getString(R.string.reader_opening), null)
         is ReaderUiState.Error -> CenteredMessage(current.message, ::finish)
         is ReaderUiState.Ready -> {
           if (current.book.format != BookFormat.PDF) {
@@ -263,6 +268,16 @@ class ReaderActivity : FragmentActivity() {
               setFontWeight(200..900)
             }
           }
+          addFontFamilyDeclaration(
+            EInkPreferencesMapper.READER_SANS,
+            alternates = listOf(FontFamily.SANS_SERIF),
+          ) {
+            addFontFace {
+              addSource("fonts/rubik.ttf")
+              setFontStyle(FontStyle.NORMAL)
+              setFontWeight(200..900)
+            }
+          }
         },
     )
 
@@ -272,7 +287,7 @@ class ReaderActivity : FragmentActivity() {
       Text(message, style = MaterialTheme.typography.bodyLarge)
       if (onBack != null) {
         TextButton(onClick = onBack, modifier = Modifier.align(Alignment.BottomCenter)) {
-          Text("Quay lại")
+          Text(getString(R.string.action_back))
         }
       }
     }
@@ -314,8 +329,8 @@ class ReaderActivity : FragmentActivity() {
     object : ActionMode.Callback {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
         menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, "Highlight")
-        menu.add(Menu.NONE, MENU_NOTE, 1, "Ghi chú")
-        menu.add(Menu.NONE, MENU_LOOKUP, 2, "Tra từ / Dịch")
+        menu.add(Menu.NONE, MENU_NOTE, 1, getString(R.string.reader_menu_note))
+        menu.add(Menu.NONE, MENU_LOOKUP, 2, getString(R.string.reader_menu_lookup))
         return true
       }
 

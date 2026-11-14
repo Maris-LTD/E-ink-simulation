@@ -33,56 +33,58 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.emptyapp.R
 import com.example.emptyapp.ui.eink.EInkText
 import kotlinx.coroutines.launch
 
 private data class TutorialStep(
-  val tag: String,
-  val title: String,
-  val bullets: List<Pair<String, String>>,
+  val tagRes: Int,
+  val titleRes: Int,
+  val bullets: List<Pair<Int, Int>>,
 )
 
 private val TUTORIAL_STEPS =
   listOf(
     TutorialStep(
-      tag = "BƯỚC 1 / 4 · THƯ VIỆN",
-      title = "Nhập sách từ máy & Google Drive",
+      tagRes = R.string.tutorial_s1_tag,
+      titleRes = R.string.tutorial_s1_title,
       bullets =
         listOf(
-          "Thêm sách nhanh" to "Chạm nút (+) ở góc dưới phải để nhập tệp EPUB, PDF hoặc CBZ từ bộ nhớ máy.",
-          "Mở từ Google Drive" to "Trong trình chọn tệp, bấm menu ≡ (góc trên trái) → chọn Drive để tải sách trực tiếp về đọc offline.",
-          "Lọc & Sắp xếp" to "Đổi kiểu xem Danh sách / Lưới 2-3-4 cột, lọc theo tác giả hoặc tìm trong Dấu trang & Highlights.",
+          R.string.tutorial_s1_b1_t to R.string.tutorial_s1_b1_d,
+          R.string.tutorial_s1_b2_t to R.string.tutorial_s1_b2_d,
+          R.string.tutorial_s1_b3_t to R.string.tutorial_s1_b3_d,
         ),
     ),
     TutorialStep(
-      tag = "BƯỚC 2 / 4 · ĐỌC SÁCH",
-      title = "Cử chỉ đọc & Focus Mode",
+      tagRes = R.string.tutorial_s2_tag,
+      titleRes = R.string.tutorial_s2_title,
       bullets =
         listOf(
-          "Lật trang & Công cụ" to "Chạm mép trái/phải (hoặc phím âm lượng) để lật trang; chạm giữa màn hình để mở thanh công cụ.",
-          "Độ sáng & Ghi chú" to "Vuốt dọc mép trái để chỉnh nhanh độ sáng; nhấn giữ chọn chữ để Highlight, Ghi chú hoặc Tra từ điển.",
-          "Focus Mode" to "Bật nút Focus trên thanh công cụ để ẩn mọi thanh hệ thống, giữ sáng màn hình và tự bật Không làm phiền (DND).",
+          R.string.tutorial_s2_b1_t to R.string.tutorial_s2_b1_d,
+          R.string.tutorial_s2_b2_t to R.string.tutorial_s2_b2_d,
+          R.string.tutorial_s2_b3_t to R.string.tutorial_s2_b3_d,
         ),
     ),
     TutorialStep(
-      tag = "BƯỚC 3 / 4 · HỆ THỐNG E-INK",
-      title = "Launcher, Màn hình khóa & Hình nền",
+      tagRes = R.string.tutorial_s3_tag,
+      titleRes = R.string.tutorial_s3_title,
       bullets =
         listOf(
-          "E-Ink Launcher" to "Đặt app làm Màn hình chính mặc định để dùng giao diện tối giản đen trắng; vuốt sang phải mở Ngăn ứng dụng.",
-          "Ghim & Chế độ xem" to "Ở Ngăn ứng dụng, đổi giữa Danh sách / Lưới 3-4 / Chỉ chữ và nhấn giữ app để ghim ra Home.",
-          "Màn hình khóa & Wallpaper" to "Bật 'Đọc trên màn hình khóa' trong Cài đặt đọc, hoặc đặt Hình nền động E-Ink trong Hồ sơ & Thống kê.",
+          R.string.tutorial_s3_b1_t to R.string.tutorial_s3_b1_d,
+          R.string.tutorial_s3_b2_t to R.string.tutorial_s3_b2_d,
+          R.string.tutorial_s3_b3_t to R.string.tutorial_s3_b3_d,
         ),
     ),
     TutorialStep(
-      tag = "BƯỚC 4 / 4 · ĐỒNG BỘ",
-      title = "Đăng nhập Google & Đồng bộ đa máy",
+      tagRes = R.string.tutorial_s4_tag,
+      titleRes = R.string.tutorial_s4_title,
       bullets =
         listOf(
-          "Mở Hồ sơ & Thống kê" to "Chạm biểu tượng Hồ sơ ở góc trên phải (hoặc vuốt sang phải từ Thư viện).",
-          "Đăng nhập Google (0đ)" to "Bấm 'Đăng nhập với Google' để tự động lưu tiến độ đọc, dấu trang, highlight và chuỗi ngày đọc lên Drive AppData.",
-          "Đồng bộ cả tủ sách" to "Bật 'Đồng bộ cả file sách' để sang máy khác chỉ cần đăng nhập là tự tải lại toàn bộ sách và trang đang đọc.",
+          R.string.tutorial_s4_b1_t to R.string.tutorial_s4_b1_d,
+          R.string.tutorial_s4_b2_t to R.string.tutorial_s4_b2_d,
+          R.string.tutorial_s4_b3_t to R.string.tutorial_s4_b3_d,
         ),
     ),
   )
@@ -115,9 +117,9 @@ fun TutorialOverlay(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        EInkText("Hướng dẫn sử dụng", style = MaterialTheme.typography.titleMedium)
+        EInkText(stringResource(R.string.tutorial_header), style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = onDismiss) {
-          EInkText("Bỏ qua", color = MaterialTheme.colorScheme.secondary)
+          EInkText(stringResource(R.string.tutorial_skip), color = MaterialTheme.colorScheme.secondary)
         }
       }
       HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
@@ -143,15 +145,15 @@ fun TutorialOverlay(
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant),
           )
           EInkText(
-            text = step.tag,
+            text = stringResource(step.tagRes),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.secondary,
           )
           EInkText(
-            text = step.title,
+            text = stringResource(step.titleRes),
             style = MaterialTheme.typography.titleLarge,
           )
-          step.bullets.forEach { (heading, body) ->
+          step.bullets.forEach { (headingRes, bodyRes) ->
             Column(
               modifier =
                 Modifier.fillMaxWidth()
@@ -159,9 +161,9 @@ fun TutorialOverlay(
                   .padding(12.dp),
               verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-              EInkText(text = "• $heading", style = MaterialTheme.typography.titleSmall)
+              EInkText(text = "• ${stringResource(headingRes)}", style = MaterialTheme.typography.titleSmall)
               EInkText(
-                text = body,
+                text = stringResource(bodyRes),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.secondary,
               )
@@ -180,7 +182,7 @@ fun TutorialOverlay(
           OutlinedButton(
             onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
           ) {
-            EInkText("‹ Trước")
+            EInkText(stringResource(R.string.tutorial_prev))
           }
         } else {
           Spacer(modifier = Modifier.width(84.dp))
@@ -208,7 +210,7 @@ fun TutorialOverlay(
             else scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
           },
         ) {
-          EInkText(if (isLast) "Bắt đầu đọc" else "Tiếp ›")
+          EInkText(if (isLast) stringResource(R.string.tutorial_start) else stringResource(R.string.tutorial_next))
         }
       }
     }

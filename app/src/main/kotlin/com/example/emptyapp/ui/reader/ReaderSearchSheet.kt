@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.example.emptyapp.R
 import com.example.emptyapp.ui.eink.EInkText
 import org.readium.r2.shared.publication.Locator
 
@@ -74,8 +76,8 @@ fun ReaderSearchSheet(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText("Tìm trong sách", style = MaterialTheme.typography.titleMedium)
-      TextButton(onClick = onDismiss) { EInkText("Đóng") }
+      EInkText(stringResource(R.string.search_in_book_title), style = MaterialTheme.typography.titleMedium)
+      TextButton(onClick = onDismiss) { EInkText(stringResource(R.string.action_close)) }
     }
     Row(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
@@ -91,7 +93,7 @@ fun ReaderSearchSheet(
       ) {
         if (query.isEmpty()) {
           EInkText(
-            text = "Nhập từ, cụm từ hoặc tên nhân vật...",
+            text = stringResource(R.string.search_in_book_placeholder),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
           )
@@ -107,7 +109,7 @@ fun ReaderSearchSheet(
           modifier = Modifier.fillMaxWidth(),
         )
       }
-      OutlinedButton(onClick = { onSearch(query) }) { EInkText("Tìm") }
+      OutlinedButton(onClick = { onSearch(query) }) { EInkText(stringResource(R.string.action_search)) }
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
 
@@ -115,14 +117,14 @@ fun ReaderSearchSheet(
       SearchUiState.Idle -> {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
           EInkText(
-            "Nhập từ khóa để tìm vị trí và chương xuất hiện trong sách.",
+            stringResource(R.string.search_in_book_hint),
             style = MaterialTheme.typography.bodyMedium,
           )
         }
       }
       is SearchUiState.Searching -> {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-          EInkText("Đang tìm \"${state.query}\"...", style = MaterialTheme.typography.bodyLarge)
+          EInkText(stringResource(R.string.search_in_book_loading, state.query), style = MaterialTheme.typography.bodyLarge)
         }
       }
       is SearchUiState.Error -> {
@@ -133,11 +135,11 @@ fun ReaderSearchSheet(
       is SearchUiState.Results -> {
         if (state.items.isEmpty()) {
           Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            EInkText("Không tìm thấy \"${state.query}\" trong sách.", style = MaterialTheme.typography.bodyLarge)
+            EInkText(stringResource(R.string.search_in_book_empty, state.query), style = MaterialTheme.typography.bodyLarge)
           }
         } else {
           EInkText(
-            text = "Tìm thấy ${state.items.size}${if (state.hasMore) "+" else ""} kết quả",
+            text = stringResource(R.string.search_in_book_count, state.items.size, if (state.hasMore) "+" else ""),
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
           )
@@ -153,7 +155,7 @@ fun ReaderSearchSheet(
                   modifier = Modifier.fillMaxWidth().padding(16.dp),
                   contentAlignment = Alignment.Center,
                 ) {
-                  OutlinedButton(onClick = onLoadMore) { EInkText("Tải thêm kết quả") }
+                  OutlinedButton(onClick = onLoadMore) { EInkText(stringResource(R.string.search_in_book_load_more)) }
                 }
               }
             }
@@ -169,7 +171,7 @@ private fun SearchResultRow(
   locator: Locator,
   onClick: () -> Unit,
 ) {
-  val chapterTitle = locator.title?.takeIf { it.isNotBlank() } ?: "Chương / Vị trí"
+  val chapterTitle = locator.title?.takeIf { it.isNotBlank() } ?: stringResource(R.string.search_chapter_fallback)
   val pct = ((locator.locations.totalProgression ?: 0.0) * 100).toInt()
   val snippet =
     buildAnnotatedString {

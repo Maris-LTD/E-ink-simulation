@@ -3,6 +3,8 @@ package com.example.emptyapp.data.book
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.example.emptyapp.LocaleHelper
+import com.example.emptyapp.R
 import com.example.emptyapp.reader.ReadiumEngine
 import java.io.File
 import java.security.MessageDigest
@@ -18,9 +20,10 @@ class BookImporter(
 ) {
   suspend fun import(uri: Uri): Result<BookEntry> =
     withContext(Dispatchers.IO) {
+      val localized = LocaleHelper.wrap(context)
       val displayName = resolveDisplayName(uri)
       val format = detectFormat(uri, displayName)
-        ?: return@withContext Result.failure(IllegalArgumentException("Chỉ hỗ trợ EPUB, PDF và CBZ"))
+        ?: return@withContext Result.failure(IllegalArgumentException(localized.getString(R.string.import_unsupported_format)))
       val id = UUID.randomUUID().toString()
       val fileName = "$id.${format.extension}"
       val target = File(booksDir, fileName)
@@ -28,7 +31,7 @@ class BookImporter(
       val copied = runCatching {
         context.contentResolver.openInputStream(uri)?.use { input ->
           target.outputStream().use { input.copyTo(it) }
-        } ?: error("Không mở được tệp")
+        } ?: error(localized.getString(R.string.import_cannot_open_file))
       }
       if (copied.isFailure) {
         target.delete()
@@ -81,7 +84,8 @@ class BookImporter(
 
   private fun fallbackTitle(displayName: String?, uri: Uri): String {
     val raw = displayName ?: uri.lastPathSegment?.substringAfterLast('/')
-    return raw?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Sách mới"
+    return raw?.substringBeforeLast('.')?.takeIf { it.isNotBlank() }
+      ?: LocaleHelper.wrap(context).getString(R.string.import_default_title)
   }
 
   companion object {

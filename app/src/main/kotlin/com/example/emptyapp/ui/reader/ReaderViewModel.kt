@@ -1,8 +1,11 @@
 package com.example.emptyapp.ui.reader
 
+import android.content.Context
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.emptyapp.LocaleHelper
+import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.AnnotationRepository
 import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
@@ -71,7 +74,10 @@ class ReaderViewModel(
   private val dictionary: DictionaryService,
   private val statsRepository: ReadingStatsRepository,
   private val overrideLocatorJson: String? = null,
+  private val context: Context? = null,
 ) : ViewModel() {
+  private fun str(resId: Int, fallback: String): String =
+    context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
   private val flashController = RefreshFlashController()
   private var publication: Publication? = null
   private var searchIterator: SearchIterator? = null
@@ -223,7 +229,7 @@ class ReaderViewModel(
         .onSuccess { entry -> mutableDictionaryState.value = DictionaryUiState.Success(clean, entry) }
         .onFailure { err ->
           mutableDictionaryState.value =
-            DictionaryUiState.Error(clean, err.message ?: "Không tìm thấy định nghĩa")
+            DictionaryUiState.Error(clean, err.message ?: str(R.string.dict_not_found, "Không tìm thấy định nghĩa"))
         }
     }
   }
@@ -243,7 +249,7 @@ class ReaderViewModel(
     }
     val pub = publication ?: return
     if (!pub.isSearchable) {
-      mutableSearchState.value = SearchUiState.Error(query, "Định dạng sách này không hỗ trợ tìm kiếm chữ.")
+      mutableSearchState.value = SearchUiState.Error(query, str(R.string.reader_search_unsupported, "Định dạng sách này không hỗ trợ tìm kiếm chữ."))
       return
     }
     mutableSearchState.value = SearchUiState.Searching(query)
@@ -279,14 +285,14 @@ class ReaderViewModel(
           )
       }
       .onFailure { err ->
-        mutableSearchState.value = SearchUiState.Error(query, err.message ?: "Lỗi khi tải kết quả")
+        mutableSearchState.value = SearchUiState.Error(query, err.message ?: str(R.string.reader_search_error, "Lỗi khi tải kết quả"))
       }
   }
 
   private suspend fun load() {
     val book = repository.find(bookId)
     if (book == null) {
-      mutableState.value = ReaderUiState.Error("Không tìm thấy sách")
+      mutableState.value = ReaderUiState.Error(str(R.string.reader_book_not_found, "Không tìm thấy sách"))
       return
     }
     currentBookTitle = book.title
@@ -301,7 +307,7 @@ class ReaderViewModel(
         val positions = runCatching { pub.positions() }.getOrDefault(emptyList())
         mutableState.value = ReaderUiState.Ready(book, file, pub, initial, pub.tableOfContents, positions)
       }
-      .onFailure { mutableState.value = ReaderUiState.Error(it.message ?: "Không mở được sách") }
+      .onFailure { mutableState.value = ReaderUiState.Error(it.message ?: str(R.string.reader_cannot_open_book, "Không mở được sách")) }
   }
 
   private fun parseLocator(jsonText: String?): Locator? =

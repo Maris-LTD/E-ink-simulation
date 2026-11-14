@@ -72,6 +72,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -102,16 +103,20 @@ private data class LaunchableApp(
   val packageName: String,
 )
 
-private enum class DrawerViewMode(val label: String) {
-  LIST("Danh sách"),
-  GRID_3("Lưới 3"),
-  GRID_4("Lưới 4"),
-  TEXT_ONLY("Chỉ chữ");
+private enum class DrawerViewMode(val labelRes: Int) {
+  LIST(R.string.launcher_view_list),
+  GRID_3(R.string.launcher_view_grid_3),
+  GRID_4(R.string.launcher_view_grid_4),
+  TEXT_ONLY(R.string.launcher_view_text);
 
   fun next(): DrawerViewMode = entries[(ordinal + 1) % entries.size]
 }
 
 class LauncherActivity : ComponentActivity() {
+  override fun attachBaseContext(newBase: Context) {
+    super.attachBaseContext(LocaleHelper.wrap(newBase))
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
@@ -197,8 +202,8 @@ private fun EInkHomePager(
     pinnedPackages = next
     prefs.edit().putStringSet("pinned_packages", next).apply()
     val msg =
-      if (app.packageName in next) "Đã ghim ${app.label} ra Màn hình chính"
-      else "Đã bỏ ghim ${app.label}"
+      if (app.packageName in next) context.getString(R.string.launcher_pinned_toast, app.label)
+      else context.getString(R.string.launcher_unpinned_toast, app.label)
     scope.launch { snackbarHostState.showSnackbar(msg) }
   }
 
@@ -286,7 +291,7 @@ private fun MinimalistHomePage(
   val dateText = remember(now) { now.format(LAUNCHER_DATE_FORMATTER) }
   val currentBook = books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull()
   val completedCount = books.count { it.progress >= 0.99f }
-  val rank = ReadingGamification.rankFor(stats, completedCount, highlightsCount)
+  val rank = ReadingGamification.rankFor(stats, completedCount, highlightsCount, LocalContext.current)
   val todayMin = stats.todaySeconds() / 60
   val goalMin = stats.dailyGoalMinutes.coerceAtLeast(5)
   val goalProgress = (stats.todaySeconds().toFloat() / (goalMin * 60f)).coerceIn(0f, 1f)
@@ -302,7 +307,7 @@ private fun MinimalistHomePage(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       EInkText(
-        text = "Pin ${batteryPct}% · Chuỗi ${stats.currentStreak}d",
+        text = stringResource(R.string.launcher_status_format, batteryPct, stats.currentStreak),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
@@ -342,7 +347,7 @@ private fun MinimalistHomePage(
           color = MaterialTheme.colorScheme.secondary,
         )
         EInkText(
-          text = "Cấp ${rank.level} · ${rank.title}",
+          text = stringResource(R.string.stats_rank_format, rank.level, rank.title),
           style = MaterialTheme.typography.labelMedium,
           modifier =
             Modifier.border(1.dp, MaterialTheme.colorScheme.outline)
@@ -356,12 +361,12 @@ private fun MinimalistHomePage(
           horizontalArrangement = Arrangement.SpaceBetween,
         ) {
           EInkText(
-            text = "Mục tiêu hôm nay",
+            text = stringResource(R.string.stats_daily_goal),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.secondary,
           )
           EInkText(
-            text = "$todayMin / ${goalMin}p",
+            text = stringResource(R.string.wallpaper_minutes_format, todayMin, goalMin),
             style = MaterialTheme.typography.labelSmall,
           )
         }
@@ -400,19 +405,19 @@ private fun MinimalistHomePage(
         verticalAlignment = Alignment.CenterVertically,
       ) {
         EInkText(
-          text = "ỨNG DỤNG GHIM",
+          text = stringResource(R.string.launcher_pinned_apps),
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.secondary,
         )
         EInkText(
-          text = "Nhấn giữ để bỏ",
+          text = stringResource(R.string.launcher_long_press_unpin),
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.secondary,
         )
       }
       if (pinnedApps.isEmpty()) {
         EInkText(
-          text = "Chưa ghim app nào — vuốt sang Ngăn ứng dụng và nhấn giữ để ghim.",
+          text = stringResource(R.string.launcher_no_pinned),
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.secondary,
         )
@@ -439,10 +444,10 @@ private fun MinimalistHomePage(
       horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
       OutlinedButton(onClick = onOpenLibrary, modifier = Modifier.weight(1f)) {
-        EInkText("Thư viện sách")
+        EInkText(stringResource(R.string.launcher_library_btn))
       }
       OutlinedButton(onClick = onOpenDrawer, modifier = Modifier.weight(1f)) {
-        EInkText("Ứng dụng ›")
+        EInkText(stringResource(R.string.launcher_apps_btn))
       }
     }
   }
@@ -498,12 +503,12 @@ private fun CurrentBookHeroCard(
     }
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
       EInkText(
-        text = "ĐANG ĐỌC",
+        text = stringResource(R.string.wallpaper_currently_reading),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.secondary,
       )
       EInkText(
-        text = book?.title ?: "Chưa có sách — chạm để mở Thư viện",
+        text = book?.title ?: stringResource(R.string.launcher_no_book),
         style = MaterialTheme.typography.titleMedium,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
@@ -524,7 +529,7 @@ private fun CurrentBookHeroCard(
           verticalAlignment = Alignment.CenterVertically,
         ) {
           EInkText("$pct%", style = MaterialTheme.typography.labelMedium)
-          EInkText("Đọc tiếp ›", style = MaterialTheme.typography.labelLarge)
+          EInkText(stringResource(R.string.launcher_resume), style = MaterialTheme.typography.labelLarge)
         }
       }
     }
@@ -593,7 +598,7 @@ private fun MinimalistAppDrawerPage(
       ) {
         if (query.isEmpty()) {
           EInkText(
-            "Tìm ứng dụng...",
+            stringResource(R.string.launcher_search_apps),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
           )
@@ -607,18 +612,19 @@ private fun MinimalistAppDrawerPage(
           modifier = Modifier.fillMaxWidth(),
         )
       }
+      val viewModeLabel = stringResource(viewMode.labelRes)
       IconButton(
         onClick = onCycleViewMode,
         modifier =
           Modifier.size(40.dp)
             .border(1.5.dp, MaterialTheme.colorScheme.outline)
-            .semantics { contentDescription = viewMode.label },
+            .semantics { contentDescription = viewModeLabel },
       ) {
         DrawerViewModeIcon(viewMode = viewMode)
       }
     }
     EInkText(
-      text = "Chế độ: ${viewMode.label} · Nhấn giữ để ghim/bỏ ghim ra Home",
+      text = stringResource(R.string.launcher_drawer_hint, stringResource(viewMode.labelRes)),
       style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.secondary,
       modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

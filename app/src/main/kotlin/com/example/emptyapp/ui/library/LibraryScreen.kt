@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -70,19 +71,19 @@ private val SUPPORTED_MIMES =
     "application/octet-stream",
   )
 
-private enum class LibraryTab(val label: String) {
-  ALL("Tất cả"),
-  READING("Đang đọc"),
-  UNREAD("Chưa đọc"),
-  BOOKMARKS("Dấu trang"),
-  HIGHLIGHTS("Highlights"),
+private enum class LibraryTab(val labelRes: Int) {
+  ALL(com.example.emptyapp.R.string.lib_tab_all),
+  READING(com.example.emptyapp.R.string.lib_tab_reading),
+  UNREAD(com.example.emptyapp.R.string.lib_tab_unread),
+  BOOKMARKS(com.example.emptyapp.R.string.lib_tab_bookmarks),
+  HIGHLIGHTS(com.example.emptyapp.R.string.lib_tab_highlights),
 }
 
-private enum class LibraryViewMode(val label: String, val columns: Int) {
-  LIST("Danh sách", 1),
-  GRID_2("Lưới 2", 2),
-  GRID_3("Lưới 3", 3),
-  GRID_4("Lưới 4", 4);
+private enum class LibraryViewMode(val labelRes: Int, val columns: Int) {
+  LIST(com.example.emptyapp.R.string.lib_view_list, 1),
+  GRID_2(com.example.emptyapp.R.string.lib_view_grid_2, 2),
+  GRID_3(com.example.emptyapp.R.string.lib_view_grid_3, 3),
+  GRID_4(com.example.emptyapp.R.string.lib_view_grid_4, 4);
 
   fun next(): LibraryViewMode = entries[(ordinal + 1) % entries.size]
 }
@@ -239,26 +240,28 @@ private fun LibraryHeader(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    EInkText("eInk Reader", style = MaterialTheme.typography.titleLarge)
+    EInkText("eInk Reader", style = MaterialTheme.typography.headlineLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+      val tutorialCd = stringResource(com.example.emptyapp.R.string.cd_tutorial)
       Box(
         modifier =
           Modifier.size(36.dp)
             .clip(CircleShape)
             .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
             .clickable(onClick = onOpenTutorial)
-            .semantics { contentDescription = "Hướng dẫn sử dụng" },
+            .semantics { contentDescription = tutorialCd },
         contentAlignment = Alignment.Center,
       ) {
         EInkText("?", style = MaterialTheme.typography.titleMedium)
       }
+      val statsCd = stringResource(com.example.emptyapp.R.string.cd_reading_stats)
       Box(
         modifier =
           Modifier.size(36.dp)
             .clip(CircleShape)
             .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
             .clickable(onClick = onOpenStats)
-            .semantics { contentDescription = "Thống kê thói quen đọc" },
+            .semantics { contentDescription = statsCd },
         contentAlignment = Alignment.Center,
       ) {
         ReaderAvatarIcon(modifier = Modifier.size(28.dp))
@@ -285,10 +288,11 @@ private fun LibraryBottomBar(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       if (showViewToggle) {
+        val viewModeCd = stringResource(viewMode.labelRes)
         IconButton(
           onClick = onCycleViewMode,
           modifier =
-            Modifier.size(40.dp).semantics { contentDescription = viewMode.label },
+            Modifier.size(40.dp).semantics { contentDescription = viewModeCd },
         ) {
           ViewModeIcon(viewMode = viewMode)
         }
@@ -298,13 +302,14 @@ private fun LibraryBottomBar(
         onQueryChange = onQueryChange,
         modifier = Modifier.weight(1f),
       )
+      val addBookCd = stringResource(com.example.emptyapp.R.string.cd_add_book)
       Box(
         modifier =
           Modifier.size(40.dp)
             .clip(CircleShape)
             .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
             .clickable(enabled = !importing, onClick = onAddBook)
-            .semantics { contentDescription = "Thêm sách" },
+            .semantics { contentDescription = addBookCd },
         contentAlignment = Alignment.Center,
       ) {
         EInkText(
@@ -348,10 +353,9 @@ private fun GoogleStyleSearchBar(
     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
       if (query.isEmpty()) {
         EInkText(
-          text = "Tìm kiếm...",
+          text = stringResource(com.example.emptyapp.R.string.lib_search_placeholder),
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.secondary,
-          strokeWidthPx = 1.3f,
         )
       }
       BasicTextField(
@@ -364,15 +368,16 @@ private fun GoogleStyleSearchBar(
       )
     }
     if (query.isNotEmpty()) {
+      val clearCd = stringResource(com.example.emptyapp.R.string.cd_clear_search)
       Box(
         modifier =
           Modifier.size(24.dp)
             .clip(CircleShape)
             .clickable { onQueryChange("") }
-            .semantics { contentDescription = "Xóa tìm kiếm" },
+            .semantics { contentDescription = clearCd },
         contentAlignment = Alignment.Center,
       ) {
-        EInkText("×", style = MaterialTheme.typography.titleMedium, strokeWidthPx = 1.5f)
+        EInkText("×", style = MaterialTheme.typography.titleMedium)
       }
     }
   }
@@ -424,8 +429,8 @@ private fun EInkTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
           contentAlignment = Alignment.Center,
         ) {
           EInkText(
-            text = tab.label,
-            style = MaterialTheme.typography.labelLarge,
+            text = stringResource(tab.labelRes),
+            style = MaterialTheme.typography.titleMedium,
             color =
               if (active) MaterialTheme.colorScheme.onPrimary
               else MaterialTheme.colorScheme.onBackground,
@@ -488,11 +493,10 @@ private fun EmptyLibrary(hasAnyBooks: Boolean) {
   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     EInkText(
       text =
-        if (hasAnyBooks) "Không có sách phù hợp bộ lọc."
-        else "Chưa có sách nào.\nNhấn + Thêm sách để nhập tệp EPUB, PDF hoặc CBZ.",
-      style = MaterialTheme.typography.bodyLarge,
+        if (hasAnyBooks) stringResource(com.example.emptyapp.R.string.lib_empty_filtered)
+        else stringResource(com.example.emptyapp.R.string.lib_empty_all),
+      style = MaterialTheme.typography.titleSmall,
       color = MaterialTheme.colorScheme.secondary,
-      strokeWidthPx = 1.5f,
     )
   }
 }
@@ -566,11 +570,10 @@ private fun BookGridCard(
     )
     EInkText(
       text = book.title,
-      style = if (columns >= 4) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleSmall,
+      style = if (columns >= 4) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleSmall,
       minLines = 2,
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
-      strokeWidthPx = if (columns >= 4) 1.5f else 2.0f,
     )
     Row(
       modifier = Modifier.fillMaxWidth(),
@@ -581,11 +584,10 @@ private fun BookGridCard(
         text =
           if (columns >= 4) "${(book.progress * 100).toInt()}%"
           else "${book.format.label} · ${(book.progress * 100).toInt()}%",
-        style = MaterialTheme.typography.labelSmall,
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.secondary,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        strokeWidthPx = 1.3f,
         modifier = Modifier.weight(1f),
       )
       TextButton(
@@ -593,10 +595,9 @@ private fun BookGridCard(
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
       ) {
         EInkText(
-          text = "Xóa",
-          style = MaterialTheme.typography.labelSmall,
+          text = stringResource(com.example.emptyapp.R.string.action_delete),
+          style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.secondary,
-          strokeWidthPx = 1.3f,
         )
       }
     }
@@ -627,7 +628,7 @@ private fun BookRow(
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
       EInkText(
         text = book.title,
-        style = MaterialTheme.typography.titleMedium,
+        style = MaterialTheme.typography.titleSmall,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
       )
@@ -641,11 +642,14 @@ private fun BookRow(
         text = meta,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.secondary,
-        strokeWidthPx = 1.5f,
       )
     }
     TextButton(onClick = onRemove) {
-      EInkText("Xóa", color = MaterialTheme.colorScheme.secondary, strokeWidthPx = 1.5f)
+      EInkText(
+        text = stringResource(com.example.emptyapp.R.string.action_delete),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.secondary,
+      )
     }
   }
 }
