@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">eInk Reader</string>
+    <string name="app_name">Inkify</string>
     <string name="eink_wallpaper_desc">Minimalist E-Ink paper wallpaper with clock and reading progress</string>
     <string name="eink_launcher_label">eInk Launcher</string>
     <string name="contact_email">letuandat556@gmail.com</string>
@@ -256,7 +256,7 @@
     <string name="stats_sign_in_google">Sign in with Google</string>
     <string name="stats_contact_header">CONTACT &amp; FEEDBACK</string>
     <string name="stats_contact_desc">Send feature suggestions or bug reports via email:</string>
-    <string name="stats_email_subject">[eInk Reader] Feedback / Bug Report</string>
+    <string name="stats_email_subject">[Inkify] Feedback / Bug Report</string>
     <string name="stats_no_email_app">No Email app found on device</string>
     <string name="stats_send_email">Send email</string>
     <string name="stats_copied_email">Copied %1$s</string>

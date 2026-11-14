@@ -240,7 +240,7 @@ private fun LibraryHeader(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    EInkText("eInk Reader", style = MaterialTheme.typography.headlineLarge)
+    EInkText(stringResource(com.example.emptyapp.R.string.app_name), style = MaterialTheme.typography.headlineLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
       val tutorialCd = stringResource(com.example.emptyapp.R.string.cd_tutorial)
       Box(

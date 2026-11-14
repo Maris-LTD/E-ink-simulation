@@ -170,7 +170,7 @@ class EInkWallpaperService : WallpaperService() {
           typeface = Typeface.create(baseTypeface, Typeface.NORMAL)
           textAlign = Paint.Align.CENTER
         }
-      val rankText = rank?.let { localized.getString(com.example.emptyapp.R.string.wallpaper_rank_format, it.level, it.title) } ?: "eInk Reader"
+      val rankText = rank?.let { localized.getString(com.example.emptyapp.R.string.wallpaper_rank_format, it.level, it.title) } ?: localized.getString(com.example.emptyapp.R.string.app_name)
       canvas.drawText(
         localized.getString(com.example.emptyapp.R.string.wallpaper_status_format, batteryPct, streak, rankText),
         w / 2f,

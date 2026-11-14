@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">eInk Reader</string>
+    <string name="app_name">Inkify</string>
     <string name="eink_wallpaper_desc">Hình nền giấy E-Ink tối giản kèm đồng hồ và tiến độ đọc sách</string>
     <string name="eink_launcher_label">eInk Launcher</string>
     <string name="contact_email">letuandat556@gmail.com</string>
@@ -256,7 +256,7 @@
     <string name="stats_sign_in_google">Đăng nhập với Google</string>
     <string name="stats_contact_header">LIÊN HỆ &amp; PHẢN HỒI</string>
     <string name="stats_contact_desc">Góp ý tính năng hoặc báo lỗi qua email:</string>
-    <string name="stats_email_subject">[eInk Reader] Góp ý / Phản hồi</string>
+    <string name="stats_email_subject">[Inkify] Góp ý / Phản hồi</string>
     <string name="stats_no_email_app">Không tìm thấy ứng dụng Email trên máy</string>
     <string name="stats_send_email">Gửi email</string>
     <string name="stats_copied_email">Đã sao chép %1$s</string>
