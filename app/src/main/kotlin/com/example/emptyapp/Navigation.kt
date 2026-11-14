@@ -56,6 +56,7 @@ fun MainNavigation() {
             if (page == 0) {
               LibraryScreen(
                 viewModel = viewModel,
+                grayscaleCovers = settings.grayscale,
                 onOpenBook = { id, locatorJson ->
                   context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
                 },
@@ -72,6 +73,8 @@ fun MainNavigation() {
                 onToggleSyncBookFiles = { enabled -> container.sync.setSyncBookFiles(enabled) },
                 onSignOutSync = { container.sync.signOut() },
                 onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
+                settings = settings,
+                onUpdateSettings = container.settings::update,
                 currentLanguage = settings.appLanguage,
                 onChangeLanguage = { lang ->
                   container.settings.update { it.copy(appLanguage = lang) }

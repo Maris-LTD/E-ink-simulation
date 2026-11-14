@@ -262,6 +262,15 @@
     <string name="stats_copied_email">Đã sao chép %1$s</string>
     <string name="stats_copy">Sao chép</string>
     <string name="stats_language_header">NGÔN NGỮ ỨNG DỤNG</string>
+    <string name="stats_tab_overview">Thống kê</string>
+    <string name="stats_tab_settings">Cài đặt</string>
+    <string name="settings_display_title">HIỂN THỊ E-INK</string>
+    <string name="settings_tone">Tông màu màn hình</string>
+    <string name="lib_delete_book_title">Xoá sách?</string>
+    <string name="lib_delete_book_message">Xoá "%1$s" cùng toàn bộ bookmark và highlight của sách này?</string>
+    <string name="lib_search_bookmarks_placeholder">Tìm bookmark…</string>
+    <string name="lib_search_highlights_placeholder">Tìm highlight…</string>
+    <string name="lib_importing_banner">Đang thêm sách…</string>
 
     <!-- Launcher -->
     <string name="launcher_view_list">Danh sách</string>

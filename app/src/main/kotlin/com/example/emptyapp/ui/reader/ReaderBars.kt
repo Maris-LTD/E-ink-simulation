@@ -61,6 +61,7 @@ import kotlinx.coroutines.delay
 fun ReaderTopBar(
   title: String,
   showFontControls: Boolean = true,
+  showSearch: Boolean = true,
   onClose: () -> Unit,
   onOpenSearch: () -> Unit,
   onOpenContents: () -> Unit,
@@ -110,24 +111,26 @@ fun ReaderTopBar(
           EInkText("A+", style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
       }
-      val searchCd = stringResource(R.string.cd_search_in_book)
-      IconButton(
-        onClick = onOpenSearch,
-        modifier = Modifier.size(40.dp).semantics { contentDescription = searchCd },
-      ) {
-        val ink = MaterialTheme.colorScheme.onBackground
-        Canvas(modifier = Modifier.size(19.dp)) {
-          val r = size.minDimension * 0.3f
-          val center = Offset(size.width * 0.42f, size.height * 0.42f)
-          val stroke = 2.dp.toPx()
-          drawCircle(color = ink, radius = r, center = center, style = Stroke(width = stroke))
-          drawLine(
-            color = ink,
-            start = Offset(center.x + r * 0.7f, center.y + r * 0.7f),
-            end = Offset(size.width * 0.85f, size.height * 0.85f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-          )
+      if (showSearch) {
+        val searchCd = stringResource(R.string.cd_search_in_book)
+        IconButton(
+          onClick = onOpenSearch,
+          modifier = Modifier.size(40.dp).semantics { contentDescription = searchCd },
+        ) {
+          val ink = MaterialTheme.colorScheme.onBackground
+          Canvas(modifier = Modifier.size(19.dp)) {
+            val r = size.minDimension * 0.3f
+            val center = Offset(size.width * 0.42f, size.height * 0.42f)
+            val stroke = 2.dp.toPx()
+            drawCircle(color = ink, radius = r, center = center, style = Stroke(width = stroke))
+            drawLine(
+              color = ink,
+              start = Offset(center.x + r * 0.7f, center.y + r * 0.7f),
+              end = Offset(size.width * 0.85f, size.height * 0.85f),
+              strokeWidth = stroke,
+              cap = StrokeCap.Round,
+            )
+          }
         }
       }
       val bookmarkCd = stringResource(R.string.cd_save_bookmark)

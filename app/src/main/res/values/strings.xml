@@ -262,6 +262,15 @@
     <string name="stats_copied_email">Copied %1$s</string>
     <string name="stats_copy">Copy</string>
     <string name="stats_language_header">APP LANGUAGE</string>
+    <string name="stats_tab_overview">Stats</string>
+    <string name="stats_tab_settings">Settings</string>
+    <string name="settings_display_title">E-INK DISPLAY</string>
+    <string name="settings_tone">Screen tone</string>
+    <string name="lib_delete_book_title">Delete book?</string>
+    <string name="lib_delete_book_message">Remove "%1$s" along with its bookmarks and highlights?</string>
+    <string name="lib_search_bookmarks_placeholder">Search bookmarks…</string>
+    <string name="lib_search_highlights_placeholder">Search highlights…</string>
+    <string name="lib_importing_banner">Importing book…</string>
 
     <!-- Launcher -->
     <string name="launcher_view_list">List</string>

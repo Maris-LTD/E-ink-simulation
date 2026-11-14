@@ -29,8 +29,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -91,6 +94,7 @@ private enum class LibraryViewMode(val labelRes: Int, val columns: Int) {
 @Composable
 fun LibraryScreen(
   viewModel: LibraryViewModel,
+  grayscaleCovers: Boolean = true,
   onOpenBook: (String, String?) -> Unit,
   onOpenStats: () -> Unit,
   modifier: Modifier = Modifier,
@@ -111,6 +115,7 @@ fun LibraryScreen(
   var selectedTab by remember { mutableStateOf(LibraryTab.ALL) }
   var selectedAuthor by remember { mutableStateOf<String?>(null) }
   var query by remember { mutableStateOf("") }
+  var pendingDeleteBook by remember { mutableStateOf<BookEntry?>(null) }
   var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.LIST) }
   val picker =
     rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -137,6 +142,11 @@ fun LibraryScreen(
       }
     }
   val authors = remember(books) { books.map { it.author }.filter { it.isNotBlank() }.distinct() }
+  LaunchedEffect(authors) {
+    if (selectedAuthor != null && selectedAuthor !in authors) {
+      selectedAuthor = null
+    }
+  }
 
   Scaffold(
     modifier = modifier.fillMaxSize(),
@@ -200,28 +210,69 @@ fun LibraryScreen(
         } else if (viewMode == LibraryViewMode.LIST) {
           BookList(
             books = filteredBooks,
+            grayscaleCovers = grayscaleCovers,
             coverOf = viewModel::coverFileOf,
             onOpenBook = { id -> onOpenBook(id, null) },
-            onRemove = viewModel::remove,
+            onRemove = { book -> pendingDeleteBook = book },
           )
         } else {
           BookGrid(
             books = filteredBooks,
             columns = viewMode.columns,
+            grayscaleCovers = grayscaleCovers,
             coverOf = viewModel::coverFileOf,
             onOpenBook = { id -> onOpenBook(id, null) },
-            onRemove = viewModel::remove,
+            onRemove = { book -> pendingDeleteBook = book },
           )
         }
       }
+      val searchPlaceholder =
+        when (selectedTab) {
+          LibraryTab.BOOKMARKS -> stringResource(com.example.emptyapp.R.string.lib_search_bookmarks_placeholder)
+          LibraryTab.HIGHLIGHTS -> stringResource(com.example.emptyapp.R.string.lib_search_highlights_placeholder)
+          else -> stringResource(com.example.emptyapp.R.string.lib_search_placeholder)
+        }
       LibraryBottomBar(
         viewMode = viewMode,
         showViewToggle = selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS,
         query = query,
+        searchPlaceholder = searchPlaceholder,
         importing = importing,
         onCycleViewMode = { viewMode = viewMode.next() },
         onQueryChange = { query = it },
         onAddBook = { picker.launch(SUPPORTED_MIMES) },
+      )
+    }
+    pendingDeleteBook?.let { bookToDelete ->
+      AlertDialog(
+        onDismissRequest = { pendingDeleteBook = null },
+        containerColor = MaterialTheme.colorScheme.background,
+        title = { EInkText(stringResource(com.example.emptyapp.R.string.lib_delete_book_title), style = MaterialTheme.typography.titleMedium) },
+        text = {
+          EInkText(
+            stringResource(com.example.emptyapp.R.string.lib_delete_book_message, bookToDelete.title),
+            style = MaterialTheme.typography.bodyMedium,
+          )
+        },
+        confirmButton = {
+          TextButton(
+            onClick = {
+              viewModel.remove(bookToDelete.id)
+              pendingDeleteBook = null
+            },
+          ) {
+            EInkText(stringResource(com.example.emptyapp.R.string.action_delete), style = MaterialTheme.typography.labelLarge)
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { pendingDeleteBook = null }) {
+            EInkText(
+              stringResource(com.example.emptyapp.R.string.action_cancel),
+              style = MaterialTheme.typography.labelLarge,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+          }
+        },
       )
     }
     if (tutorialOpen) {
@@ -275,12 +326,26 @@ private fun LibraryBottomBar(
   viewMode: LibraryViewMode,
   showViewToggle: Boolean,
   query: String,
+  searchPlaceholder: String,
   importing: Boolean,
   onCycleViewMode: () -> Unit,
   onQueryChange: (String) -> Unit,
   onAddBook: () -> Unit,
 ) {
   Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+    if (importing) {
+      LinearProgressIndicator(
+        modifier = Modifier.fillMaxWidth().height(2.dp),
+        color = MaterialTheme.colorScheme.onBackground,
+        trackColor = MaterialTheme.colorScheme.outlineVariant,
+      )
+      EInkText(
+        text = stringResource(com.example.emptyapp.R.string.lib_importing_banner),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.secondary,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+      )
+    }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
     Row(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -299,6 +364,7 @@ private fun LibraryBottomBar(
       }
       GoogleStyleSearchBar(
         query = query,
+        placeholder = searchPlaceholder,
         onQueryChange = onQueryChange,
         modifier = Modifier.weight(1f),
       )
@@ -312,10 +378,18 @@ private fun LibraryBottomBar(
             .semantics { contentDescription = addBookCd },
         contentAlignment = Alignment.Center,
       ) {
-        EInkText(
-          text = if (importing) "…" else "+",
-          style = MaterialTheme.typography.titleLarge,
-        )
+        if (importing) {
+          CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.onBackground,
+          )
+        } else {
+          EInkText(
+            text = "+",
+            style = MaterialTheme.typography.titleLarge,
+          )
+        }
       }
     }
   }
@@ -324,6 +398,7 @@ private fun LibraryBottomBar(
 @Composable
 private fun GoogleStyleSearchBar(
   query: String,
+  placeholder: String,
   onQueryChange: (String) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -353,9 +428,11 @@ private fun GoogleStyleSearchBar(
     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
       if (query.isEmpty()) {
         EInkText(
-          text = stringResource(com.example.emptyapp.R.string.lib_search_placeholder),
+          text = placeholder,
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.secondary,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
         )
       }
       BasicTextField(
@@ -504,17 +581,19 @@ private fun EmptyLibrary(hasAnyBooks: Boolean) {
 @Composable
 private fun BookList(
   books: List<BookEntry>,
+  grayscaleCovers: Boolean,
   coverOf: (BookEntry) -> File?,
   onOpenBook: (String) -> Unit,
-  onRemove: (String) -> Unit,
+  onRemove: (BookEntry) -> Unit,
 ) {
   LazyColumn {
     items(books, key = { it.id }) { book ->
       BookRow(
         book = book,
+        grayscaleCover = grayscaleCovers,
         coverFile = coverOf(book),
         onOpen = { onOpenBook(book.id) },
-        onRemove = { onRemove(book.id) },
+        onRemove = { onRemove(book) },
       )
       HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
     }
@@ -525,9 +604,10 @@ private fun BookList(
 private fun BookGrid(
   books: List<BookEntry>,
   columns: Int,
+  grayscaleCovers: Boolean,
   coverOf: (BookEntry) -> File?,
   onOpenBook: (String) -> Unit,
-  onRemove: (String) -> Unit,
+  onRemove: (BookEntry) -> Unit,
 ) {
   val spacing = if (columns >= 4) 10.dp else 14.dp
   LazyVerticalGrid(
@@ -541,9 +621,10 @@ private fun BookGrid(
       BookGridCard(
         book = book,
         columns = columns,
+        grayscaleCover = grayscaleCovers,
         coverFile = coverOf(book),
         onOpen = { onOpenBook(book.id) },
-        onRemove = { onRemove(book.id) },
+        onRemove = { onRemove(book) },
       )
     }
   }
@@ -553,6 +634,7 @@ private fun BookGrid(
 private fun BookGridCard(
   book: BookEntry,
   columns: Int,
+  grayscaleCover: Boolean,
   coverFile: File?,
   onOpen: () -> Unit,
   onRemove: () -> Unit,
@@ -566,6 +648,7 @@ private fun BookGridCard(
       book = book,
       coverFile = coverFile,
       compact = compact,
+      grayscale = grayscaleCover,
       modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
     )
     EInkText(
@@ -607,6 +690,7 @@ private fun BookGridCard(
 @Composable
 private fun BookRow(
   book: BookEntry,
+  grayscaleCover: Boolean,
   coverFile: File?,
   onOpen: () -> Unit,
   onRemove: () -> Unit,
@@ -623,6 +707,7 @@ private fun BookRow(
       book = book,
       coverFile = coverFile,
       compact = true,
+      grayscale = grayscaleCover,
       modifier = Modifier.size(width = 48.dp, height = 68.dp),
     )
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -17,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +36,7 @@ fun BookCover(
   coverFile: File?,
   modifier: Modifier = Modifier,
   compact: Boolean = false,
+  grayscale: Boolean = true,
 ) {
   val path = coverFile?.absolutePath
   var bitmap by remember(path) { mutableStateOf(CoverBitmapCache.get(path)) }
@@ -52,10 +55,15 @@ fun BookCover(
   ) {
     val current = bitmap
     if (current != null) {
+      val coverFilter =
+        remember(grayscale) {
+          if (grayscale) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null
+        }
       Image(
         bitmap = current,
         contentDescription = book.title,
         contentScale = ContentScale.Crop,
+        colorFilter = coverFilter,
         modifier = Modifier.fillMaxSize(),
       )
     } else {

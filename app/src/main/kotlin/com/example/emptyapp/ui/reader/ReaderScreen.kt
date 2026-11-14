@@ -223,6 +223,7 @@ fun ReaderScreen(
       ReaderTopBar(
         title = title,
         showFontControls = bookFormat == BookFormat.EPUB,
+        showSearch = bookFormat != BookFormat.CBZ,
         onClose = onClose,
         onOpenSearch = { searchOpen = true; contentsOpen = false; settingsOpen = false },
         onOpenContents = { contentsOpen = true; searchOpen = false; settingsOpen = false },

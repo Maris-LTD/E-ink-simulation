@@ -16,6 +16,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +39,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +55,9 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.example.emptyapp.reader.AppLanguage
+import com.example.emptyapp.reader.EInkSettings
+import com.example.emptyapp.reader.EInkTone
+import com.example.emptyapp.reader.OrientationLock
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
@@ -105,6 +113,8 @@ fun ReadingStatsScreen(
   onToggleSyncBookFiles: (Boolean) -> Unit = {},
   onSignOutSync: () -> Unit = {},
   onChangeGoalMinutes: (Int) -> Unit,
+  settings: EInkSettings = EInkSettings(),
+  onUpdateSettings: ((EInkSettings) -> EInkSettings) -> Unit = {},
   currentLanguage: AppLanguage = AppLanguage.SYSTEM,
   onChangeLanguage: (AppLanguage) -> Unit = {},
   onBack: () -> Unit,
@@ -139,6 +149,7 @@ fun ReadingStatsScreen(
   val rank = ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount, context)
   val badges = ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
 
+  var selectedTab by remember { mutableIntStateOf(0) }
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
   ) {
@@ -150,6 +161,27 @@ fun ReadingStatsScreen(
       EInkText(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge)
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+    Row(modifier = Modifier.fillMaxWidth()) {
+      listOf(R.string.stats_tab_overview, R.string.stats_tab_settings).forEachIndexed { index, labelRes ->
+        val active = selectedTab == index
+        Box(
+          modifier =
+            Modifier.weight(1f)
+              .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+              .clickable { selectedTab = index }
+              .padding(vertical = 11.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          EInkText(
+            text = stringResource(labelRes),
+            style = MaterialTheme.typography.titleMedium,
+            color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+          )
+        }
+      }
+    }
+    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
 
     Column(
       modifier =
@@ -158,13 +190,18 @@ fun ReadingStatsScreen(
           .padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-      LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
-      GoogleSyncCard(
-        syncState = syncState,
-        onSyncOrSignIn = ::triggerSync,
-        onToggleSyncBookFiles = onToggleSyncBookFiles,
-        onSignOut = onSignOutSync,
-      )
+      if (selectedTab == 1) {
+        EInkDisplaySettingsCard(settings = settings, onUpdateSettings = onUpdateSettings)
+        LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
+        GoogleSyncCard(
+          syncState = syncState,
+          onSyncOrSignIn = ::triggerSync,
+          onToggleSyncBookFiles = onToggleSyncBookFiles,
+          onSignOut = onSignOutSync,
+        )
+        SystemEInkModeCard()
+        ContactCard()
+      } else {
       Column(
         modifier =
           Modifier.fillMaxWidth()
@@ -310,11 +347,8 @@ fun ReadingStatsScreen(
         activeDaysCount = activeDaysCount,
       )
 
-      AchievementsCard(badges = badges)
-
-      SystemEInkModeCard()
-
-      ContactCard()
+        AchievementsCard(badges = badges)
+      }
     }
   }
 }
@@ -739,6 +773,118 @@ private fun GoogleSyncCard(
         enabled = !syncState.syncing,
       ) {
         EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_connecting) else stringResource(R.string.stats_sign_in_google))
+      }
+    }
+  }
+}
+
+@Composable
+private fun EInkDisplaySettingsCard(
+  settings: EInkSettings,
+  onUpdateSettings: ((EInkSettings) -> EInkSettings) -> Unit,
+) {
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    EInkText(
+      text = stringResource(R.string.settings_display_title),
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    EInkText(
+      text = stringResource(R.string.settings_tone),
+      style = MaterialTheme.typography.bodyMedium,
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      EInkTone.entries.forEach { tone ->
+        val selected = tone == settings.tone
+        val label =
+          when (tone) {
+            EInkTone.PAPER -> stringResource(R.string.tone_paper)
+            EInkTone.WARM -> stringResource(R.string.tone_warm)
+            EInkTone.HIGH_CONTRAST -> stringResource(R.string.tone_white)
+            EInkTone.SOFT_GRAY -> stringResource(R.string.tone_gray)
+            EInkTone.DARK -> stringResource(R.string.tone_dark)
+          }
+        Box(
+          modifier =
+            Modifier
+              .border(1.5.dp, MaterialTheme.colorScheme.outline)
+              .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+              .clickable { onUpdateSettings { it.copy(tone = tone) } }
+              .padding(horizontal = 12.dp, vertical = 8.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          EInkText(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+          )
+        }
+      }
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      EInkText(stringResource(R.string.settings_paper_grain), style = MaterialTheme.typography.bodyMedium)
+      Switch(
+        checked = settings.paperGrain,
+        onCheckedChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
+      )
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      EInkText(stringResource(R.string.settings_grayscale), style = MaterialTheme.typography.bodyMedium)
+      Switch(
+        checked = settings.grayscale,
+        onCheckedChange = { on -> onUpdateSettings { it.copy(grayscale = on) } },
+      )
+    }
+    EInkText(
+      text = stringResource(R.string.settings_orientation),
+      style = MaterialTheme.typography.bodyMedium,
+    )
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      OrientationLock.entries.forEach { lock ->
+        val selected = lock == settings.orientationLock
+        val label =
+          when (lock) {
+            OrientationLock.AUTO -> stringResource(R.string.orientation_auto)
+            OrientationLock.PORTRAIT -> stringResource(R.string.orientation_portrait)
+            OrientationLock.LANDSCAPE -> stringResource(R.string.orientation_landscape)
+          }
+        Box(
+          modifier =
+            Modifier.weight(1f)
+              .border(1.5.dp, MaterialTheme.colorScheme.outline)
+              .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+              .clickable { onUpdateSettings { it.copy(orientationLock = lock) } }
+              .padding(vertical = 8.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          EInkText(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+          )
+        }
       }
     }
   }

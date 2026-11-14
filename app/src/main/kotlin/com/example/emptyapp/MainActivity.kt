@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +17,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.EInkTheme
+import com.example.emptyapp.ui.eink.PaperGrainOverlay
 
 class MainActivity : ComponentActivity() {
   override fun attachBaseContext(newBase: Context) {
@@ -41,7 +43,10 @@ class MainActivity : ComponentActivity() {
           modifier = Modifier.fillMaxSize().safeDrawingPadding(),
           color = MaterialTheme.colorScheme.background,
         ) {
-          MainNavigation()
+          Box(modifier = Modifier.fillMaxSize()) {
+            MainNavigation()
+            if (settings.paperGrain) PaperGrainOverlay()
+          }
         }
       }
     }
