@@ -62,6 +62,8 @@ fun ReaderTopBar(
   title: String,
   showFontControls: Boolean = true,
   showSearch: Boolean = true,
+  pdfModeLabel: String? = null,
+  onTogglePdfMode: (() -> Unit)? = null,
   onClose: () -> Unit,
   onOpenSearch: () -> Unit,
   onOpenContents: () -> Unit,
@@ -95,6 +97,18 @@ fun ReaderTopBar(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.weight(1f).padding(end = 4.dp),
       )
+      if (pdfModeLabel != null && onTogglePdfMode != null) {
+        TextButton(
+          onClick = onTogglePdfMode,
+          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+          modifier =
+            Modifier.padding(end = 4.dp)
+              .border(1.dp, MaterialTheme.colorScheme.outline)
+              .defaultMinSize(minWidth = 48.dp, minHeight = 36.dp),
+        ) {
+          EInkText(pdfModeLabel, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
+      }
       if (showFontControls) {
         TextButton(
           onClick = onDecreaseFont,

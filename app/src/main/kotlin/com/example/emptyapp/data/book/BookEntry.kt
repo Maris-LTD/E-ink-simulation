@@ -1,5 +1,6 @@
 package com.example.emptyapp.data.book
 
+import com.example.emptyapp.reader.pdf.PdfReadingMode
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -19,6 +20,7 @@ data class BookEntry(
   val coverFileName: String? = null,
   val lastLocatorJson: String? = null,
   val progress: Float = 0f,
+  val pdfReadingMode: PdfReadingMode? = null,
   val contentHash: String? = null,
   val updatedAt: Long = 0L,
 )

@@ -97,4 +97,5 @@ dependencies {
   implementation(libs.readium.navigator)
   implementation(libs.readium.adapter.pdfium)
   implementation(libs.play.services.auth)
+  implementation(libs.pdfbox.android)
 }

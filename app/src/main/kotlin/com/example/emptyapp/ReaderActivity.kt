@@ -85,6 +85,7 @@ class ReaderActivity : FragmentActivity() {
             bookId = bookId,
             repository = container.library,
             settingsStore = container.settings,
+            pdfBookConfigs = container.pdfBookConfigs,
             annotations = container.annotations,
             dictionary = container.dictionary,
             statsRepository = container.stats,

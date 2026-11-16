@@ -23,12 +23,17 @@ import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.OrientationLock
+import com.example.emptyapp.reader.pdf.PdfReadingMode
 import java.util.Locale
 
 @Composable
 fun ReaderSettingsPanel(
   settings: EInkSettings,
   isReflowable: Boolean = true,
+  isPdf: Boolean = false,
+  pdfMode: PdfReadingMode = PdfReadingMode.SMART_ORIGINAL,
+  pdfReflowAllowed: Boolean = true,
+  onPdfModeChange: (PdfReadingMode) -> Unit = {},
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -82,6 +87,33 @@ fun ReaderSettingsPanel(
         onMinus = { onChange { it.copy(pageMargins = (it.pageMargins - 0.2).coerceAtLeast(0.0)) } },
         onPlus = { onChange { it.copy(pageMargins = (it.pageMargins + 0.2).coerceAtMost(3.0)) } },
       )
+    }
+    if (isPdf) {
+      val origLabel = stringResource(R.string.pdf_mode_original)
+      val colLabel = stringResource(R.string.pdf_mode_column)
+      val reflowLabel = stringResource(R.string.pdf_mode_reflow)
+      val availableModes =
+        if (pdfReflowAllowed) {
+          listOf(PdfReadingMode.SMART_ORIGINAL, PdfReadingMode.GUIDED_COLUMN, PdfReadingMode.HYBRID_REFLOW)
+        } else {
+          listOf(PdfReadingMode.SMART_ORIGINAL)
+        }
+      ChoiceRow(
+        label = stringResource(R.string.settings_pdf_mode),
+        options = availableModes,
+        selected = pdfMode,
+        nameOf = {
+          when (it) {
+            PdfReadingMode.SMART_ORIGINAL -> origLabel
+            PdfReadingMode.GUIDED_COLUMN -> colLabel
+            PdfReadingMode.HYBRID_REFLOW -> reflowLabel
+          }
+        },
+        onSelect = onPdfModeChange,
+      )
+      SwitchRow(stringResource(R.string.settings_pdf_auto_crop), settings.pdfAutoCrop) { on ->
+        onChange { it.copy(pdfAutoCrop = on) }
+      }
     }
     SwitchRow(stringResource(R.string.settings_grayscale), settings.grayscale) { on -> onChange { it.copy(grayscale = on) } }
     StepperRow(

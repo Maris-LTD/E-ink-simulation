@@ -114,6 +114,13 @@
     <string name="settings_paragraph_spacing">Paragraph spacing</string>
     <string name="settings_justify">Justify text</string>
     <string name="settings_margins">Page margins</string>
+    <string name="settings_pdf_auto_crop">Auto-crop PDF margins</string>
+    <string name="settings_pdf_mode">PDF reading mode</string>
+    <string name="pdf_mode_original">Original</string>
+    <string name="pdf_mode_column">Columns</string>
+    <string name="pdf_mode_reflow">Reflow</string>
+    <string name="pdf_reflow_locked_scan">Reflow is unavailable for scanned/image PDFs</string>
+    <string name="pdf_analyzing_progress">Preparing PDF (%1$d/%2$d)…</string>
     <string name="settings_grayscale">Grayscale images</string>
     <string name="settings_contrast">Contrast</string>
     <string name="settings_paper_grain">E-Ink paper grain</string>

@@ -3,6 +3,7 @@ package com.example.emptyapp.data.book
 import android.content.Context
 import android.net.Uri
 import com.example.emptyapp.reader.ReadiumEngine
+import com.example.emptyapp.reader.pdf.PdfReadingMode
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -70,6 +71,15 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
     commit { list ->
       list.map {
         if (it.id == id) it.copy(lastLocatorJson = locatorJson, progress = progress, updatedAt = now) else it
+      }
+    }
+  }
+
+  suspend fun savePdfReadingMode(id: String, mode: PdfReadingMode) {
+    val now = System.currentTimeMillis()
+    commit { list ->
+      list.map {
+        if (it.id == id) it.copy(pdfReadingMode = mode, updatedAt = now) else it
       }
     }
   }

@@ -46,6 +46,7 @@ import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkSettings
+import com.example.emptyapp.reader.pdf.PdfReadingMode
 import com.example.emptyapp.reader.attachReaderInput
 import com.example.emptyapp.reader.awaitView
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
@@ -89,6 +90,7 @@ fun ReaderScreen(
   onOpenDndPermissionSettings: () -> Unit = {},
 ) {
   val settings by viewModel.settings.collectAsStateWithLifecycle()
+  val pdfConfig by viewModel.pdfConfig.collectAsStateWithLifecycle()
   val progress by viewModel.progress.collectAsStateWithLifecycle()
   val flashTrigger by viewModel.flashTrigger.collectAsStateWithLifecycle()
   val pageTurnTrigger by viewModel.pageTurnTrigger.collectAsStateWithLifecycle()
@@ -181,6 +183,8 @@ fun ReaderScreen(
   val ghostAlpha =
     if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
 
+  val effectivePdfMode = pdfConfig.mode ?: PdfReadingMode.SMART_ORIGINAL
+
   Box(modifier = Modifier.fillMaxSize().background(Color(settings.tone.background))) {
     when (bookFormat) {
       BookFormat.EPUB ->
@@ -193,6 +197,7 @@ fun ReaderScreen(
           file = bookFile,
           initialPage = remember(initialLocator, positions) { resolvePdfPageIndex(initialLocator, positions) },
           settings = settings,
+          readingMode = effectivePdfMode,
           controller = pdfController,
           onPageChanged = { pageIndex, pageCount ->
             viewModel.onLocatorChanged(locatorForPdfPage(pageIndex, pageCount, positions))
@@ -220,10 +225,46 @@ fun ReaderScreen(
       )
     }
     if (chromeVisible) {
+      val pdfModeLabel =
+        if (bookFormat == BookFormat.PDF) {
+          when (effectivePdfMode) {
+            PdfReadingMode.SMART_ORIGINAL -> context.getString(com.example.emptyapp.R.string.pdf_mode_original)
+            PdfReadingMode.GUIDED_COLUMN -> context.getString(com.example.emptyapp.R.string.pdf_mode_column)
+            PdfReadingMode.HYBRID_REFLOW -> context.getString(com.example.emptyapp.R.string.pdf_mode_reflow)
+          }
+        } else {
+          null
+        }
       ReaderTopBar(
         title = title,
-        showFontControls = bookFormat == BookFormat.EPUB,
+        showFontControls =
+          bookFormat == BookFormat.EPUB ||
+            (bookFormat == BookFormat.PDF && effectivePdfMode == PdfReadingMode.HYBRID_REFLOW),
         showSearch = bookFormat != BookFormat.CBZ,
+        pdfModeLabel = pdfModeLabel,
+        onTogglePdfMode =
+          if (bookFormat == BookFormat.PDF) {
+            {
+              if (!pdfConfig.reflowAllowed) {
+                scope.launch {
+                  snackbarHostState.showSnackbar(
+                    context.getString(com.example.emptyapp.R.string.pdf_reflow_locked_scan),
+                    duration = SnackbarDuration.Short,
+                  )
+                }
+              } else {
+                val nextMode =
+                  when (effectivePdfMode) {
+                    PdfReadingMode.SMART_ORIGINAL -> PdfReadingMode.GUIDED_COLUMN
+                    PdfReadingMode.GUIDED_COLUMN -> PdfReadingMode.HYBRID_REFLOW
+                    PdfReadingMode.HYBRID_REFLOW -> PdfReadingMode.SMART_ORIGINAL
+                  }
+                viewModel.updatePdfConfig { it.copy(mode = nextMode) }
+              }
+            }
+          } else {
+            null
+          },
         onClose = onClose,
         onOpenSearch = { searchOpen = true; contentsOpen = false; settingsOpen = false },
         onOpenContents = { contentsOpen = true; searchOpen = false; settingsOpen = false },
@@ -297,7 +338,13 @@ fun ReaderScreen(
     if (settingsOpen) {
       ReaderSettingsPanel(
         settings = settings,
-        isReflowable = bookFormat == BookFormat.EPUB,
+        isReflowable =
+          bookFormat == BookFormat.EPUB ||
+            (bookFormat == BookFormat.PDF && effectivePdfMode == PdfReadingMode.HYBRID_REFLOW),
+        isPdf = bookFormat == BookFormat.PDF,
+        pdfMode = effectivePdfMode,
+        pdfReflowAllowed = pdfConfig.reflowAllowed,
+        onPdfModeChange = { next -> viewModel.updatePdfConfig { it.copy(mode = next) } },
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)

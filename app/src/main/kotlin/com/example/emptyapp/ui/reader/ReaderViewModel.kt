@@ -10,13 +10,18 @@ import com.example.emptyapp.data.annotation.AnnotationRepository
 import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkSettingsStore
 import com.example.emptyapp.reader.RefreshFlashController
+import com.example.emptyapp.reader.pdf.PdfBookConfig
+import com.example.emptyapp.reader.pdf.PdfBookConfigStore
+import com.example.emptyapp.reader.pdf.PdfDocumentClassifier
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -28,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -70,6 +76,7 @@ class ReaderViewModel(
   private val bookId: String,
   private val repository: LibraryRepository,
   private val settingsStore: EInkSettingsStore,
+  private val pdfBookConfigs: PdfBookConfigStore? = null,
   private val annotations: AnnotationRepository,
   private val dictionary: DictionaryService,
   private val statsRepository: ReadingStatsRepository,
@@ -107,6 +114,11 @@ class ReaderViewModel(
   val searchState: StateFlow<SearchUiState> = mutableSearchState.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
 
+  val pdfConfig: StateFlow<PdfBookConfig> =
+    (pdfBookConfigs?.configs ?: MutableStateFlow(emptyMap()))
+      .map { it[bookId] ?: PdfBookConfig() }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), pdfBookConfigs?.get(bookId) ?: PdfBookConfig())
+
   val bookmarks: StateFlow<List<BookmarkEntry>> =
     annotations.bookmarks
       .map { list -> list.filter { it.bookId == bookId } }
@@ -125,6 +137,14 @@ class ReaderViewModel(
     settingsStore.update(transform)
     flashController.reset()
     mutablePagesSinceFlash.value = 0
+  }
+
+  fun updatePdfConfig(transform: (PdfBookConfig) -> PdfBookConfig) {
+    val updated = pdfBookConfigs?.update(bookId, transform) ?: return
+    val mode = updated.mode ?: return
+    viewModelScope.launch {
+      repository.savePdfReadingMode(bookId, mode)
+    }
   }
 
   fun onLocatorChanged(locator: Locator) {
@@ -306,14 +326,46 @@ class ReaderViewModel(
         val initial = parseLocator(overrideLocatorJson) ?: parseLocator(book.lastLocatorJson)
         val positions = runCatching { pub.positions() }.getOrDefault(emptyList())
         mutableState.value = ReaderUiState.Ready(book, file, pub, initial, pub.tableOfContents, positions)
+        if (book.format == BookFormat.PDF) {
+          val savedMode = book.pdfReadingMode
+          if (savedMode != null && pdfBookConfigs?.get(bookId)?.mode == null) {
+            pdfBookConfigs?.update(bookId) { it.copy(mode = savedMode) }
+          }
+          ensurePdfClassified(file)
+        }
       }
       .onFailure { mutableState.value = ReaderUiState.Error(it.message ?: str(R.string.reader_cannot_open_book, "Không mở được sách")) }
+  }
+
+  private fun ensurePdfClassified(file: File) {
+    val store = pdfBookConfigs ?: return
+    if (store.get(bookId)?.category != null) return
+    viewModelScope.launch {
+      val result = withContext(Dispatchers.IO) { PdfDocumentClassifier.classifyFile(file) } ?: return@launch
+      val updated =
+        store.update(bookId) { current ->
+          current.copy(
+            category = current.category ?: result.category,
+            mode = current.mode ?: result.recommendedMode,
+            reflowAllowed = result.reflowAllowed,
+          )
+        }
+      updated.mode?.let { mode ->
+        repository.savePdfReadingMode(bookId, mode)
+      }
+    }
   }
 
   private fun parseLocator(jsonText: String?): Locator? =
     jsonText?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
 
   override fun onCleared() {
+    val modeToPersist = pdfBookConfigs?.get(bookId)?.mode
+    if (modeToPersist != null) {
+      kotlinx.coroutines.CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+        repository.savePdfReadingMode(bookId, modeToPersist)
+      }
+    }
     statsTickerJob?.cancel()
     searchJob?.cancel()
     runCatching { searchIterator?.close() }

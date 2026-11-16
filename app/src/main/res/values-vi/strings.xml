@@ -114,6 +114,13 @@
     <string name="settings_paragraph_spacing">Khoảng cách đoạn</string>
     <string name="settings_justify">Căn đều hai bên (Justify)</string>
     <string name="settings_margins">Lề trang</string>
+    <string name="settings_pdf_auto_crop">Tự động cắt lề PDF</string>
+    <string name="settings_pdf_mode">Chế độ đọc PDF</string>
+    <string name="pdf_mode_original">Trang gốc</string>
+    <string name="pdf_mode_column">Đọc cột</string>
+    <string name="pdf_mode_reflow">Dàn chữ</string>
+    <string name="pdf_reflow_locked_scan">Không hỗ trợ dàn chữ cho PDF scan/ảnh</string>
+    <string name="pdf_analyzing_progress">Đang xử lý PDF (%1$d/%2$d)...</string>
     <string name="settings_grayscale">Ảnh xám (đơn sắc)</string>
     <string name="settings_contrast">Tương phản</string>
     <string name="settings_paper_grain">Vân giấy E-Ink</string>
