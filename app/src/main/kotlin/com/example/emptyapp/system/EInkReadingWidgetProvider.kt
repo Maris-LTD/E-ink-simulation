@@ -11,6 +11,7 @@ import com.example.emptyapp.LocaleHelper
 import com.example.emptyapp.MainActivity
 import com.example.emptyapp.R
 import com.example.emptyapp.ReaderActivity
+import com.example.emptyapp.data.book.mostRecentlyReadBook
 
 class EInkReadingWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(
@@ -37,8 +38,7 @@ class EInkReadingWidgetProvider : AppWidgetProvider() {
     ) {
       val container = (context.applicationContext as? EmptyApplication)?.container
       val books = container?.library?.books?.value.orEmpty()
-      val currentBook =
-        books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull()
+      val currentBook = books.mostRecentlyReadBook()
       val stats = container?.stats?.stats?.value
       val todayMin = (stats?.todaySeconds() ?: 0) / 60
       val goalMin = stats?.dailyGoalMinutes ?: 20

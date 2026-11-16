@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.book.mostRecentlyReadBook
 import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.reader.EInkTone
@@ -289,7 +290,7 @@ private fun MinimalistHomePage(
 
   val timeText = remember(now) { now.format(LAUNCHER_TIME_FORMATTER) }
   val dateText = remember(now) { now.format(LAUNCHER_DATE_FORMATTER) }
-  val currentBook = books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull()
+  val currentBook = books.mostRecentlyReadBook()
   val completedCount = books.count { it.progress >= 0.99f }
   val rank = ReadingGamification.rankFor(stats, completedCount, highlightsCount, LocalContext.current)
   val todayMin = stats.todaySeconds() / 60

@@ -22,6 +22,7 @@ import android.view.SurfaceHolder
 import androidx.core.content.res.ResourcesCompat
 import com.example.emptyapp.EmptyApplication
 import com.example.emptyapp.R
+import com.example.emptyapp.data.book.mostRecentlyReadBook
 import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.reader.LockScreenReadingNotifier
 import java.io.File
@@ -116,7 +117,7 @@ class EInkWallpaperService : WallpaperService() {
       }
 
       val books = container.library.books.value
-      val currentBook = books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull() ?: return
+      val currentBook = books.mostRecentlyReadBook() ?: return
       LockScreenReadingNotifier.show(
         context = applicationContext,
         bookId = currentBook.id,
@@ -174,8 +175,7 @@ class EInkWallpaperService : WallpaperService() {
       drawPaperGrain(canvas, w, h, fgColor)
 
       val books = container?.library?.books?.value.orEmpty()
-      val currentBook =
-        books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull()
+      val currentBook = books.mostRecentlyReadBook()
       val completedCount = books.count { it.progress >= 0.99f }
       val highlightsCount = container?.annotations?.highlights?.value?.size ?: 0
       val stats = container?.stats?.stats?.value

@@ -24,3 +24,8 @@ data class BookEntry(
   val contentHash: String? = null,
   val updatedAt: Long = 0L,
 )
+
+fun List<BookEntry>.mostRecentlyReadBook(): BookEntry? =
+  filter { it.progress > 0f && it.progress < 0.99f }
+    .maxByOrNull { it.updatedAt }
+    ?: maxByOrNull { it.updatedAt }

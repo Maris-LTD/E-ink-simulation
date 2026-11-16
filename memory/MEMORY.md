@@ -39,8 +39,9 @@
     - `PdfPagerReader`: giữ `SYMBOL_STACK` căn giữa gọn theo tỷ lệ gốc, còn `TABLE` / `ILLUSTRATION` dùng full chiều ngang và mở `PdfReflowImageZoomOverlay` (pinch-to-zoom, pan, double-tap) khi chạm vào.
 
 ## Trạng thái hiện tại
-- `.\gradlew.bat testDebugUnitTest`: pass (`BUILD SUCCESSFUL`), hiện có 12 file unit test:
-  - `ReadingStatsTest`, `BookIndexStoreTest`, `DictionaryServiceTest`, `RefreshFlashControllerTest`, `LockScreenTextChunkerTest`
+- `.\gradlew.bat testDebugUnitTest`: pass (`BUILD SUCCESSFUL`), hiện có 13 file unit test:
+  - `BookEntryTest`, `ReadingStatsTest`, `BookIndexStoreTest`, `DictionaryServiceTest`, `RefreshFlashControllerTest`, `LockScreenTextChunkerTest`
   - `PdfBookConfigStoreTest`, `PdfDocumentClassifierTest`, `PdfGraphicMaskerTest`, `PdfReflowEngineTest`, `PdfReflowPaginatorTest`, `PdfRegionNavigatorTest`, `PdfMarginCropperTest`
 - `.\gradlew.bat installDebug`: cài đặt thành công trên thiết bị `25078PC3EG - 16`.
-- **Git**: Đã commit và push lên `origin/master` (`12d62d5` Adaptive PDF Engine + Pre-Reflow Graphic Masking; `2aa72a9` + bản auto-show Lock-Screen Reading Panel).
+- **Thư viện & Màn hình chính**: `List<BookEntry>.mostRecentlyReadBook()` (ưu tiên sách đang đọc có `updatedAt` mới nhất) được dùng thống nhất cho `LauncherActivity`, `EInkReadingWidgetProvider`, `EInkWallpaperService`, và tab `Đang đọc` trong `LibraryScreen` (sắp xếp theo `updatedAt` giảm dần).
+- **Git**: Đã commit và push lên `origin/master` (`12d62d5` Adaptive PDF Engine + Pre-Reflow Graphic Masking; `2aa72a9` / `64abf5c` Lock-Screen Reading Panel + auto-show; bản fix `mostRecentlyReadBook`).

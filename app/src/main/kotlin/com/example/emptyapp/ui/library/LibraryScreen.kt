@@ -139,6 +139,8 @@ fun LibraryScreen(
             book.title.contains(query, ignoreCase = true) ||
             book.author.contains(query, ignoreCase = true)
         tabMatch && authorMatch && queryMatch
+      }.let { list ->
+        if (selectedTab == LibraryTab.READING) list.sortedByDescending { it.updatedAt } else list
       }
     }
   val authors = remember(books) { books.map { it.author }.filter { it.isNotBlank() }.distinct() }
