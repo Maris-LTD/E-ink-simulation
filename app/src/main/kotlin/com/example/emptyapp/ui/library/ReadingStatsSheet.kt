@@ -370,36 +370,17 @@ private fun SystemEInkModeCard() {
       color = MaterialTheme.colorScheme.secondary,
     )
     OutlinedButton(
-      onClick = { openHomeLauncherSettings(context) },
+      onClick = { com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context) },
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_launcher))
     }
     OutlinedButton(
-      onClick = { openLiveWallpaperPicker(context) },
+      onClick = { com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context) },
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_wallpaper))
     }
-  }
-}
-
-private fun openHomeLauncherSettings(context: Context) {
-  val intent = Intent(Settings.ACTION_HOME_SETTINGS)
-  runCatching { context.startActivity(intent) }
-}
-
-private fun openLiveWallpaperPicker(context: Context) {
-  val direct =
-    Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
-      putExtra(
-        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-        ComponentName(context, EInkWallpaperService::class.java),
-      )
-    }
-  val launched = runCatching { context.startActivity(direct) }.isSuccess
-  if (!launched) {
-    runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) }
   }
 }
 

@@ -299,4 +299,38 @@
     <string name="lockscreen_action_prev">‹ Trước</string>
     <string name="lockscreen_action_next">Sau ›</string>
     <string name="lockscreen_snippet_counter">Đoạn %1$d/%2$d · %3$d%%</string>
+
+    <!-- Action-oriented E-Ink Onboarding -->
+    <string name="onboard_header">Thiết lập E-Ink</string>
+    <string name="onboard_s1_tag">BƯỚC 1 / 4 · HIỂN THỊ</string>
+    <string name="onboard_s1_title">Chọn phong cách giấy E-Ink</string>
+    <string name="onboard_s1_desc">Chạm để xem thử ngay độ tương phản, chất giấy và cảm giác lật trang E-Ink.</string>
+    <string name="onboard_sample_title">Trang đọc thử E-Ink</string>
+    <string name="onboard_sample_body">“Trải nghiệm E-Ink đích thực đến từ độ tương phản sắc nét, nền giấy dịu mắt và không hiệu ứng thừa.”</string>
+    <string name="onboard_tone_contrast">Tương phản cao</string>
+    <string name="onboard_tone_paper">Giấy ấm</string>
+    <string name="onboard_tone_gray">Xám dịu</string>
+    <string name="onboard_toggle_flash">Chớp làm mới E-Ink</string>
+    <string name="onboard_toggle_volume">Lật trang bằng phím âm lượng</string>
+
+    <string name="onboard_s2_tag">BƯỚC 2 / 4 · MÀN HÌNH KHÓA</string>
+    <string name="onboard_s2_title">Đọc ngay trên Màn hình khóa</string>
+    <string name="onboard_s2_desc">Hiện đoạn sách đang đọc ở đáy màn hình khóa cùng nút ‹ › lật đoạn — mở khóa vào máy bình thường.</string>
+    <string name="onboard_btn_wallpaper">Đặt Hình nền khóa E-Ink</string>
+    <string name="onboard_btn_notification">Bật Thông báo điều hướng</string>
+    <string name="onboard_status_enabled">Đã bật ✓</string>
+
+    <string name="onboard_s3_tag">BƯỚC 3 / 4 · MÀN HÌNH CHÍNH</string>
+    <string name="onboard_s3_title">Biến điện thoại thành máy đọc sách</string>
+    <string name="onboard_s3_desc">Tùy chọn: Dùng eInk Launcher cho màn hình chính tối giản đen-trắng và đọc tiếp với 1 chạm.</string>
+    <string name="onboard_btn_launcher">Đặt eInk Launcher làm Home</string>
+    <string name="onboard_status_active">Đang dùng ✓</string>
+    <string name="onboard_later">Để sau</string>
+
+    <string name="onboard_s4_tag">BƯỚC 4 / 4 · SẴN SÀNG</string>
+    <string name="onboard_s4_title">Thêm cuốn sách đầu tiên</string>
+    <string name="onboard_s4_desc">Nhập file EPUB, PDF hoặc CBZ từ bộ nhớ máy hoặc Google Drive.</string>
+    <string name="onboard_btn_import">+ Thêm sách (EPUB / PDF)</string>
+    <string name="onboard_btn_library">Vào Thư viện</string>
+    <string name="onboard_banner_setup">Thiết lập E-Ink: %1$d/2 tính năng màn hình khóa — Bật tiếp ›</string>
 </resources>

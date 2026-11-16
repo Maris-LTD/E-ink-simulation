@@ -28,7 +28,7 @@
   - Bảng màu trắng-đen tương phản cao, không hiệu ứng nháy/chớp màn hình.
   - Font UI `Rubik` + `EInkText`, `EInkTheme`, `CoverBitmapCache`, `PaperGrainOverlay`, `RefreshFlashOverlay` (`RefreshFlashController`).
 - **Thư viện (`ui/library/`)**:
-  - `LibraryScreen` & `LibraryViewModel`: danh sách sách, `BookCover`, `LibraryBookmarks`, `LibraryHighlights`, `ReadingStatsSheet`, `TutorialOverlay` (onboarding tương tác), tab cài đặt E-Ink toàn cục, thẻ liên hệ/phản hồi.
+  - `LibraryScreen` & `LibraryViewModel`: danh sách sách, `BookCover`, `LibraryBookmarks`, `LibraryHighlights`, `ReadingStatsSheet`, `TutorialOverlay` (onboarding 4 bước tương tác: xem thử tông giấy/flash/vân giấy, bật Hình nền khóa E-Ink & Thông báo điều hướng 1 chạm, đặt `eInk Launcher` qua `EInkSystemSetupHelper` kèm đánh dấu `tutorial_seen` ngay khi chọn launcher, nhập sách đầu tiên; có thanh nhắc thiết lập trên `LibraryScreen`), tab cài đặt E-Ink toàn cục, thẻ liên hệ/phản hồi.
 - **Trình đọc (`reader/`, `ui/reader/`)**:
   - **EPUB**: `EpubNavigatorFragment` (Readium), `EInkSettings` / `EInkPreferencesMapper` / `EInkColorFilter`, `FocusModeController`, `ReaderInput` (phím cứng âm lượng), `ReaderSearchSheet`, `DictionaryDialog`, `HighlightNoteDialog`, `ReaderContentsSheet`, `ReaderBars`, `ReaderFooterBar`, `ReaderSettingsPanel`.
   - **Adaptive PDF Engine** (tài liệu thiết kế tại `docs/adaptive-pdf-engine.md`): `PdfPagerReader`, `PdfMarginCropper`, `PdfDocumentClassifier`, `PdfPageAnalyzer`, `PdfDocumentCache` (`schemaVersion = 2`), `PdfGraphicMasker`, `PdfReflowEngine`, `PdfReflowPaginator`, `PdfRegionNavigator`, `PdfBookConfigStore`.
@@ -44,4 +44,4 @@
   - `PdfBookConfigStoreTest`, `PdfDocumentClassifierTest`, `PdfGraphicMaskerTest`, `PdfReflowEngineTest`, `PdfReflowPaginatorTest`, `PdfRegionNavigatorTest`, `PdfMarginCropperTest`
 - `.\gradlew.bat installDebug`: cài đặt thành công trên thiết bị `25078PC3EG - 16`.
 - **Thư viện & Màn hình chính**: `List<BookEntry>.mostRecentlyReadBook()` (ưu tiên sách đang đọc có `updatedAt` mới nhất) được dùng thống nhất cho `LauncherActivity`, `EInkReadingWidgetProvider`, `EInkWallpaperService`, và tab `Đang đọc` trong `LibraryScreen` (sắp xếp theo `updatedAt` giảm dần).
-- **Git**: Đã commit và push lên `origin/master` (`12d62d5` Adaptive PDF Engine + Pre-Reflow Graphic Masking; `2aa72a9` / `64abf5c` Lock-Screen Reading Panel + auto-show; bản fix `mostRecentlyReadBook`).
+- **Git**: Đã commit và push lên `origin/master` (`12d62d5` Adaptive PDF Engine + Pre-Reflow Graphic Masking; `2aa72a9` / `64abf5c` Lock-Screen Reading Panel + auto-show; `3f5c3dc` fix `mostRecentlyReadBook`; bản onboarding tương tác 4 bước).

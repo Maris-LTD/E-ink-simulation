@@ -299,4 +299,38 @@
     <string name="lockscreen_action_prev">‹ Prev</string>
     <string name="lockscreen_action_next">Next ›</string>
     <string name="lockscreen_snippet_counter">Excerpt %1$d/%2$d · %3$d%%</string>
+
+    <!-- Action-oriented E-Ink Onboarding -->
+    <string name="onboard_header">E-Ink Setup</string>
+    <string name="onboard_s1_tag">STEP 1 / 4 · DISPLAY</string>
+    <string name="onboard_s1_title">Pick Your E-Ink Paper Style</string>
+    <string name="onboard_s1_desc">Preview how Inkify transforms your screen into crisp electronic paper.</string>
+    <string name="onboard_sample_title">Sample E-Ink Page</string>
+    <string name="onboard_sample_body">“Real E-Ink comfort comes from high contrast, calm paper tones, and zero distracting animations.”</string>
+    <string name="onboard_tone_contrast">High Contrast</string>
+    <string name="onboard_tone_paper">Warm Paper</string>
+    <string name="onboard_tone_gray">Soft Gray</string>
+    <string name="onboard_toggle_flash">E-Ink Refresh Flash</string>
+    <string name="onboard_toggle_volume">Volume-Key Page Turn</string>
+
+    <string name="onboard_s2_tag">STEP 2 / 4 · LOCK SCREEN</string>
+    <string name="onboard_s2_title">Read Right on the Lock Screen</string>
+    <string name="onboard_s2_desc">Show your current passage at the bottom of the lock screen with ‹ › controls — unlock normally anytime.</string>
+    <string name="onboard_btn_wallpaper">Set E-Ink Lock Wallpaper</string>
+    <string name="onboard_btn_notification">Enable Lock Screen Controls</string>
+    <string name="onboard_status_enabled">Enabled ✓</string>
+
+    <string name="onboard_s3_tag">STEP 3 / 4 · HOME LAUNCHER</string>
+    <string name="onboard_s3_title">Turn Your Phone Into an E-Reader</string>
+    <string name="onboard_s3_desc">Optional: Use eInk Launcher for a calm monochrome home screen with 1-tap resume.</string>
+    <string name="onboard_btn_launcher">Set eInk Launcher as Home</string>
+    <string name="onboard_status_active">Active ✓</string>
+    <string name="onboard_later">Maybe later</string>
+
+    <string name="onboard_s4_tag">STEP 4 / 4 · READY</string>
+    <string name="onboard_s4_title">Add Your First Book</string>
+    <string name="onboard_s4_desc">Import EPUB, PDF, or CBZ files from your device or Google Drive.</string>
+    <string name="onboard_btn_import">+ Import Book (EPUB / PDF)</string>
+    <string name="onboard_btn_library">Go to Library</string>
+    <string name="onboard_banner_setup">E-Ink setup: %1$d/2 lock screen features active — Configure ›</string>
 </resources>

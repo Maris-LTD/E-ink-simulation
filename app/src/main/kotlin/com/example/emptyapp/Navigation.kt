@@ -56,6 +56,8 @@ fun MainNavigation() {
             if (page == 0) {
               LibraryScreen(
                 viewModel = viewModel,
+                settings = settings,
+                onUpdateSettings = container.settings::update,
                 grayscaleCovers = settings.grayscale,
                 onOpenBook = { id, locatorJson ->
                   context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))

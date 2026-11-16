@@ -94,6 +94,8 @@ private enum class LibraryViewMode(val labelRes: Int, val columns: Int) {
 @Composable
 fun LibraryScreen(
   viewModel: LibraryViewModel,
+  settings: com.example.emptyapp.reader.EInkSettings = com.example.emptyapp.reader.EInkSettings(),
+  onUpdateSettings: ((com.example.emptyapp.reader.EInkSettings) -> com.example.emptyapp.reader.EInkSettings) -> Unit = {},
   grayscaleCovers: Boolean = true,
   onOpenBook: (String, String?) -> Unit,
   onOpenStats: () -> Unit,
@@ -101,10 +103,20 @@ fun LibraryScreen(
 ) {
   val context = LocalContext.current
   val tutorialPrefs = remember { context.getSharedPreferences("eink_tutorial_prefs", android.content.Context.MODE_PRIVATE) }
-  var tutorialOpen by remember { mutableStateOf(!tutorialPrefs.getBoolean("tutorial_seen", false)) }
+  var tutorialOpen by remember {
+    mutableStateOf(
+      !tutorialPrefs.getBoolean("tutorial_seen", false) &&
+        !com.example.emptyapp.system.EInkSystemSetupHelper.isInkifyDefaultLauncher(context),
+    )
+  }
+  var tutorialInitialPage by remember { mutableStateOf(0) }
+  var setupBannerDismissed by remember { mutableStateOf(tutorialPrefs.getBoolean("setup_banner_dismissed", false)) }
+  fun markTutorialSeen() {
+    tutorialPrefs.edit().putBoolean("tutorial_seen", true).apply()
+  }
   fun dismissTutorial() {
     tutorialOpen = false
-    tutorialPrefs.edit().putBoolean("tutorial_seen", true).apply()
+    markTutorialSeen()
   }
 
   val books by viewModel.books.collectAsStateWithLifecycle()
@@ -158,9 +170,47 @@ fun LibraryScreen(
   ) { padding ->
     Column(modifier = Modifier.padding(padding).fillMaxSize()) {
       LibraryHeader(
-        onOpenTutorial = { tutorialOpen = true },
+        onOpenTutorial = {
+          tutorialInitialPage = 0
+          tutorialOpen = true
+        },
         onOpenStats = onOpenStats,
       )
+      val wallpaperActive = com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+      val notifActive =
+        com.example.emptyapp.reader.LockScreenReadingNotifier.hasPermission(context) &&
+          settings.lockScreenReader
+      val lockFeaturesCount = (if (wallpaperActive) 1 else 0) + (if (notifActive) 1 else 0)
+      if (!setupBannerDismissed && lockFeaturesCount < 2) {
+        Row(
+          modifier =
+            Modifier.fillMaxWidth()
+              .background(MaterialTheme.colorScheme.surfaceVariant)
+              .clickable {
+                tutorialInitialPage = 1
+                tutorialOpen = true
+              }
+              .padding(horizontal = 16.dp, vertical = 8.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          EInkText(
+            text = stringResource(com.example.emptyapp.R.string.onboard_banner_setup, lockFeaturesCount),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.weight(1f),
+          )
+          EInkText(
+            text = "✕",
+            style = MaterialTheme.typography.labelLarge,
+            modifier =
+              Modifier.clickable {
+                setupBannerDismissed = true
+                tutorialPrefs.edit().putBoolean("setup_banner_dismissed", true).apply()
+              }.padding(start = 12.dp),
+          )
+        }
+        HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+      }
       EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
       if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
         AuthorFilterRow(
@@ -278,7 +328,16 @@ fun LibraryScreen(
       )
     }
     if (tutorialOpen) {
-      TutorialOverlay(onDismiss = ::dismissTutorial)
+      TutorialOverlay(
+        settings = settings,
+        onUpdateSettings = onUpdateSettings,
+        onImportBook = {
+          picker.launch(arrayOf("application/epub+zip", "application/pdf", "application/vnd.comicbook+zip", "application/x-cbz"))
+        },
+        onMarkSeen = ::markTutorialSeen,
+        onDismiss = ::dismissTutorial,
+        initialPage = tutorialInitialPage,
+      )
     }
   }
 }
