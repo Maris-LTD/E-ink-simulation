@@ -30,14 +30,16 @@
   - `LibraryScreen` & `LibraryViewModel`: danh sách sách, `BookCover`, `LibraryBookmarks`, `LibraryHighlights`, `ReadingStatsSheet`, `TutorialOverlay` (onboarding tương tác), tab cài đặt E-Ink toàn cục, thẻ liên hệ/phản hồi.
 - **Trình đọc (`reader/`, `ui/reader/`)**:
   - **EPUB**: `EpubNavigatorFragment` (Readium), `EInkSettings` / `EInkPreferencesMapper` / `EInkColorFilter`, `FocusModeController`, `ReaderInput` (phím cứng âm lượng), `ReaderSearchSheet`, `DictionaryDialog`, `HighlightNoteDialog`, `ReaderContentsSheet`, `ReaderBars`, `ReaderFooterBar`, `ReaderSettingsPanel`.
-  - **Adaptive PDF Engine** (tài liệu thiết kế tại `docs/adaptive-pdf-engine.md`): `PdfPagerReader`, `PdfMarginCropper`, `PdfDocumentClassifier`, `PdfPageAnalyzer`, `PdfDocumentCache`, `PdfReflowEngine`, `PdfReflowPaginator`, `PdfRegionNavigator`, `PdfBookConfigStore`.
-  - **Quyết định thiết kế Pre-Reflow Graphic Masking (2026-11-16)**:
-    - Chèn bước `PdfGraphicMasker` chạy *trước* `mergeLinesIntoParagraphs()` trong `PdfReflowEngine` để khoanh vùng bảng biểu (3 lớp: Vector Lines, Filled Rects kiểu Zebra-striped, Text Grid Alignment không viền) và ký hiệu xếp tầng (`SYMBOL_STACK`: chiều rộng hẹp `< 25%`, mật độ ký tự đặc biệt cao, >= 3 dòng cách đều theo $Y$).
-    - Lọc bỏ text nằm trong vùng mask và giữ nguyên `PdfRect` chuẩn hóa `0f..1f` để crop bitmap từ `PdfRenderer` trên RAM (không xuất PNG ra đĩa, không dùng HTML/WebView — render trực tiếp qua `ReflowItem` trong Compose để đồng bộ `EInkTheme` và tránh chớp màn hình E-Ink).
-    - Với trang >= 2 cột trong Reflow: tránh trộn xen kẽ cột trái/phải khi sort theo $Y$ (phân cụm theo cột hoặc fallback Chế độ 2).
+  - **Adaptive PDF Engine** (tài liệu thiết kế tại `docs/adaptive-pdf-engine.md`): `PdfPagerReader`, `PdfMarginCropper`, `PdfDocumentClassifier`, `PdfPageAnalyzer`, `PdfDocumentCache` (`schemaVersion = 2`), `PdfGraphicMasker`, `PdfReflowEngine`, `PdfReflowPaginator`, `PdfRegionNavigator`, `PdfBookConfigStore`.
+  - **Pre-Reflow Graphic Masking (đã triển khai 2026-11-16)**:
+    - `PdfPageAnalyzer`: trích xuất `vectorSegments` và `filledRects` qua CTM (gồm cả đường viền mảnh vẽ bằng `fillPath`), tách cột `TextPosition` theo khoảng nhảy tọa độ `X` trong `writeString`.
+    - `PdfGraphicMasker`: chạy *trước* `mergeLinesIntoParagraphs()` trong `PdfReflowEngine` để khoanh vùng bảng biểu (3 lớp: Vector Lines, Filled Rects kiểu Zebra-striped, Text Grid Alignment hỗ trợ hàng thưa) và ký hiệu xếp tầng (`SYMBOL_STACK`: chiều rộng hẹp `< 25%`, mật độ ký tự đặc biệt cao, >= 3 dòng cách đều theo $Y$).
+    - `PdfReflowEngine` & `PdfReflowPaginator`: lọc bỏ text trong vùng mask, xuất `ReflowItem.Image` kèm `ReflowImageKind` (`ILLUSTRATION`, `TABLE`, `SYMBOL_STACK`), sắp xếp theo cột khi `columnCount >= 2`.
+    - `PdfPagerReader`: giữ `SYMBOL_STACK` căn giữa gọn theo tỷ lệ gốc, còn `TABLE` / `ILLUSTRATION` dùng full chiều ngang và mở `PdfReflowImageZoomOverlay` (pinch-to-zoom, pan, double-tap) khi chạm vào.
 
 ## Trạng thái hiện tại
-- `.\gradlew.bat testDebugUnitTest`: pass (`BUILD SUCCESSFUL`), hiện có 10 file unit test:
+- `.\gradlew.bat testDebugUnitTest`: pass (`BUILD SUCCESSFUL`), hiện có 11 file unit test:
   - `ReadingStatsTest`, `BookIndexStoreTest`, `DictionaryServiceTest`, `RefreshFlashControllerTest`
-  - `PdfBookConfigStoreTest`, `PdfDocumentClassifierTest`, `PdfReflowEngineTest`, `PdfReflowPaginatorTest`, `PdfRegionNavigatorTest`, `PdfMarginCropperTest`
-- Working tree hiện đang có phần **Adaptive PDF Engine** chưa commit (`reader/pdf/`, `PdfMarginCropper.kt`, cập nhật `ReaderScreen.kt`, `ReaderViewModel.kt`, `ReaderSettingsPanel.kt`, `ReaderBars.kt`, `docs/adaptive-pdf-engine.md`, v.v.).
+  - `PdfBookConfigStoreTest`, `PdfDocumentClassifierTest`, `PdfGraphicMaskerTest`, `PdfReflowEngineTest`, `PdfReflowPaginatorTest`, `PdfRegionNavigatorTest`, `PdfMarginCropperTest`
+- `.\gradlew.bat installDebug`: cài đặt thành công trên thiết bị `25078PC3EG - 16`.
+- **Git**: Đã commit và push **Adaptive PDF Engine + Pre-Reflow Graphic Masking** lên `origin/master` (`12d62d5`).

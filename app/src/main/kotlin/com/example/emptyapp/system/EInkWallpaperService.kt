@@ -14,6 +14,9 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.view.SurfaceHolder
 import androidx.core.content.res.ResourcesCompat
 import com.example.emptyapp.EmptyApplication
@@ -68,7 +71,8 @@ class EInkWallpaperService : WallpaperService() {
             container.library.books,
             container.stats.stats,
             container.annotations.highlights,
-          ) { _, _, _, _ -> Unit }.collect {
+            container.lockScreenReading.state,
+          ) { _, _, _, _, _ -> Unit }.collect {
             if (visible) drawFrame()
           }
         }
@@ -193,8 +197,27 @@ class EInkWallpaperService : WallpaperService() {
           style = Paint.Style.FILL
         }
 
-      // Daily goal bar
+      // Lock-screen reading excerpt panel pushed to the bottom to stay clear of notifications
+      val lockState = container?.lockScreenReading?.state?.value
       val padX = w * 0.09f
+      val hasLockExcerpt = settings?.lockScreenReader == true && lockState != null && lockState.currentSnippet.isNotBlank()
+      if (hasLockExcerpt) {
+        drawReadingExcerptPanel(
+          canvas = canvas,
+          w = w,
+          top = h * 0.61f,
+          bottom = h * 0.895f,
+          padX = padX,
+          fgColor = fgColor,
+          baseTypeface = baseTypeface,
+          borderPaint = borderPaint,
+          lockState = lockState,
+          localized = localized,
+        )
+        return
+      }
+
+      // Daily goal bar
       val goalTop = h * 0.635f
       val goalBarH = w * 0.022f
       val leftPaint =
@@ -345,6 +368,79 @@ class EInkWallpaperService : WallpaperService() {
         end -= 1
       }
       return text.substring(0, end) + "…"
+    }
+
+    private fun drawReadingExcerptPanel(
+      canvas: Canvas,
+      w: Float,
+      top: Float,
+      bottom: Float,
+      padX: Float,
+      fgColor: Int,
+      baseTypeface: Typeface,
+      borderPaint: Paint,
+      lockState: com.example.emptyapp.reader.LockScreenReadingState,
+      localized: Context,
+    ) {
+      val right = w - padX
+      val innerPad = w * 0.04f
+      canvas.drawRect(padX, top, right, bottom, borderPaint)
+
+      val headerPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = fgColor
+          textSize = w * 0.032f
+          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
+          textAlign = Paint.Align.LEFT
+        }
+      val counterPaint =
+        Paint(headerPaint).apply {
+          alpha = 180
+          textAlign = Paint.Align.RIGHT
+        }
+
+      val pct = (lockState.progress.coerceIn(0f, 1f) * 100).toInt()
+      val counterText =
+        if (lockState.snippets.isNotEmpty()) {
+          localized.getString(
+            R.string.lockscreen_snippet_counter,
+            lockState.currentSnippetIndex + 1,
+            lockState.snippets.size,
+            pct,
+          )
+        } else {
+          "$pct%"
+        }
+      val counterW = counterPaint.measureText(counterText)
+      val titleMaxW = ((right - innerPad) - (padX + innerPad) - counterW - w * 0.03f).coerceAtLeast(40f)
+      val headerY = top + innerPad + w * 0.03f
+      canvas.drawText(ellipsize(lockState.title, headerPaint, titleMaxW), padX + innerPad, headerY, headerPaint)
+      canvas.drawText(counterText, right - innerPad, headerY, counterPaint)
+
+      val dividerY = headerY + w * 0.022f
+      canvas.drawLine(padX + innerPad, dividerY, right - innerPad, dividerY, borderPaint)
+
+      val bodyTop = dividerY + w * 0.025f
+      val bodyMaxH = (bottom - innerPad - bodyTop).coerceAtLeast(20f)
+      val bodyWidth = ((right - innerPad) - (padX + innerPad)).toInt().coerceAtLeast(40)
+      val bodyPaint =
+        TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = fgColor
+          textSize = w * 0.037f
+          typeface = Typeface.SERIF
+        }
+      val layout =
+        StaticLayout.Builder
+          .obtain(lockState.currentSnippet, 0, lockState.currentSnippet.length, bodyPaint, bodyWidth)
+          .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+          .setLineSpacing(0f, 1.25f)
+          .build()
+
+      canvas.save()
+      canvas.clipRect(padX + innerPad, bodyTop, right - innerPad, bodyTop + bodyMaxH)
+      canvas.translate(padX + innerPad, bodyTop)
+      layout.draw(canvas)
+      canvas.restore()
     }
 
     private fun readBatteryPercent(context: Context): Int {

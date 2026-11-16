@@ -147,6 +147,8 @@ class ReaderViewModel(
     }
   }
 
+  fun currentLocatorSnapshot(): Locator? = currentLocator
+
   fun onLocatorChanged(locator: Locator) {
     notifyUserInteraction()
     currentLocator = locator

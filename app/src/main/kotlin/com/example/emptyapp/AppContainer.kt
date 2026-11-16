@@ -7,6 +7,7 @@ import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.data.sync.GoogleDriveSyncManager
 import com.example.emptyapp.reader.EInkSettingsStore
+import com.example.emptyapp.reader.LockScreenReadingStore
 import com.example.emptyapp.reader.ReadiumEngine
 import com.example.emptyapp.reader.pdf.PdfBookConfigStore
 
@@ -19,4 +20,5 @@ class AppContainer(context: Context) {
   val dictionary = DictionaryService(context)
   val stats = ReadingStatsRepository(context)
   val sync = GoogleDriveSyncManager(context, library, annotations, stats)
+  val lockScreenReading = LockScreenReadingStore(context)
 }

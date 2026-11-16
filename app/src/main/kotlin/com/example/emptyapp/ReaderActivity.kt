@@ -40,8 +40,19 @@ import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.reader.FocusModeController
 import com.example.emptyapp.reader.LockScreenReadingNotifier
+import com.example.emptyapp.reader.LockScreenReadingState
+import com.example.emptyapp.reader.LockScreenTextChunker
 import com.example.emptyapp.reader.OrientationLock
+import com.example.emptyapp.reader.pdf.PdfDocumentCache
+import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
+import com.example.emptyapp.reader.pdf.PdfReflowEngine
+import com.example.emptyapp.reader.pdf.ReflowItem
+import com.example.emptyapp.reader.pdf.ReflowPageResult
 import com.example.emptyapp.system.EInkReadingWidgetProvider
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.reader.PdfPagerController
 import com.example.emptyapp.ui.reader.ReaderScreen
@@ -120,7 +131,7 @@ class ReaderActivity : FragmentActivity() {
           }
       }
       LaunchedEffect(settings.lockScreenReader) {
-        applyLockScreenMode(settings.lockScreenReader)
+        applyLockScreenMode(false)
         if (settings.lockScreenReader) {
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !LockScreenReadingNotifier.hasPermission(this@ReaderActivity)) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -154,12 +165,89 @@ class ReaderActivity : FragmentActivity() {
   private fun postLockScreenNotification() {
     if (!viewModel.settings.value.lockScreenReader) return
     val ready = viewModel.state.value as? ReaderUiState.Ready ?: return
-    LockScreenReadingNotifier.show(
-      context = this,
-      bookId = ready.book.id,
-      title = ready.book.title,
-      progress = viewModel.progress.value,
-    )
+    val container = (application as EmptyApplication).container
+    val coverPath = container.library.coverFileOf(ready.book)?.absolutePath
+    val progress = viewModel.progress.value
+    val locator = viewModel.currentLocatorSnapshot() ?: ready.initialLocator
+
+    lifecycleScope.launch {
+      val (snippets, startIdx) =
+        withContext(Dispatchers.IO) {
+          extractLockScreenSnippets(ready, locator, progress)
+        }
+      val lockState =
+        LockScreenReadingState(
+          bookId = ready.book.id,
+          title = ready.book.title,
+          author = ready.book.author,
+          snippets = snippets,
+          currentSnippetIndex = startIdx,
+          progress = progress,
+        )
+      container.lockScreenReading.updateSession(lockState)
+      LockScreenReadingNotifier.show(
+        context = this@ReaderActivity,
+        bookId = ready.book.id,
+        title = ready.book.title,
+        progress = progress,
+        author = ready.book.author,
+        coverPath = coverPath,
+        snippet = lockState.currentSnippet,
+        snippetIndex = lockState.currentSnippetIndex,
+        snippetCount = lockState.snippets.size,
+      )
+    }
+  }
+
+  private suspend fun extractLockScreenSnippets(
+    ready: ReaderUiState.Ready,
+    locator: org.readium.r2.shared.publication.Locator?,
+    progress: Float,
+  ): Pair<List<String>, Int> {
+    if (ready.book.format == BookFormat.PDF) {
+      val totalPages = ready.positions.size.coerceAtLeast(1)
+      val pageIdx =
+        (locator?.locations?.position?.minus(1) ?: (progress * (totalPages - 1)).toInt())
+          .coerceIn(0, totalPages - 1)
+      val cached = PdfDocumentCache(File(filesDir, "pdf_cache")).load(ready.file)
+      val analyses =
+        if (cached != null && pageIdx in cached.indices) {
+          listOfNotNull(cached.getOrNull(pageIdx), cached.getOrNull(pageIdx + 1))
+        } else {
+          PdfPageAnalyzer.analyzePages(ready.file, listOf(pageIdx, pageIdx + 1))
+        }
+      val current = analyses.firstOrNull { it.pageIndex == pageIdx } ?: return emptyList<String>() to 0
+      val neighbors = analyses.filter { it.pageIndex != pageIdx }
+      val reflowed = PdfReflowEngine.buildReflowPage(current, neighbors) as? ReflowPageResult.Reflowed
+        ?: return emptyList<String>() to 0
+      val bodyText =
+        reflowed.items
+          .filterIsInstance<ReflowItem.Paragraph>()
+          .joinToString("\n\n") { it.text }
+      val snippets = LockScreenTextChunker.chunkText(bodyText, maxCharsPerSnippet = 260)
+      return snippets to 0
+    } else {
+      val targetHref = locator?.href ?: ready.publication.readingOrder.firstOrNull()?.url() ?: return emptyList<String>() to 0
+      val link =
+        ready.publication.readingOrder.firstOrNull { it.url() == targetHref }
+          ?: ready.publication.readingOrder.firstOrNull()
+          ?: return emptyList<String>() to 0
+      val html =
+        runCatching<String?> {
+          val res = ready.publication.get(link) ?: return@runCatching null
+          try {
+            res.read().getOrNull()?.decodeToString()
+          } finally {
+            res.close()
+          }
+        }.getOrNull().orEmpty()
+      if (html.isBlank()) return emptyList<String>() to 0
+      val plain = LockScreenTextChunker.stripHtmlToPlainText(html)
+      val snippets = LockScreenTextChunker.chunkText(plain, maxCharsPerSnippet = 260)
+      val chapterProg = (locator?.locations?.progression ?: 0.0).toFloat()
+      val idx = LockScreenTextChunker.estimateInitialSnippetIndex(snippets, chapterProg)
+      return snippets to idx
+    }
   }
 
   override fun onResume() {
