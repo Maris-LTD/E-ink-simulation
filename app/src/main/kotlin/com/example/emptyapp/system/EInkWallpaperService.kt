@@ -1,5 +1,6 @@
 package com.example.emptyapp.system
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -22,6 +23,7 @@ import androidx.core.content.res.ResourcesCompat
 import com.example.emptyapp.EmptyApplication
 import com.example.emptyapp.R
 import com.example.emptyapp.data.stats.ReadingGamification
+import com.example.emptyapp.reader.LockScreenReadingNotifier
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -82,8 +84,47 @@ class EInkWallpaperService : WallpaperService() {
       this.visible = visible
       handler.removeCallbacks(drawTask)
       if (visible) {
+        ensureLockScreenNotificationOnLock()
         handler.post(drawTask)
       }
+    }
+
+    private fun ensureLockScreenNotificationOnLock() {
+      val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager ?: return
+      if (!keyguard.isKeyguardLocked) return
+      val container = (applicationContext as? EmptyApplication)?.container ?: return
+      if (!container.settings.settings.value.lockScreenReader) return
+
+      val lockState = container.lockScreenReading.state.value
+      if (lockState != null && lockState.snippets.isNotEmpty()) {
+        val coverPath =
+          container.library.books.value
+            .firstOrNull { it.id == lockState.bookId }
+            ?.let { container.library.coverFileOf(it)?.absolutePath }
+        LockScreenReadingNotifier.show(
+          context = applicationContext,
+          bookId = lockState.bookId,
+          title = lockState.title,
+          progress = lockState.progress,
+          author = lockState.author,
+          coverPath = coverPath,
+          snippet = lockState.currentSnippet,
+          snippetIndex = lockState.currentSnippetIndex,
+          snippetCount = lockState.snippets.size,
+        )
+        return
+      }
+
+      val books = container.library.books.value
+      val currentBook = books.firstOrNull { it.progress > 0f && it.progress < 0.99f } ?: books.firstOrNull() ?: return
+      LockScreenReadingNotifier.show(
+        context = applicationContext,
+        bookId = currentBook.id,
+        title = currentBook.title,
+        progress = currentBook.progress,
+        author = currentBook.author,
+        coverPath = container.library.coverFileOf(currentBook)?.absolutePath,
+      )
     }
 
     override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {

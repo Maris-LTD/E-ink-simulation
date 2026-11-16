@@ -22,7 +22,8 @@
   - `sync`: `GoogleDriveSyncManager`
 - **Điều hướng & Tích hợp hệ thống**:
   - `MainActivity` -> `Navigation.kt` / `NavigationKeys.kt` (Navigation 3) -> `LibraryScreen`, mở `ReaderActivity`.
-  - `LauncherActivity`, `EInkReadingWidgetProvider`, `EInkWallpaperService`, `LockScreenReadingNotifier`.
+  - `LauncherActivity`, `EInkReadingWidgetProvider`, `EInkWallpaperService`, `LockScreenReadingNotifier`, `LockScreenReadingStore`, `LockScreenNavReceiver`.
+    - **Đọc trên màn hình khóa (đã cập nhật 2026-11-16)**: Bỏ `setShowWhenLocked(true)` (không còn overlay đè lên màn hình khóa), thay bằng kết hợp **Live Wallpaper** (`EInkWallpaperService` vẽ khung đọc văn bản ở vùng đáy `h * 0.61f .. h * 0.895f`) + **Custom Compact Notification `52dp`** (`notification_lockscreen_nav.xml`, nút `[‹]` / `[›]` qua `LockScreenNavReceiver`), tự động hiển thị khi bật sáng màn hình khóa qua `KeyguardManager.isKeyguardLocked` ngay cả khi chưa mở app.
 - **Giao diện E-Ink (`ui/eink/`)**:
   - Bảng màu trắng-đen tương phản cao, không hiệu ứng nháy/chớp màn hình.
   - Font UI `Rubik` + `EInkText`, `EInkTheme`, `CoverBitmapCache`, `PaperGrainOverlay`, `RefreshFlashOverlay` (`RefreshFlashController`).
@@ -38,8 +39,8 @@
     - `PdfPagerReader`: giữ `SYMBOL_STACK` căn giữa gọn theo tỷ lệ gốc, còn `TABLE` / `ILLUSTRATION` dùng full chiều ngang và mở `PdfReflowImageZoomOverlay` (pinch-to-zoom, pan, double-tap) khi chạm vào.
 
 ## Trạng thái hiện tại
-- `.\gradlew.bat testDebugUnitTest`: pass (`BUILD SUCCESSFUL`), hiện có 11 file unit test:
-  - `ReadingStatsTest`, `BookIndexStoreTest`, `DictionaryServiceTest`, `RefreshFlashControllerTest`
+- `.\gradlew.bat testDebugUnitTest`: pass (`BUILD SUCCESSFUL`), hiện có 12 file unit test:
+  - `ReadingStatsTest`, `BookIndexStoreTest`, `DictionaryServiceTest`, `RefreshFlashControllerTest`, `LockScreenTextChunkerTest`
   - `PdfBookConfigStoreTest`, `PdfDocumentClassifierTest`, `PdfGraphicMaskerTest`, `PdfReflowEngineTest`, `PdfReflowPaginatorTest`, `PdfRegionNavigatorTest`, `PdfMarginCropperTest`
 - `.\gradlew.bat installDebug`: cài đặt thành công trên thiết bị `25078PC3EG - 16`.
-- **Git**: Đã commit và push **Adaptive PDF Engine + Pre-Reflow Graphic Masking** lên `origin/master` (`12d62d5`).
+- **Git**: Đã commit và push lên `origin/master` (`12d62d5` Adaptive PDF Engine + Pre-Reflow Graphic Masking; `2aa72a9` + bản auto-show Lock-Screen Reading Panel).
