@@ -9,7 +9,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -97,14 +101,17 @@ fun ReaderScreen(
   val pagesSinceFlash by viewModel.pagesSinceFlash.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+  val isBookmarked by viewModel.isCurrentPageBookmarked.collectAsStateWithLifecycle()
   val dictionaryState by viewModel.dictionaryState.collectAsStateWithLifecycle()
   val searchState by viewModel.searchState.collectAsStateWithLifecycle()
   val context = LocalContext.current
+  val density = LocalDensity.current
 
   var chromeVisible by remember { mutableStateOf(false) }
   var settingsOpen by remember { mutableStateOf(false) }
   var contentsOpen by remember { mutableStateOf(false) }
   var searchOpen by remember { mutableStateOf(false) }
+  var bottomBarHeightPx by remember { mutableStateOf(0) }
   var navigator by remember { mutableStateOf<NavigatorFragment?>(null) }
   var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
   var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -214,7 +221,11 @@ fun ReaderScreen(
           onUpdate = { fragment -> if (navigator == null) navigator = fragment },
         )
     }
-    RefreshFlashOverlay(ghostBitmap = activeGhost, ghostAlpha = ghostAlpha)
+    RefreshFlashOverlay(
+      ghostBitmap = activeGhost,
+      ghostAlpha = ghostAlpha,
+      flashTrigger = flashTrigger,
+    )
     if (settings.paperGrain) PaperGrainOverlay()
     if (!chromeVisible && settings.readerFooter && !settings.focusMode) {
       ReaderFooterBar(
@@ -222,6 +233,18 @@ fun ReaderScreen(
         progress = progress,
         inkColor = Color(settings.tone.text),
         modifier = Modifier.align(Alignment.BottomCenter),
+      )
+    }
+    if (settingsOpen) {
+      Box(
+        modifier =
+          Modifier.fillMaxSize()
+            .clickable(
+              indication = null,
+              interactionSource = remember { MutableInteractionSource() },
+            ) {
+              settingsOpen = false
+            },
       )
     }
     if (chromeVisible) {
@@ -241,6 +264,7 @@ fun ReaderScreen(
           bookFormat == BookFormat.EPUB ||
             (bookFormat == BookFormat.PDF && effectivePdfMode == PdfReadingMode.HYBRID_REFLOW),
         showSearch = bookFormat != BookFormat.CBZ,
+        isBookmarked = isBookmarked,
         pdfModeLabel = pdfModeLabel,
         onTogglePdfMode =
           if (bookFormat == BookFormat.PDF) {
@@ -269,8 +293,14 @@ fun ReaderScreen(
         onOpenSearch = { searchOpen = true; contentsOpen = false; settingsOpen = false },
         onOpenContents = { contentsOpen = true; searchOpen = false; settingsOpen = false },
         onBookmark = {
-          viewModel.addBookmark()
-          scope.launch { snackbarHostState.showSnackbar(context.getString(com.example.emptyapp.R.string.reader_bookmark_saved)) }
+          val saved = viewModel.toggleBookmark()
+          val msgRes =
+            if (saved) com.example.emptyapp.R.string.reader_bookmark_saved
+            else com.example.emptyapp.R.string.reader_bookmark_removed
+          scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(context.getString(msgRes), duration = SnackbarDuration.Short)
+          }
         },
         onDecreaseFont = {
           viewModel.updateSettings { it.copy(fontScale = (it.fontScale - 0.1).coerceAtLeast(0.7)) }
@@ -332,10 +362,14 @@ fun ReaderScreen(
           }
         },
         onToggleSettings = { settingsOpen = !settingsOpen },
-        modifier = Modifier.align(Alignment.BottomCenter),
+        modifier =
+          Modifier.align(Alignment.BottomCenter)
+            .onSizeChanged { bottomBarHeightPx = it.height },
       )
     }
     if (settingsOpen) {
+      val bottomOffsetDp =
+        if (bottomBarHeightPx > 0) with(density) { bottomBarHeightPx.toDp() } else 148.dp
       ReaderSettingsPanel(
         settings = settings,
         isReflowable =
@@ -348,8 +382,7 @@ fun ReaderScreen(
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
-            .navigationBarsPadding()
-            .padding(bottom = 156.dp)
+            .padding(bottom = bottomOffsetDp)
             .fillMaxHeight(0.6f)
             .background(MaterialTheme.colorScheme.background),
       )
@@ -379,8 +412,40 @@ fun ReaderScreen(
           contentsOpen = false
           chromeVisible = false
         },
-        onRemoveBookmark = viewModel::removeBookmark,
-        onRemoveHighlight = viewModel::removeHighlight,
+        onRemoveBookmark = { id ->
+          val removed = bookmarks.firstOrNull { it.id == id }
+          viewModel.removeBookmark(id)
+          if (removed != null) {
+            scope.launch {
+              val res =
+                snackbarHostState.showSnackbar(
+                  message = context.getString(com.example.emptyapp.R.string.lib_bookmark_deleted),
+                  actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                  duration = SnackbarDuration.Short,
+                )
+              if (res == SnackbarResult.ActionPerformed) {
+                viewModel.restoreBookmark(removed)
+              }
+            }
+          }
+        },
+        onRemoveHighlight = { id ->
+          val removed = highlights.firstOrNull { it.id == id }
+          viewModel.removeHighlight(id)
+          if (removed != null) {
+            scope.launch {
+              val res =
+                snackbarHostState.showSnackbar(
+                  message = context.getString(com.example.emptyapp.R.string.lib_highlight_deleted),
+                  actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                  duration = SnackbarDuration.Short,
+                )
+              if (res == SnackbarResult.ActionPerformed) {
+                viewModel.restoreHighlight(removed)
+              }
+            }
+          }
+        },
         onDismiss = { contentsOpen = false },
       )
     }
@@ -424,29 +489,42 @@ fun ReaderScreen(
         onDismiss = viewModel::dismissDictionary,
       )
     }
-    Box(
-      modifier =
-        Modifier.align(Alignment.CenterStart)
-          .fillMaxHeight()
-          .width(28.dp)
-          .onSizeChanged { edgeStripHeightPx = it.height.coerceAtLeast(1).toFloat() }
-          .pointerInput(Unit) {
-            var dragBrightness = 0.5f
-            detectVerticalDragGestures(
-              onDragStart = {
-                dragBrightness = if (latestBrightness < 0f) 0.5f else latestBrightness
-                brightnessHudVisible = true
-              },
-              onVerticalDrag = { change, dragAmount ->
-                change.consume()
-                val delta = -dragAmount / (edgeStripHeightPx * 0.65f)
-                dragBrightness = (dragBrightness + delta).coerceIn(0.02f, 1f)
-                viewModel.updateSettings { it.copy(brightness = dragBrightness) }
-                brightnessHudVisible = true
-              },
-            )
-          }
-    )
+    if (!chromeVisible && !searchOpen && !contentsOpen && !settingsOpen && pendingNoteLocator == null && dictionaryState == null) {
+      Box(
+        modifier =
+          Modifier.align(Alignment.CenterStart)
+            .fillMaxHeight()
+            .width(24.dp)
+            .onSizeChanged { edgeStripHeightPx = it.height.coerceAtLeast(1).toFloat() }
+            .pointerInput(bookFormat, navigator, pdfController) {
+              detectTapGestures(
+                onTap = {
+                  if (bookFormat == BookFormat.PDF) {
+                    pdfController.goBackward()
+                  } else {
+                    (navigator as? OverflowableNavigator)?.goBackward(animated = false)
+                  }
+                },
+              )
+            }
+            .pointerInput(Unit) {
+              var dragBrightness = 0.5f
+              detectVerticalDragGestures(
+                onDragStart = {
+                  dragBrightness = if (latestBrightness < 0f) 0.5f else latestBrightness
+                  brightnessHudVisible = true
+                },
+                onVerticalDrag = { change, dragAmount ->
+                  change.consume()
+                  val delta = -dragAmount / (edgeStripHeightPx * 0.65f)
+                  dragBrightness = (dragBrightness + delta).coerceIn(0.02f, 1f)
+                  viewModel.updateSettings { it.copy(brightness = dragBrightness) }
+                  brightnessHudVisible = true
+                },
+              )
+            }
+      )
+    }
     if (brightnessHudVisible) {
       val pct = (settings.brightness.coerceIn(0.02f, 1f) * 100).roundToInt()
       Box(

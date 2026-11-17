@@ -44,4 +44,18 @@ class RefreshFlashControllerTest {
     val controller = RefreshFlashController()
     assertTrue(controller.onPageTurn(every3.copy(flashEveryPages = 0)))
   }
+
+  @Test
+  fun ghostingTracksPagesEvenWhenFlashDisabled() {
+    val controller = RefreshFlashController()
+    val ghostOnly = EInkSettings(flashEnabled = false, ghosting = true, flashEveryPages = 3)
+    val s1 = controller.onPageTurnStep(ghostOnly)
+    val s2 = controller.onPageTurnStep(ghostOnly)
+    val s3 = controller.onPageTurnStep(ghostOnly)
+    assertFalse(s1.fullRefresh)
+    assertEquals(1, s1.pagesSinceFlash)
+    assertEquals(2, s2.pagesSinceFlash)
+    assertFalse(s3.fullRefresh)
+    assertEquals(0, s3.pagesSinceFlash)
+  }
 }

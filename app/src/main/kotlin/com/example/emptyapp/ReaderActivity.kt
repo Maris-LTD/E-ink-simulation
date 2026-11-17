@@ -183,6 +183,7 @@ class ReaderActivity : FragmentActivity() {
           snippets = snippets,
           currentSnippetIndex = startIdx,
           progress = progress,
+          locatorJson = locator?.toJSON()?.toString(),
         )
       container.lockScreenReading.updateSession(lockState)
       LockScreenReadingNotifier.show(
@@ -195,6 +196,7 @@ class ReaderActivity : FragmentActivity() {
         snippet = lockState.currentSnippet,
         snippetIndex = lockState.currentSnippetIndex,
         snippetCount = lockState.snippets.size,
+        locatorJson = lockState.locatorJson,
       )
     }
   }
@@ -417,7 +419,7 @@ class ReaderActivity : FragmentActivity() {
   private fun selectionCallback(): ActionMode.Callback =
     object : ActionMode.Callback {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-        menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, "Highlight")
+        menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, getString(R.string.reader_menu_highlight))
         menu.add(Menu.NONE, MENU_NOTE, 1, getString(R.string.reader_menu_note))
         menu.add(Menu.NONE, MENU_LOOKUP, 2, getString(R.string.reader_menu_lookup))
         return true

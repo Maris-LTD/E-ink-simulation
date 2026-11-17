@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.example.emptyapp.EmptyApplication
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class LockScreenNavReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
@@ -15,6 +18,12 @@ class LockScreenNavReceiver : BroadcastReceiver() {
       }
     val app = context.applicationContext as? EmptyApplication ?: return
     val updated = app.container.lockScreenReading.stepSnippet(delta) ?: return
+    val updatedLoc = updated.locatorJson
+    if (updatedLoc != null) {
+      CoroutineScope(Dispatchers.IO).launch {
+        app.container.library.saveProgress(updated.bookId, updatedLoc, updated.progress)
+      }
+    }
     val coverPath =
       app.container.library.books.value
         .firstOrNull { it.id == updated.bookId }
@@ -29,6 +38,7 @@ class LockScreenNavReceiver : BroadcastReceiver() {
       snippet = updated.currentSnippet,
       snippetIndex = updated.currentSnippetIndex,
       snippetCount = updated.snippets.size,
+      locatorJson = updated.locatorJson,
     )
   }
 

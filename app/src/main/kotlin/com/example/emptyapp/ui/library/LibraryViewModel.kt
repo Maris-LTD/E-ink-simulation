@@ -56,15 +56,31 @@ class LibraryViewModel(
   }
 
   fun remove(id: String) {
-    viewModelScope.launch { repository.remove(id) }
+    viewModelScope.launch {
+      repository.remove(id)
+      annotations.removeAllForBook(id)
+      val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
+      if (app?.container?.lockScreenReading?.state?.value?.bookId == id) {
+        app.container.lockScreenReading.clear()
+        com.example.emptyapp.reader.LockScreenReadingNotifier.cancel(app)
+      }
+    }
   }
 
   fun removeHighlight(id: String) {
     viewModelScope.launch { annotations.removeHighlight(id) }
   }
 
+  fun restoreHighlight(entry: HighlightEntry) {
+    viewModelScope.launch { annotations.restoreHighlight(entry) }
+  }
+
   fun removeBookmark(id: String) {
     viewModelScope.launch { annotations.removeBookmark(id) }
+  }
+
+  fun restoreBookmark(entry: BookmarkEntry) {
+    viewModelScope.launch { annotations.restoreBookmark(entry) }
   }
 
   fun setDailyGoalMinutes(minutes: Int) {

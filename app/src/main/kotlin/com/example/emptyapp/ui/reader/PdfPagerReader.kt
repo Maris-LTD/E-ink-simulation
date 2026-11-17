@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -462,6 +463,7 @@ fun PdfPagerReader(
       }
 
       zoomedImageElement?.let { zoomed ->
+        BackHandler { zoomedImageElement = null }
         PdfReflowImageZoomOverlay(
           element = zoomed,
           holder = holder,
@@ -480,9 +482,14 @@ fun PdfPagerReader(
         )
       val scope = rememberCoroutineScope()
       var isZoomed by remember { mutableStateOf(false) }
+      var resetActivePageZoom by remember { mutableStateOf<(() -> Unit)?>(null) }
       var activePageRegionPrev by remember { mutableStateOf<(() -> Boolean)?>(null) }
       var activePageRegionNext by remember { mutableStateOf<(() -> Boolean)?>(null) }
       var pendingBackwardLandingPage by remember { mutableStateOf<Int?>(null) }
+
+      BackHandler(enabled = isZoomed) {
+        resetActivePageZoom?.invoke()
+      }
 
       DisposableEffect(controller, pagerState, pageCount) {
         controller.onPrev = {
@@ -528,7 +535,7 @@ fun PdfPagerReader(
       HorizontalPager(
         state = pagerState,
         beyondViewportPageCount = 1,
-        userScrollEnabled = !isZoomed,
+        userScrollEnabled = !isZoomed && readingMode != PdfReadingMode.GUIDED_COLUMN,
         flingBehavior =
           PagerDefaults.flingBehavior(
             state = pagerState,
@@ -599,6 +606,15 @@ fun PdfPagerReader(
         LaunchedEffect(scale, pagerState.currentPage, pageIndex, readingMode) {
           if (pagerState.currentPage == pageIndex) {
             isZoomed = readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f
+            resetActivePageZoom =
+              if (isZoomed) {
+                {
+                  scale = 1f
+                  offset = Offset.Zero
+                }
+              } else {
+                null
+              }
           }
         }
 
@@ -706,12 +722,32 @@ fun PdfPagerReader(
                 )
               }
               .pointerInput(pageIndex, targetWidthPx, targetHeightPx, readingMode) {
+                val swipeThresholdPx = 42.dp.toPx()
                 awaitEachGesture {
                   awaitFirstDown(requireUnconsumed = false)
+                  var guidedDragX = 0f
+                  var guidedDragY = 0f
+                  var guidedSwiped = false
                   do {
                     val event = awaitPointerEvent()
                     val pointerCount = event.changes.count { it.pressed }
-                    if (pointerCount > 1 || (readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f)) {
+                    if (readingMode == PdfReadingMode.GUIDED_COLUMN && pointerCount == 1) {
+                      val pan = event.calculatePan()
+                      guidedDragX += pan.x
+                      guidedDragY += pan.y
+                      if (!guidedSwiped &&
+                        abs(guidedDragX) >= swipeThresholdPx &&
+                        abs(guidedDragX) > abs(guidedDragY) * 1.25f
+                      ) {
+                        guidedSwiped = true
+                        event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        if (guidedDragX < 0f) {
+                          controller.goForward()
+                        } else {
+                          controller.goBackward()
+                        }
+                      }
+                    } else if (pointerCount > 1 || (readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f)) {
                       val zoom = event.calculateZoom()
                       val rawPan = event.calculatePan()
                       val (lockedX, lockedY) = PdfRegionNavigator.applyHorizontalLock(rawPan.x, rawPan.y)
@@ -747,6 +783,25 @@ fun PdfPagerReader(
                   translationY = offset.y
                 },
             )
+          }
+          if (readingMode == PdfReadingMode.GUIDED_COLUMN && guidedRegions.size > 1) {
+            val bgColor = Color(settings.tone.background)
+            val inkColor = Color(settings.tone.text)
+            Box(
+              modifier =
+                Modifier.align(Alignment.TopEnd)
+                  .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                  .padding(top = 10.dp, end = 12.dp)
+                  .background(bgColor.copy(alpha = 0.92f))
+                  .border(1.dp, inkColor)
+                  .padding(horizontal = 8.dp, vertical = 3.dp),
+            ) {
+              Text(
+                text = stringResource(R.string.pdf_guided_region_badge, guidedRegionIndex + 1, guidedRegions.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = inkColor,
+              )
+            }
           }
         }
       }
@@ -871,6 +926,7 @@ private fun PdfReflowImageZoomOverlay(
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  BackHandler(onBack = onDismiss)
   var bitmap by remember(holder, element.sourcePage, element.bounds, maxRenderWidthPx) {
     mutableStateOf<ImageBitmap?>(null)
   }

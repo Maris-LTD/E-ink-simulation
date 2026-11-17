@@ -16,6 +16,7 @@ data class LockScreenReadingState(
   val snippets: List<String>,
   val currentSnippetIndex: Int = 0,
   val progress: Float = 0f,
+  val locatorJson: String? = null,
 ) {
   val currentSnippet: String
     get() = snippets.getOrNull(currentSnippetIndex.coerceIn(0, (snippets.size - 1).coerceAtLeast(0))).orEmpty()
@@ -107,7 +108,23 @@ class LockScreenReadingStore(context: Context) {
     if (current.snippets.isEmpty()) return current
     val nextIdx = (current.currentSnippetIndex + delta).coerceIn(0, current.snippets.lastIndex)
     if (nextIdx == current.currentSnippetIndex) return current
-    val updated = current.copy(currentSnippetIndex = nextIdx)
+    val updatedLocatorJson =
+      current.locatorJson?.let { raw ->
+        runCatching {
+          val obj = org.json.JSONObject(raw)
+          val locations = obj.optJSONObject("locations") ?: org.json.JSONObject().also { obj.put("locations", it) }
+          if (current.snippets.size > 1) {
+            val newChapterProg = nextIdx.toDouble() / (current.snippets.size - 1).toDouble()
+            locations.put("progression", newChapterProg)
+          }
+          obj.toString()
+        }.getOrDefault(raw)
+      }
+    val updated =
+      current.copy(
+        currentSnippetIndex = nextIdx,
+        locatorJson = updatedLocatorJson,
+      )
     _state.value = updated
     saveToDisk(updated)
     return updated

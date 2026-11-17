@@ -112,6 +112,7 @@ class EInkWallpaperService : WallpaperService() {
           snippet = lockState.currentSnippet,
           snippetIndex = lockState.currentSnippetIndex,
           snippetCount = lockState.snippets.size,
+          locatorJson = lockState.locatorJson,
         )
         return
       }
@@ -216,6 +217,10 @@ class EInkWallpaperService : WallpaperService() {
           textAlign = Paint.Align.CENTER
         }
       val rankText = rank?.let { localized.getString(com.example.emptyapp.R.string.wallpaper_rank_format, it.level, it.title) } ?: localized.getString(com.example.emptyapp.R.string.app_name)
+      val dateLocale =
+        if (com.example.emptyapp.LocaleHelper.effectiveLanguageCode(applicationContext) == "en") Locale.ENGLISH
+        else Locale("vi", "VN")
+      val localizedDateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", dateLocale)
       canvas.drawText(
         localized.getString(com.example.emptyapp.R.string.wallpaper_status_format, batteryPct, streak, rankText),
         w / 2f,
@@ -223,7 +228,7 @@ class EInkWallpaperService : WallpaperService() {
         statusPaint,
       )
       canvas.drawText(now.format(timeFormatter), w / 2f, h * 0.29f, clockPaint)
-      canvas.drawText(now.format(dateFormatter), w / 2f, h * 0.34f, datePaint)
+      canvas.drawText(now.format(localizedDateFormatter), w / 2f, h * 0.34f, datePaint)
 
       val strokeW = (w * 0.004f).coerceAtLeast(2f)
       val borderPaint =

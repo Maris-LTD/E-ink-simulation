@@ -471,6 +471,8 @@ private fun SevenDayBarChartCard(
   pagesPerHour: Int,
 ) {
   val maxMinutes = maxOf(goalMinutes, weekSeries.maxOfOrNull { it.secondsRead / 60 } ?: 0, 1)
+  val isEn = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(LocalContext.current) == "en"
+  val minUnit = if (isEn) "m" else "p"
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -505,7 +507,7 @@ private fun SevenDayBarChartCard(
           verticalArrangement = Arrangement.Bottom,
         ) {
           EInkText(
-            text = if (minutes > 0) "${minutes}p" else "0",
+            text = if (minutes > 0) "$minutes$minUnit" else "0",
             style = MaterialTheme.typography.labelSmall,
             color = if (metGoal) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.secondary,
           )
@@ -527,7 +529,7 @@ private fun SevenDayBarChartCard(
           }
           Spacer(modifier = Modifier.height(6.dp))
           EInkText(
-            text = shortWeekdayLabel(stat.date),
+            text = shortWeekdayLabel(stat.date, isEn),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.secondary,
           )
@@ -617,16 +619,28 @@ private fun heatmapCellColor(
   }
 }
 
-private fun shortWeekdayLabel(isoDate: String): String {
+private fun shortWeekdayLabel(isoDate: String, isEn: Boolean = false): String {
   val date = runCatching { LocalDate.parse(isoDate) }.getOrNull() ?: return isoDate
-  return when (date.dayOfWeek) {
-    DayOfWeek.MONDAY -> "T2"
-    DayOfWeek.TUESDAY -> "T3"
-    DayOfWeek.WEDNESDAY -> "T4"
-    DayOfWeek.THURSDAY -> "T5"
-    DayOfWeek.FRIDAY -> "T6"
-    DayOfWeek.SATURDAY -> "T7"
-    DayOfWeek.SUNDAY -> "CN"
+  return if (isEn) {
+    when (date.dayOfWeek) {
+      DayOfWeek.MONDAY -> "Mon"
+      DayOfWeek.TUESDAY -> "Tue"
+      DayOfWeek.WEDNESDAY -> "Wed"
+      DayOfWeek.THURSDAY -> "Thu"
+      DayOfWeek.FRIDAY -> "Fri"
+      DayOfWeek.SATURDAY -> "Sat"
+      DayOfWeek.SUNDAY -> "Sun"
+    }
+  } else {
+    when (date.dayOfWeek) {
+      DayOfWeek.MONDAY -> "T2"
+      DayOfWeek.TUESDAY -> "T3"
+      DayOfWeek.WEDNESDAY -> "T4"
+      DayOfWeek.THURSDAY -> "T5"
+      DayOfWeek.FRIDAY -> "T6"
+      DayOfWeek.SATURDAY -> "T7"
+      DayOfWeek.SUNDAY -> "CN"
+    }
   }
 }
 
@@ -832,6 +846,17 @@ private fun EInkDisplaySettingsCard(
       Switch(
         checked = settings.grayscale,
         onCheckedChange = { on -> onUpdateSettings { it.copy(grayscale = on) } },
+      )
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      EInkText(stringResource(R.string.onboard_toggle_flash), style = MaterialTheme.typography.bodyMedium)
+      Switch(
+        checked = settings.flashEnabled,
+        onCheckedChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
       )
     }
     EInkText(

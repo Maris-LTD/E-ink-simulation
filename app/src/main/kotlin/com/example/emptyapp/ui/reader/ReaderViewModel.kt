@@ -30,8 +30,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -95,6 +97,7 @@ class ReaderViewModel(
   private var pendingPages: Int = 0
   private var lastPositionKey: String? = null
   private var currentLocator: Locator? = null
+  private val currentLocatorFlow = MutableStateFlow<Locator?>(null)
   private var currentBookTitle: String = ""
 
   private val mutableState = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
@@ -129,6 +132,11 @@ class ReaderViewModel(
       .map { list -> list.filter { it.bookId == bookId } }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+  val isCurrentPageBookmarked: StateFlow<Boolean> =
+    combine(bookmarks, currentLocatorFlow) { list, loc ->
+      findMatchingBookmark(list, loc) != null
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
   init {
     viewModelScope.launch { load() }
   }
@@ -152,6 +160,7 @@ class ReaderViewModel(
   fun onLocatorChanged(locator: Locator) {
     notifyUserInteraction()
     currentLocator = locator
+    currentLocatorFlow.value = locator
     val key = "${locator.href}#${locator.locations.progression}"
     val previous = lastPositionKey
     lastPositionKey = key
@@ -209,17 +218,53 @@ class ReaderViewModel(
     }
   }
 
-  fun addBookmark() {
-    val locator = currentLocator ?: return
+  fun toggleBookmark(): Boolean {
+    val locator = currentLocator ?: return false
+    val existing = findMatchingBookmark(bookmarks.value, locator)
+    if (existing != null) {
+      viewModelScope.launch { annotations.removeBookmark(existing.id) }
+      return false
+    }
     val title = locator.title?.takeIf { it.isNotBlank() } ?: currentBookTitle
     val total = (locator.locations.totalProgression ?: 0.0).toFloat()
     viewModelScope.launch {
       annotations.addBookmark(bookId, title, total, locator.toJSON().toString())
     }
+    return true
+  }
+
+  fun addBookmark() {
+    toggleBookmark()
+  }
+
+  private fun findMatchingBookmark(list: List<BookmarkEntry>, locator: Locator?): BookmarkEntry? {
+    if (locator == null) return null
+    val locPos = locator.locations.position
+    val locProg = locator.locations.progression
+    val locTotal = (locator.locations.totalProgression ?: 0.0).toFloat()
+    return list.firstOrNull { entry ->
+      val parsed = parseLocator(entry.locatorJson)
+      if (parsed != null) {
+        val sameHref = parsed.href == locator.href
+        val entryPos = parsed.locations.position
+        val entryProg = parsed.locations.progression
+        when {
+          locPos != null && entryPos != null -> sameHref && locPos == entryPos
+          locProg != null && entryProg != null -> sameHref && abs(locProg - entryProg) < 0.015
+          else -> sameHref && abs(entry.progress - locTotal) < 0.01f
+        }
+      } else {
+        abs(entry.progress - locTotal) < 0.005f
+      }
+    }
   }
 
   fun removeBookmark(id: String) {
     viewModelScope.launch { annotations.removeBookmark(id) }
+  }
+
+  fun restoreBookmark(entry: BookmarkEntry) {
+    viewModelScope.launch { annotations.restoreBookmark(entry) }
   }
 
   fun addHighlight(locator: Locator, note: String = "") {
@@ -239,6 +284,10 @@ class ReaderViewModel(
 
   fun removeHighlight(id: String) {
     viewModelScope.launch { annotations.removeHighlight(id) }
+  }
+
+  fun restoreHighlight(entry: HighlightEntry) {
+    viewModelScope.launch { annotations.restoreHighlight(entry) }
   }
 
   fun lookupWord(rawText: String) {
@@ -326,6 +375,8 @@ class ReaderViewModel(
         publication = pub
         mutableProgress.value = book.progress
         val initial = parseLocator(overrideLocatorJson) ?: parseLocator(book.lastLocatorJson)
+        currentLocator = initial
+        currentLocatorFlow.value = initial
         val positions = runCatching { pub.positions() }.getOrDefault(emptyList())
         mutableState.value = ReaderUiState.Ready(book, file, pub, initial, pub.tableOfContents, positions)
         if (book.format == BookFormat.PDF) {

@@ -1,13 +1,13 @@
 package com.example.emptyapp
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -18,7 +18,6 @@ import androidx.navigation3.ui.NavDisplay
 import com.example.emptyapp.ui.library.LibraryScreen
 import com.example.emptyapp.ui.library.LibraryViewModel
 import com.example.emptyapp.ui.library.ReadingStatsScreen
-import kotlinx.coroutines.launch
 
 @Composable
 fun MainNavigation() {
@@ -40,20 +39,14 @@ fun MainNavigation() {
           val stats by viewModel.stats.collectAsStateWithLifecycle()
           val settings by container.settings.settings.collectAsStateWithLifecycle()
           val syncState by container.sync.uiState.collectAsStateWithLifecycle()
-          val pagerState = rememberPagerState(pageCount = { 2 })
-          val scope = rememberCoroutineScope()
+          var statsOpen by rememberSaveable { mutableStateOf(false) }
 
-          BackHandler(enabled = pagerState.currentPage != 0) {
-            scope.launch { pagerState.animateScrollToPage(0) }
+          BackHandler(enabled = statsOpen) {
+            statsOpen = false
           }
 
-          HorizontalPager(
-            state = pagerState,
-            beyondViewportPageCount = 1,
-            verticalAlignment = Alignment.Top,
-            modifier = Modifier.fillMaxSize(),
-          ) { page ->
-            if (page == 0) {
+          Box(modifier = Modifier.fillMaxSize()) {
+            if (!statsOpen) {
               LibraryScreen(
                 viewModel = viewModel,
                 settings = settings,
@@ -62,7 +55,7 @@ fun MainNavigation() {
                 onOpenBook = { id, locatorJson ->
                   context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
                 },
-                onOpenStats = { scope.launch { pagerState.animateScrollToPage(1) } },
+                onOpenStats = { statsOpen = true },
               )
             } else {
               ReadingStatsScreen(
@@ -82,7 +75,7 @@ fun MainNavigation() {
                   container.settings.update { it.copy(appLanguage = lang) }
                   (context as? android.app.Activity)?.recreate()
                 },
-                onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
+                onBack = { statsOpen = false },
               )
             }
           }

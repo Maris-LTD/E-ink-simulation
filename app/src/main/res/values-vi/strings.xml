@@ -12,6 +12,7 @@
     <string name="action_back">Quay lại</string>
     <string name="action_search">Tìm</string>
     <string name="action_grant_permission">Cấp quyền</string>
+    <string name="action_undo">Hoàn tác</string>
 
     <!-- Widget -->
     <string name="widget_no_book">Chưa có sách đang đọc</string>
@@ -79,9 +80,17 @@
 
     <!-- Reader Activity & Screen -->
     <string name="reader_opening">Đang mở sách...</string>
+    <string name="reader_menu_highlight">Highlight</string>
     <string name="reader_menu_note">Ghi chú</string>
     <string name="reader_menu_lookup">Tra từ / Dịch</string>
     <string name="reader_bookmark_saved">Đã lưu dấu trang</string>
+    <string name="reader_bookmark_removed">Đã bỏ dấu trang</string>
+    <string name="reader_settings_button">Cài đặt</string>
+    <string name="reader_focus_on">Focus: BẬT</string>
+    <string name="reader_focus_off">Focus</string>
+    <string name="cd_focus_disable">Tắt Focus Mode</string>
+    <string name="cd_focus_enable">Bật Focus Mode</string>
+    <string name="pdf_guided_region_badge">Vùng %1$d/%2$d</string>
     <string name="reader_focus_enabled">Đã bật Focus Mode</string>
     <string name="reader_focus_needs_dnd">Đã bật Focus Mode — Cấp quyền Không làm phiền để chặn thông báo</string>
     <string name="reader_focus_disabled">Đã tắt Focus Mode</string>
@@ -157,8 +166,12 @@
     <string name="lib_tab_all">Tất cả</string>
     <string name="lib_tab_reading">Đang đọc</string>
     <string name="lib_tab_unread">Chưa đọc</string>
+    <string name="lib_tab_completed">Đã xong</string>
     <string name="lib_tab_bookmarks">Dấu trang</string>
     <string name="lib_tab_highlights">Highlights</string>
+    <string name="lib_author_all">Tất cả (%1$d)</string>
+    <string name="lib_bookmark_deleted">Đã xóa dấu trang</string>
+    <string name="lib_highlight_deleted">Đã xóa highlight</string>
     <string name="lib_view_list">Danh sách</string>
     <string name="lib_view_grid_2">Lưới 2</string>
     <string name="lib_view_grid_3">Lưới 3</string>
@@ -296,6 +309,8 @@
     <string name="launcher_resume">Đọc tiếp ›</string>
     <string name="launcher_search_apps">Tìm ứng dụng...</string>
     <string name="launcher_drawer_hint">Chế độ: %1$s · Nhấn giữ để ghim/bỏ ghim ra Home</string>
+    <string name="launcher_back_home">‹ Trang chính</string>
+    <string name="launcher_pinned_badge">Ghim</string>
     <string name="lockscreen_action_prev">‹ Trước</string>
     <string name="lockscreen_action_next">Sau ›</string>
     <string name="lockscreen_snippet_counter">Đoạn %1$d/%2$d · %3$d%%</string>

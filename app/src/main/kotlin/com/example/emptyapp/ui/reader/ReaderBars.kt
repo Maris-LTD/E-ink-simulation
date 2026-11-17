@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -62,6 +63,7 @@ fun ReaderTopBar(
   title: String,
   showFontControls: Boolean = true,
   showSearch: Boolean = true,
+  isBookmarked: Boolean = false,
   pdfModeLabel: String? = null,
   onTogglePdfMode: (() -> Unit)? = null,
   onClose: () -> Unit,
@@ -165,6 +167,9 @@ fun ReaderTopBar(
               lineTo(w * 0.2f, h * 0.9f)
               close()
             }
+          if (isBookmarked) {
+            drawPath(path, color = ink, style = Fill)
+          }
           drawPath(path, color = ink, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Miter))
         }
       }
@@ -262,7 +267,7 @@ fun ReaderBottomBar(
         verticalAlignment = Alignment.CenterVertically,
       ) {
         FocusModeToggleChip(enabled = focusMode, onToggle = onToggleFocusMode)
-        TextButton(onClick = onToggleSettings) { EInkText("Cài đặt") }
+        TextButton(onClick = onToggleSettings) { EInkText(stringResource(R.string.reader_settings_button)) }
       }
     }
   }
@@ -275,6 +280,8 @@ private fun FocusModeToggleChip(
 ) {
   val bg = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.background
   val fg = if (enabled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onBackground
+  val focusCd =
+    if (enabled) stringResource(R.string.cd_focus_disable) else stringResource(R.string.cd_focus_enable)
   Box(
     modifier =
       Modifier
@@ -282,13 +289,11 @@ private fun FocusModeToggleChip(
         .border(1.5.dp, MaterialTheme.colorScheme.onBackground)
         .clickable(onClick = onToggle)
         .padding(horizontal = 10.dp, vertical = 6.dp)
-        .semantics {
-          contentDescription = if (enabled) "Tắt Focus Mode" else "Bật Focus Mode"
-        },
+        .semantics { contentDescription = focusCd },
     contentAlignment = Alignment.Center,
   ) {
     EInkText(
-      text = if (enabled) "Focus: BẬT" else "Focus",
+      text = if (enabled) stringResource(R.string.reader_focus_on) else stringResource(R.string.reader_focus_off),
       color = fg,
       style = MaterialTheme.typography.labelLarge,
     )

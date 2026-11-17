@@ -41,6 +41,13 @@ class AnnotationRepository(context: Context) {
     commitBookmarks { list -> list.filterNot { it.id == id } }
   }
 
+  suspend fun restoreBookmark(entry: BookmarkEntry) {
+    commitBookmarks { list ->
+      if (list.any { it.id == entry.id }) list
+      else (listOf(entry) + list).sortedByDescending { it.createdAt }
+    }
+  }
+
   suspend fun addHighlight(
     bookId: String,
     bookTitle: String,
@@ -65,6 +72,18 @@ class AnnotationRepository(context: Context) {
 
   suspend fun removeHighlight(id: String) {
     commitHighlights { list -> list.filterNot { it.id == id } }
+  }
+
+  suspend fun restoreHighlight(entry: HighlightEntry) {
+    commitHighlights { list ->
+      if (list.any { it.id == entry.id }) list
+      else (listOf(entry) + list).sortedByDescending { it.createdAt }
+    }
+  }
+
+  suspend fun removeAllForBook(bookId: String) {
+    commitBookmarks { list -> list.filterNot { it.bookId == bookId } }
+    commitHighlights { list -> list.filterNot { it.bookId == bookId } }
   }
 
   suspend fun mergeFromRemote(

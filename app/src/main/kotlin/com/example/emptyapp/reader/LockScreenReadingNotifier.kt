@@ -41,10 +41,11 @@ object LockScreenReadingNotifier {
     snippet: String? = null,
     snippetIndex: Int = 0,
     snippetCount: Int = 0,
+    locatorJson: String? = null,
   ) {
     if (!hasPermission(context)) return
     ensureChannel(context)
-    val intent = ReaderActivity.intentFor(context, bookId)
+    val intent = ReaderActivity.intentFor(context, bookId, locatorJson)
     val pendingIntent =
       PendingIntent.getActivity(
         context,
@@ -61,8 +62,22 @@ object LockScreenReadingNotifier {
         localized.getString(R.string.lockscreen_reading_text, pct)
       }
     val barLabel = "$title · $statusLine"
+    val tone =
+      (context.applicationContext as? com.example.emptyapp.EmptyApplication)
+        ?.container
+        ?.settings
+        ?.settings
+        ?.value
+        ?.tone ?: EInkTone.HIGH_CONTRAST
+    val btnBg = if (tone == EInkTone.DARK) 0xFF2A2A2A.toInt() else 0xFFEEEEEE.toInt()
     val remoteViews =
       RemoteViews(context.packageName, R.layout.notification_lockscreen_nav).apply {
+        setInt(R.id.notif_root, "setBackgroundColor", tone.background)
+        setTextColor(R.id.tv_status, tone.text)
+        setTextColor(R.id.btn_prev, tone.text)
+        setTextColor(R.id.btn_next, tone.text)
+        setInt(R.id.btn_prev, "setBackgroundColor", btnBg)
+        setInt(R.id.btn_next, "setBackgroundColor", btnBg)
         setTextViewText(R.id.tv_status, barLabel)
         if (snippetCount > 1) {
           val prevIntent =

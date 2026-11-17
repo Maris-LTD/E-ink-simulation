@@ -289,7 +289,12 @@ private fun MinimalistHomePage(
   }
 
   val timeText = remember(now) { now.format(LAUNCHER_TIME_FORMATTER) }
-  val dateText = remember(now) { now.format(LAUNCHER_DATE_FORMATTER) }
+  val langCode = LocaleHelper.effectiveLanguageCode(context)
+  val dateText =
+    remember(now, langCode) {
+      val dateLocale = if (langCode == "en") Locale.ENGLISH else Locale("vi", "VN")
+      now.format(DateTimeFormatter.ofPattern("EEEE, dd/MM", dateLocale))
+    }
   val currentBook = books.mostRecentlyReadBook()
   val completedCount = books.count { it.progress >= 0.99f }
   val rank = ReadingGamification.rankFor(stats, completedCount, highlightsCount, LocalContext.current)
@@ -589,7 +594,7 @@ private fun MinimalistAppDrawerPage(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       OutlinedButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-        EInkText("‹ Home")
+        EInkText(stringResource(R.string.launcher_back_home))
       }
       Box(
         modifier =
@@ -661,7 +666,7 @@ private fun MinimalistAppDrawerPage(
               )
               if (pinned) {
                 EInkText(
-                  text = "Ghim",
+                  text = stringResource(R.string.launcher_pinned_badge),
                   style = MaterialTheme.typography.labelSmall,
                   modifier =
                     Modifier.border(1.dp, MaterialTheme.colorScheme.outline)

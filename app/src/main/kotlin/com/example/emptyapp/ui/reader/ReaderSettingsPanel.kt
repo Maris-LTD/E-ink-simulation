@@ -111,8 +111,10 @@ fun ReaderSettingsPanel(
         },
         onSelect = onPdfModeChange,
       )
-      SwitchRow(stringResource(R.string.settings_pdf_auto_crop), settings.pdfAutoCrop) { on ->
-        onChange { it.copy(pdfAutoCrop = on) }
+      if (pdfMode == PdfReadingMode.SMART_ORIGINAL) {
+        SwitchRow(stringResource(R.string.settings_pdf_auto_crop), settings.pdfAutoCrop) { on ->
+          onChange { it.copy(pdfAutoCrop = on) }
+        }
       }
     }
     SwitchRow(stringResource(R.string.settings_grayscale), settings.grayscale) { on -> onChange { it.copy(grayscale = on) } }
@@ -123,6 +125,7 @@ fun ReaderSettingsPanel(
       onPlus = { onChange { it.copy(contrast = (it.contrast + 0.05f).coerceAtMost(1.8f)) } },
     )
     SwitchRow(stringResource(R.string.settings_paper_grain), settings.paperGrain) { on -> onChange { it.copy(paperGrain = on) } }
+    SwitchRow(stringResource(R.string.onboard_toggle_flash), settings.flashEnabled) { on -> onChange { it.copy(flashEnabled = on) } }
     SwitchRow(stringResource(R.string.settings_ghosting), settings.ghosting) { on -> onChange { it.copy(ghosting = on) } }
     SwitchRow(stringResource(R.string.settings_reader_footer), settings.readerFooter) { on -> onChange { it.copy(readerFooter = on) } }
     SwitchRow(stringResource(R.string.settings_focus_mode), settings.focusMode) { on -> onChange { it.copy(focusMode = on) } }

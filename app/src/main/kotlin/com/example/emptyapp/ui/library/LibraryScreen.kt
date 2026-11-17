@@ -36,14 +36,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.ui.eink.EInkText
 import java.io.File
+import kotlinx.coroutines.launch
 
 private val SUPPORTED_MIMES =
   arrayOf(
@@ -78,6 +82,7 @@ private enum class LibraryTab(val labelRes: Int) {
   ALL(com.example.emptyapp.R.string.lib_tab_all),
   READING(com.example.emptyapp.R.string.lib_tab_reading),
   UNREAD(com.example.emptyapp.R.string.lib_tab_unread),
+  COMPLETED(com.example.emptyapp.R.string.lib_tab_completed),
   BOOKMARKS(com.example.emptyapp.R.string.lib_tab_bookmarks),
   HIGHLIGHTS(com.example.emptyapp.R.string.lib_tab_highlights),
 }
@@ -124,6 +129,7 @@ fun LibraryScreen(
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
+  val scope = rememberCoroutineScope()
   var selectedTab by remember { mutableStateOf(LibraryTab.ALL) }
   var selectedAuthor by remember { mutableStateOf<String?>(null) }
   var query by remember { mutableStateOf("") }
@@ -135,27 +141,31 @@ fun LibraryScreen(
     }
   LaunchedEffect(Unit) { viewModel.messages.collect { snackbarHostState.showSnackbar(it) } }
 
-  val filteredBooks =
-    remember(books, selectedTab, selectedAuthor, query) {
+  val tabBooks =
+    remember(books, selectedTab) {
       books.filter { book ->
-        val tabMatch =
-          when (selectedTab) {
-            LibraryTab.ALL -> true
-            LibraryTab.READING -> book.progress > 0f && book.progress < 0.99f
-            LibraryTab.UNREAD -> book.progress <= 0f
-            LibraryTab.BOOKMARKS, LibraryTab.HIGHLIGHTS -> false
-          }
+        when (selectedTab) {
+          LibraryTab.ALL -> true
+          LibraryTab.READING -> book.progress > 0f && book.progress < 0.99f
+          LibraryTab.UNREAD -> book.progress <= 0f
+          LibraryTab.COMPLETED -> book.progress >= 0.99f
+          LibraryTab.BOOKMARKS, LibraryTab.HIGHLIGHTS -> false
+        }
+      }
+    }
+
+  val filteredBooks =
+    remember(tabBooks, selectedTab, selectedAuthor, query) {
+      tabBooks.filter { book ->
         val authorMatch = selectedAuthor == null || book.author == selectedAuthor
         val queryMatch =
           query.isBlank() ||
             book.title.contains(query, ignoreCase = true) ||
             book.author.contains(query, ignoreCase = true)
-        tabMatch && authorMatch && queryMatch
-      }.let { list ->
-        if (selectedTab == LibraryTab.READING) list.sortedByDescending { it.updatedAt } else list
-      }
+        authorMatch && queryMatch
+      }.sortedByDescending { it.updatedAt }
     }
-  val authors = remember(books) { books.map { it.author }.filter { it.isNotBlank() }.distinct() }
+  val authors = remember(tabBooks) { tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct() }
   LaunchedEffect(authors) {
     if (selectedAuthor != null && selectedAuthor !in authors) {
       selectedAuthor = null
@@ -214,7 +224,7 @@ fun LibraryScreen(
       EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
       if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
         AuthorFilterRow(
-          totalCount = books.size,
+          totalCount = tabBooks.size,
           authors = authors,
           selectedAuthor = selectedAuthor,
           onSelect = { selectedAuthor = it },
@@ -238,7 +248,23 @@ fun LibraryScreen(
             bookmarks = filteredBookmarks,
             bookTitlesById = bookTitlesById,
             onOpenBookmark = { bookId, locatorJson -> onOpenBook(bookId, locatorJson) },
-            onRemove = viewModel::removeBookmark,
+            onRemove = { id ->
+              val removed = bookmarks.firstOrNull { it.id == id }
+              viewModel.removeBookmark(id)
+              if (removed != null) {
+                scope.launch {
+                  val res =
+                    snackbarHostState.showSnackbar(
+                      message = context.getString(com.example.emptyapp.R.string.lib_bookmark_deleted),
+                      actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                      duration = SnackbarDuration.Short,
+                    )
+                  if (res == SnackbarResult.ActionPerformed) {
+                    viewModel.restoreBookmark(removed)
+                  }
+                }
+              }
+            },
           )
         } else if (selectedTab == LibraryTab.HIGHLIGHTS) {
           val filteredHighlights =
@@ -255,7 +281,23 @@ fun LibraryScreen(
           LibraryHighlightList(
             highlights = filteredHighlights,
             onOpenHighlight = { bookId, locatorJson -> onOpenBook(bookId, locatorJson) },
-            onRemove = viewModel::removeHighlight,
+            onRemove = { id ->
+              val removed = highlights.firstOrNull { it.id == id }
+              viewModel.removeHighlight(id)
+              if (removed != null) {
+                scope.launch {
+                  val res =
+                    snackbarHostState.showSnackbar(
+                      message = context.getString(com.example.emptyapp.R.string.lib_highlight_deleted),
+                      actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                      duration = SnackbarDuration.Short,
+                    )
+                  if (res == SnackbarResult.ActionPerformed) {
+                    viewModel.restoreHighlight(removed)
+                  }
+                }
+              }
+            },
           )
         } else if (filteredBooks.isEmpty()) {
           EmptyLibrary(hasAnyBooks = books.isNotEmpty())
@@ -596,7 +638,11 @@ private fun AuthorFilterRow(
         .padding(horizontal = 16.dp, vertical = 12.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    FilterPill(label = "All $totalCount", active = selectedAuthor == null, onClick = { onSelect(null) })
+    FilterPill(
+      label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
+      active = selectedAuthor == null,
+      onClick = { onSelect(null) },
+    )
     authors.forEach { author ->
       FilterPill(
         label = author,
