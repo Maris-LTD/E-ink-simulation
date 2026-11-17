@@ -54,6 +54,7 @@ data class SyncUiState(
   val syncBookFiles: Boolean = true,
   val syncing: Boolean = false,
   val statusMessage: String? = null,
+  val cloudBooks: List<SyncedBookProgress> = emptyList(),
 ) {
   val isSignedIn: Boolean get() = !email.isNullOrBlank()
 }

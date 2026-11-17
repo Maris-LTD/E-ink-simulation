@@ -32,6 +32,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.json.JSONObject
 import kotlin.coroutines.resume
@@ -51,10 +52,42 @@ class GoogleDriveSyncManager(
 ) {
   private val appContext = context.applicationContext
   private fun str(resId: Int): String = LocaleHelper.wrap(appContext).getString(resId)
+  private fun str(resId: Int, arg: String): String = LocaleHelper.wrap(appContext).getString(resId, arg)
   private val prefs = appContext.getSharedPreferences("eink_google_sync", Context.MODE_PRIVATE)
   private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private val mutex = Mutex()
   private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+  private fun loadSavedCloudBooks(): List<SyncedBookProgress> {
+    val raw = prefs.getString(KEY_CLOUD_BOOKS_JSON, null) ?: return emptyList()
+    return runCatching {
+      json.decodeFromString(ListSerializer(SyncedBookProgress.serializer()), raw)
+    }.getOrDefault(emptyList())
+  }
+
+  private fun saveCloudBooks(books: List<SyncedBookProgress>) {
+    val encoded =
+      runCatching {
+        json.encodeToString(ListSerializer(SyncedBookProgress.serializer()), books)
+      }.getOrNull() ?: return
+    prefs.edit().putString(KEY_CLOUD_BOOKS_JSON, encoded).apply()
+  }
+
+  private fun getDeletedHashes(): Set<String> =
+    prefs.getStringSet(KEY_DELETED_HASHES, emptySet())?.toSet() ?: emptySet()
+
+  private fun addDeletedHash(contentHash: String) {
+    val next = getDeletedHashes() + contentHash
+    prefs.edit().putStringSet(KEY_DELETED_HASHES, next).apply()
+  }
+
+  fun unmarkDeletedHash(contentHash: String?) {
+    if (contentHash.isNullOrBlank()) return
+    val current = getDeletedHashes()
+    if (contentHash in current) {
+      prefs.edit().putStringSet(KEY_DELETED_HASHES, current - contentHash).apply()
+    }
+  }
 
   private val state =
     MutableStateFlow(
@@ -63,6 +96,7 @@ class GoogleDriveSyncManager(
         displayName = prefs.getString(KEY_NAME, null),
         lastSyncedAt = prefs.getLong(KEY_LAST_SYNC, 0L),
         syncBookFiles = prefs.getBoolean(KEY_SYNC_BOOKS, true),
+        cloudBooks = loadSavedCloudBooks(),
       ),
     )
 
@@ -146,6 +180,114 @@ class GoogleDriveSyncManager(
     runCatching { Identity.getSignInClient(appContext).signOut() }
   }
 
+  fun deleteBookFromCloudAsync(contentHash: String?, title: String? = null) {
+    if (contentHash.isNullOrBlank()) return
+    addDeletedHash(contentHash)
+    val remaining = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
+    saveCloudBooks(remaining)
+    state.update { it.copy(cloudBooks = remaining) }
+    if (!state.value.isSignedIn) return
+    backgroundScope.launch {
+      deleteBookFromCloud(contentHash, title)
+    }
+  }
+
+  suspend fun deleteBookFromCloud(contentHash: String, title: String? = null): SyncActionResult =
+    mutex.withLock {
+      withContext(Dispatchers.IO) {
+        addDeletedHash(contentHash)
+        val remainingLocalCloud = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
+        saveCloudBooks(remainingLocalCloud)
+        state.update {
+          it.copy(
+            syncing = true,
+            cloudBooks = remainingLocalCloud,
+            statusMessage = str(R.string.sync_deleting_cloud),
+          )
+        }
+        runCatching {
+          val authResult = authorizeScopes()
+          val token = authResult.accessToken
+          if (authResult.hasResolution() || token.isNullOrBlank()) {
+            error(str(R.string.sync_no_token))
+          }
+          val appDataFiles = listAppDataFiles(token)
+          for ((name, fileId) in appDataFiles) {
+            if (name.startsWith("book_${contentHash}.")) {
+              httpDeleteFile(token, fileId)
+            }
+          }
+          val syncFileId = appDataFiles[SYNC_FILE_NAME]
+          if (syncFileId != null) {
+            val remote = downloadSyncPayload(token, syncFileId)
+            if (remote != null) {
+              val deletedSet = getDeletedHashes()
+              val updatedPayload =
+                remote.copy(
+                  updatedAt = System.currentTimeMillis(),
+                  books = remote.books.filterNot { it.contentHash == contentHash || it.contentHash in deletedSet },
+                  bookmarks = remote.bookmarks.filterNot { it.bookContentHash == contentHash || it.bookContentHash in deletedSet },
+                  highlights = remote.highlights.filterNot { it.bookContentHash == contentHash || it.bookContentHash in deletedSet },
+                )
+              val encoded = json.encodeToString(SyncPayload.serializer(), updatedPayload)
+              uploadSyncJson(token, syncFileId, encoded)
+              saveCloudBooks(updatedPayload.books)
+              state.update { it.copy(cloudBooks = updatedPayload.books) }
+            }
+          }
+          val label = title?.takeIf { it.isNotBlank() } ?: contentHash.take(8)
+          val doneMsg = str(R.string.sync_book_deleted_cloud, label)
+          state.update { it.copy(syncing = false, statusMessage = doneMsg) }
+          SyncActionResult.Synced
+        }.getOrElse { err ->
+          val msg = err.localizedMessage ?: str(R.string.sync_failed)
+          state.update { it.copy(syncing = false, statusMessage = msg) }
+          SyncActionResult.Error(msg)
+        }
+      }
+    }
+
+  suspend fun deleteAllCloudData(): SyncActionResult =
+    mutex.withLock {
+      withContext(Dispatchers.IO) {
+        state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_deleting_cloud)) }
+        runCatching {
+          val authResult = authorizeScopes()
+          val token = authResult.accessToken
+          if (authResult.hasResolution() || token.isNullOrBlank()) {
+            error(str(R.string.sync_no_token))
+          }
+          repeat(5) {
+            val files = listAppDataFiles(token)
+            if (files.isEmpty()) return@repeat
+            for ((_, fileId) in files) {
+              httpDeleteFile(token, fileId)
+            }
+          }
+          val allLocalHashes = library.books.value.mapNotNull { it.contentHash }.toSet()
+          prefs.edit()
+            .putLong(KEY_LAST_SYNC, 0L)
+            .remove(KEY_CLOUD_BOOKS_JSON)
+            .putStringSet(KEY_DELETED_HASHES, getDeletedHashes() + allLocalHashes)
+            .apply()
+          val doneMsg = str(R.string.sync_all_cloud_deleted)
+          state.update {
+            it.copy(
+              syncing = false,
+              lastSyncedAt = 0L,
+              cloudBooks = emptyList(),
+              statusMessage = doneMsg,
+            )
+          }
+          SyncActionResult.Synced
+        }.getOrElse { err ->
+          val msg = err.localizedMessage ?: str(R.string.sync_failed)
+          state.update { it.copy(syncing = false, statusMessage = msg) }
+          SyncActionResult.Error(msg)
+        }
+      }
+    }
+
   private suspend fun completeSyncWithToken(token: String): SyncActionResult =
     mutex.withLock {
       withContext(Dispatchers.IO) {
@@ -154,24 +296,41 @@ class GoogleDriveSyncManager(
           fetchUserProfile(token)
           library.ensureContentHashes()
 
-          val appDataFiles = listAppDataFiles(token)
+          val deletedHashes = getDeletedHashes()
+          val rawAppDataFiles = listAppDataFiles(token)
+          for ((name, fileId) in rawAppDataFiles) {
+            if (deletedHashes.any { hash -> name.startsWith("book_${hash}.") }) {
+              httpDeleteFile(token, fileId)
+            }
+          }
+          val appDataFiles =
+            rawAppDataFiles.filterKeys { name ->
+              deletedHashes.none { hash -> name.startsWith("book_${hash}.") }
+            }
           val syncFileId = appDataFiles[SYNC_FILE_NAME]
-          val remote = syncFileId?.let { downloadSyncPayload(token, it) }
+          val rawRemote = syncFileId?.let { downloadSyncPayload(token, it) }
+          val remote =
+            rawRemote?.copy(
+              books = rawRemote.books.filterNot { it.contentHash in deletedHashes },
+              bookmarks = rawRemote.bookmarks.filterNot { it.bookContentHash in deletedHashes },
+              highlights = rawRemote.highlights.filterNot { it.bookContentHash in deletedHashes },
+            )
 
           if (state.value.syncBookFiles) {
             if (remote != null) {
-              downloadMissingBooks(token, remote.books, appDataFiles)
+              downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes)
             }
-            uploadMissingBooks(token, appDataFiles)
+            uploadMissingBooks(token, appDataFiles, deletedHashes)
           }
 
           if (remote != null) {
             mergeRemoteIntoLocal(remote)
           }
 
-          val mergedPayload = buildLocalPayload()
+          val mergedPayload = buildLocalPayload(remote, deletedHashes)
           val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
           uploadSyncJson(token, syncFileId, encoded)
+          saveCloudBooks(mergedPayload.books)
 
           val now = System.currentTimeMillis()
           prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
@@ -179,6 +338,7 @@ class GoogleDriveSyncManager(
             it.copy(
               syncing = false,
               lastSyncedAt = now,
+              cloudBooks = mergedPayload.books,
               statusMessage = str(R.string.sync_success),
             )
           }
@@ -259,10 +419,13 @@ class GoogleDriveSyncManager(
     stats.mergeFromRemote(remote.stats)
   }
 
-  private fun buildLocalPayload(): SyncPayload {
-    val books = library.books.value
+  private fun buildLocalPayload(
+    remote: SyncPayload?,
+    deletedHashes: Set<String>,
+  ): SyncPayload {
+    val books = library.books.value.filter { it.contentHash != null && it.contentHash !in deletedHashes }
     val hashById = books.mapNotNull { book -> book.contentHash?.let { book.id to it } }.toMap()
-    val syncedBooks =
+    val localSyncedBooks =
       books.mapNotNull { book ->
         val hash = book.contentHash ?: return@mapNotNull null
         SyncedBookProgress(
@@ -274,6 +437,13 @@ class GoogleDriveSyncManager(
           lastLocatorJson = book.lastLocatorJson,
           updatedAt = book.updatedAt,
         )
+      }
+    val booksByHash = LinkedHashMap<String, SyncedBookProgress>()
+    localSyncedBooks.forEach { booksByHash[it.contentHash] = it }
+    remote?.books
+      ?.filterNot { it.contentHash in deletedHashes }
+      ?.forEach { remoteBook ->
+        booksByHash.putIfAbsent(remoteBook.contentHash, remoteBook)
       }
     val syncedBookmarks =
       annotations.bookmarks.value.mapNotNull { bm ->
@@ -304,7 +474,7 @@ class GoogleDriveSyncManager(
     return SyncPayload(
       version = 1,
       updatedAt = System.currentTimeMillis(),
-      books = syncedBooks,
+      books = booksByHash.values.toList(),
       bookmarks = syncedBookmarks,
       highlights = syncedHighlights,
       stats = stats.stats.value,
@@ -333,13 +503,14 @@ class GoogleDriveSyncManager(
     token: String,
     remoteBooks: List<SyncedBookProgress>,
     appDataFiles: Map<String, String>,
+    deletedHashes: Set<String>,
   ) {
     val localHashes = library.books.value.mapNotNull { it.contentHash }.toHashSet()
     for (remoteBook in remoteBooks) {
-      if (remoteBook.contentHash in localHashes) continue
+      if (remoteBook.contentHash in localHashes || remoteBook.contentHash in deletedHashes) continue
       val driveFileName = bookDriveFileName(remoteBook.contentHash, remoteBook.format.extension)
       val driveFileId = appDataFiles[driveFileName] ?: continue
-      state.update { it.copy(statusMessage = "Đang tải sách: ${remoteBook.title}") }
+      state.update { it.copy(statusMessage = str(R.string.sync_downloading_book, remoteBook.title)) }
       val tempFile = File(appContext.cacheDir, "sync_${remoteBook.contentHash}.tmp")
       val downloaded = downloadFileTo(token, driveFileId, tempFile)
       if (downloaded) {
@@ -362,16 +533,18 @@ class GoogleDriveSyncManager(
   private fun uploadMissingBooks(
     token: String,
     appDataFiles: Map<String, String>,
+    deletedHashes: Set<String>,
   ) {
     for (book in library.books.value) {
       val hash = book.contentHash ?: continue
+      if (hash in deletedHashes) continue
       val driveFileName = bookDriveFileName(hash, book.format.extension)
       if (driveFileName in appDataFiles) continue
       val localFile = library.fileOf(book)
       if (!localFile.exists() || localFile.length() <= 0L || localFile.length() > MAX_SYNC_BOOK_BYTES) {
         continue
       }
-      state.update { it.copy(statusMessage = "Đang tải lên: ${book.title}") }
+      state.update { it.copy(statusMessage = str(R.string.sync_uploading_book, book.title)) }
       uploadBinaryFileToAppData(token, driveFileName, localFile)
     }
   }
@@ -473,6 +646,23 @@ class GoogleDriveSyncManager(
     }
   }
 
+  private fun httpDeleteFile(token: String, fileId: String): Boolean {
+    val conn =
+      (URL("https://www.googleapis.com/drive/v3/files/$fileId").openConnection() as HttpURLConnection).apply {
+        requestMethod = "DELETE"
+        connectTimeout = 10_000
+        readTimeout = 15_000
+        setRequestProperty("Authorization", "Bearer $token")
+      }
+    return try {
+      conn.responseCode in 200..299 || conn.responseCode == 404
+    } catch (_: Exception) {
+      false
+    } finally {
+      conn.disconnect()
+    }
+  }
+
   private fun httpGet(urlString: String, token: String): String? {
     val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
       requestMethod = "GET"
@@ -506,6 +696,8 @@ class GoogleDriveSyncManager(
     const val KEY_NAME = "name"
     const val KEY_LAST_SYNC = "last_sync"
     const val KEY_SYNC_BOOKS = "sync_book_files"
+    const val KEY_CLOUD_BOOKS_JSON = "cloud_books_json"
+    const val KEY_DELETED_HASHES = "deleted_cloud_book_hashes"
     const val MAX_SYNC_BOOK_BYTES = 100L * 1024L * 1024L
   }
 }

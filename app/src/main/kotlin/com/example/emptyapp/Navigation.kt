@@ -66,6 +66,8 @@ fun MainNavigation() {
                 onSignInAndSync = { container.sync.signInAndSync() },
                 onHandleSyncConsent = { data -> container.sync.handleConsentResult(data) },
                 onToggleSyncBookFiles = { enabled -> container.sync.setSyncBookFiles(enabled) },
+                onDeleteCloudBook = { book -> container.sync.deleteBookFromCloud(book.contentHash, book.title) },
+                onDeleteAllCloudData = { container.sync.deleteAllCloudData() },
                 onSignOutSync = { container.sync.signOut() },
                 onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
                 settings = settings,

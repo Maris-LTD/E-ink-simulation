@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -338,20 +339,39 @@ fun LibraryScreen(
       )
     }
     pendingDeleteBook?.let { bookToDelete ->
+      var deleteFromCloud by remember(bookToDelete.id) { mutableStateOf(true) }
       AlertDialog(
         onDismissRequest = { pendingDeleteBook = null },
         containerColor = MaterialTheme.colorScheme.background,
         title = { EInkText(stringResource(com.example.emptyapp.R.string.lib_delete_book_title), style = MaterialTheme.typography.titleMedium) },
         text = {
-          EInkText(
-            stringResource(com.example.emptyapp.R.string.lib_delete_book_message, bookToDelete.title),
-            style = MaterialTheme.typography.bodyMedium,
-          )
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            EInkText(
+              stringResource(com.example.emptyapp.R.string.lib_delete_book_message, bookToDelete.title),
+              style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .clickable { deleteFromCloud = !deleteFromCloud }
+                  .padding(vertical = 2.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Checkbox(
+                checked = deleteFromCloud,
+                onCheckedChange = { deleteFromCloud = it },
+              )
+              EInkText(
+                text = stringResource(com.example.emptyapp.R.string.lib_delete_also_cloud),
+                style = MaterialTheme.typography.bodySmall,
+              )
+            }
+          }
         },
         confirmButton = {
           TextButton(
             onClick = {
-              viewModel.remove(bookToDelete.id)
+              viewModel.remove(bookToDelete.id, alsoDeleteFromCloud = deleteFromCloud)
               pendingDeleteBook = null
             },
           ) {

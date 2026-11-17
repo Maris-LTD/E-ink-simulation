@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -41,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -68,6 +70,7 @@ import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.data.sync.SyncActionResult
 import com.example.emptyapp.data.sync.SyncUiState
+import com.example.emptyapp.data.sync.SyncedBookProgress
 import com.example.emptyapp.system.EInkWallpaperService
 import com.example.emptyapp.ui.eink.EInkText
 import java.text.SimpleDateFormat
@@ -111,6 +114,8 @@ fun ReadingStatsScreen(
   onSignInAndSync: suspend () -> SyncActionResult = { SyncActionResult.Synced },
   onHandleSyncConsent: suspend (Intent?) -> SyncActionResult = { SyncActionResult.Synced },
   onToggleSyncBookFiles: (Boolean) -> Unit = {},
+  onDeleteCloudBook: suspend (SyncedBookProgress) -> SyncActionResult = { SyncActionResult.Synced },
+  onDeleteAllCloudData: suspend () -> SyncActionResult = { SyncActionResult.Synced },
   onSignOutSync: () -> Unit = {},
   onChangeGoalMinutes: (Int) -> Unit,
   settings: EInkSettings = EInkSettings(),
@@ -197,9 +202,12 @@ fun ReadingStatsScreen(
           syncState = syncState,
           onSyncOrSignIn = ::triggerSync,
           onToggleSyncBookFiles = onToggleSyncBookFiles,
+          onDeleteCloudBook = { book -> scope.launch { onDeleteCloudBook(book) } },
+          onDeleteAllCloudData = { scope.launch { onDeleteAllCloudData() } },
           onSignOut = onSignOutSync,
         )
         SystemEInkModeCard()
+        PrivacyPolicyCard()
         ContactCard()
       } else {
       Column(
@@ -689,8 +697,13 @@ private fun GoogleSyncCard(
   syncState: SyncUiState,
   onSyncOrSignIn: () -> Unit,
   onToggleSyncBookFiles: (Boolean) -> Unit,
+  onDeleteCloudBook: (SyncedBookProgress) -> Unit = {},
+  onDeleteAllCloudData: () -> Unit = {},
   onSignOut: () -> Unit,
 ) {
+  var confirmDeleteAll by remember { mutableStateOf(false) }
+  var pendingDeleteCloudBook by remember { mutableStateOf<SyncedBookProgress?>(null) }
+
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -736,18 +749,78 @@ private fun GoogleSyncCard(
           enabled = !syncState.syncing,
         )
       }
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
         OutlinedButton(
           onClick = onSyncOrSignIn,
           enabled = !syncState.syncing,
         ) {
           EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_syncing) else stringResource(R.string.stats_sync_now))
         }
+        OutlinedButton(
+          onClick = { confirmDeleteAll = true },
+          enabled = !syncState.syncing,
+        ) {
+          EInkText(stringResource(R.string.stats_sync_delete_all_btn))
+        }
         TextButton(
           onClick = onSignOut,
           enabled = !syncState.syncing,
         ) {
           EInkText(stringResource(R.string.stats_sign_out), color = MaterialTheme.colorScheme.secondary)
+        }
+      }
+      if (syncState.cloudBooks.isNotEmpty()) {
+        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+        EInkText(
+          text = stringResource(R.string.stats_sync_cloud_books_header, syncState.cloudBooks.size),
+          style = MaterialTheme.typography.labelMedium,
+          color = MaterialTheme.colorScheme.secondary,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          syncState.cloudBooks.forEach { cloudBook ->
+            Row(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                  .padding(horizontal = 10.dp, vertical = 8.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Column(modifier = Modifier.weight(1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                EInkText(
+                  text = cloudBook.title,
+                  style = MaterialTheme.typography.bodyMedium,
+                  maxLines = 1,
+                )
+                val meta =
+                  listOfNotNull(
+                    cloudBook.format.label,
+                    cloudBook.author.takeIf { it.isNotBlank() },
+                    "${(cloudBook.progress * 100).toInt()}%",
+                  ).joinToString(" · ")
+                EInkText(
+                  text = meta,
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.secondary,
+                  maxLines = 1,
+                )
+              }
+              TextButton(
+                onClick = { pendingDeleteCloudBook = cloudBook },
+                enabled = !syncState.syncing,
+              ) {
+                EInkText(
+                  text = stringResource(R.string.stats_sync_delete_book_btn),
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.secondary,
+                )
+              }
+            }
+          }
         }
       }
     } else {
@@ -770,6 +843,59 @@ private fun GoogleSyncCard(
         EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_connecting) else stringResource(R.string.stats_sign_in_google))
       }
     }
+  }
+
+  if (confirmDeleteAll) {
+    AlertDialog(
+      onDismissRequest = { confirmDeleteAll = false },
+      containerColor = MaterialTheme.colorScheme.background,
+      title = { EInkText(stringResource(R.string.stats_sync_delete_all_title), style = MaterialTheme.typography.titleMedium) },
+      text = { EInkText(stringResource(R.string.stats_sync_delete_all_message), style = MaterialTheme.typography.bodyMedium) },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            confirmDeleteAll = false
+            onDeleteAllCloudData()
+          },
+        ) {
+          EInkText(stringResource(R.string.action_delete), style = MaterialTheme.typography.labelLarge)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { confirmDeleteAll = false }) {
+          EInkText(stringResource(R.string.action_cancel), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+        }
+      },
+    )
+  }
+
+  pendingDeleteCloudBook?.let { targetBook ->
+    AlertDialog(
+      onDismissRequest = { pendingDeleteCloudBook = null },
+      containerColor = MaterialTheme.colorScheme.background,
+      title = { EInkText(stringResource(R.string.stats_sync_delete_book_title), style = MaterialTheme.typography.titleMedium) },
+      text = {
+        EInkText(
+          stringResource(R.string.stats_sync_delete_book_message, targetBook.title),
+          style = MaterialTheme.typography.bodyMedium,
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            pendingDeleteCloudBook = null
+            onDeleteCloudBook(targetBook)
+          },
+        ) {
+          EInkText(stringResource(R.string.action_delete), style = MaterialTheme.typography.labelLarge)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { pendingDeleteCloudBook = null }) {
+          EInkText(stringResource(R.string.action_cancel), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+        }
+      },
+    )
   }
 }
 
@@ -946,6 +1072,68 @@ private fun LanguageCard(
         }
       }
     }
+  }
+}
+
+@Composable
+private fun PrivacyPolicyCard() {
+  val context = LocalContext.current
+  val policyUrl = stringResource(R.string.privacy_policy_url)
+  var showDialog by remember { mutableStateOf(false) }
+
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    EInkText(
+      text = stringResource(R.string.stats_privacy_header),
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    EInkText(
+      text = stringResource(R.string.stats_privacy_desc),
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(onClick = { showDialog = true }) {
+        EInkText(stringResource(R.string.stats_privacy_view_btn))
+      }
+      TextButton(
+        onClick = {
+          val intent = Intent(Intent.ACTION_VIEW, Uri.parse(policyUrl))
+          runCatching { context.startActivity(intent) }
+        },
+      ) {
+        EInkText(stringResource(R.string.stats_privacy_web_btn), color = MaterialTheme.colorScheme.secondary)
+      }
+    }
+  }
+
+  if (showDialog) {
+    AlertDialog(
+      onDismissRequest = { showDialog = false },
+      containerColor = MaterialTheme.colorScheme.background,
+      title = { EInkText(stringResource(R.string.privacy_dialog_title), style = MaterialTheme.typography.titleMedium) },
+      text = {
+        Column(
+          modifier = Modifier.height(320.dp).verticalScroll(rememberScrollState()),
+        ) {
+          EInkText(
+            text = stringResource(R.string.privacy_dialog_body),
+            style = MaterialTheme.typography.bodySmall,
+          )
+        }
+      },
+      confirmButton = {
+        TextButton(onClick = { showDialog = false }) {
+          EInkText(stringResource(R.string.action_close), style = MaterialTheme.typography.labelLarge)
+        }
+      },
+    )
   }
 }
 

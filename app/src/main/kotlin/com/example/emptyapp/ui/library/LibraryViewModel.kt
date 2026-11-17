@@ -44,6 +44,10 @@ class LibraryViewModel(
       mutableImporting.value = true
       repository
         .import(uri)
+        .onSuccess { entry ->
+          val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
+          app?.container?.sync?.unmarkDeletedHash(entry.contentHash)
+        }
         .onFailure {
           val localized = context?.let(LocaleHelper::wrap)
           val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "tệp không hợp lệ"
@@ -55,11 +59,15 @@ class LibraryViewModel(
     }
   }
 
-  fun remove(id: String) {
+  fun remove(id: String, alsoDeleteFromCloud: Boolean = true) {
     viewModelScope.launch {
+      val book = repository.find(id)
       repository.remove(id)
       annotations.removeAllForBook(id)
       val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
+      if (alsoDeleteFromCloud && book?.contentHash != null) {
+        app?.container?.sync?.deleteBookFromCloudAsync(book.contentHash, book.title)
+      }
       if (app?.container?.lockScreenReading?.state?.value?.bookId == id) {
         app.container.lockScreenReading.clear()
         com.example.emptyapp.reader.LockScreenReadingNotifier.cancel(app)

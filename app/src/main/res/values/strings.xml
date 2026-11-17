@@ -200,6 +200,11 @@
     <string name="sync_syncing_drive">Syncing with Drive…</string>
     <string name="sync_success">Synced successfully</string>
     <string name="sync_failed">Sync failed</string>
+    <string name="sync_downloading_book">Downloading book: %1$s</string>
+    <string name="sync_uploading_book">Uploading: %1$s</string>
+    <string name="sync_deleting_cloud">Deleting cloud data…</string>
+    <string name="sync_all_cloud_deleted">All Google Drive backup data deleted</string>
+    <string name="sync_book_deleted_cloud">Removed "%1$s" from Google Drive</string>
 
     <!-- Tutorial -->
     <string name="tutorial_header">User Guide</string>
@@ -274,6 +279,21 @@
     <string name="stats_sync_intro">Sign in with Google to automatically sync reading progress, bookmarks, highlights, and streaks across devices (free, stored in private Drive AppData).</string>
     <string name="stats_sync_connecting">Connecting…</string>
     <string name="stats_sign_in_google">Sign in with Google</string>
+    <string name="stats_sync_delete_all_btn">Delete Drive data</string>
+    <string name="stats_sync_delete_all_title">Delete all Google Drive data?</string>
+    <string name="stats_sync_delete_all_message">This will permanently delete all backed-up book files, reading progress, bookmarks, highlights, and stats from your Google Drive AppData folder. Books on this device will not be deleted.</string>
+    <string name="stats_sync_cloud_books_header">Books backed up on Drive (%1$d)</string>
+    <string name="stats_sync_delete_book_btn">Remove from Drive</string>
+    <string name="stats_sync_delete_book_title">Remove book from Google Drive?</string>
+    <string name="stats_sync_delete_book_message">Remove "%1$s" and its cloud backup from Google Drive? The book on this device will be kept.</string>
+    <string name="lib_delete_also_cloud">Also remove backup from Google Drive</string>
+    <string name="stats_privacy_header">PRIVACY &amp; DATA SAFETY</string>
+    <string name="stats_privacy_desc">Inkify stores your books and reading data locally on your device. If you enable Google Drive Sync, backups are stored exclusively in your private Google Drive AppData folder.</string>
+    <string name="stats_privacy_view_btn">View Privacy Policy</string>
+    <string name="stats_privacy_web_btn">Open Web Link</string>
+    <string name="privacy_policy_url">https://github.com/Maris-LTD/E-ink-simulation/blob/master/docs/privacy-policy.md</string>
+    <string name="privacy_dialog_title">Privacy Policy — Inkify</string>
+    <string name="privacy_dialog_body">1. Data Storage &amp; Ownership\n• All imported books (EPUB, PDF, CBZ), reading progress, bookmarks, highlights, and statistics are stored locally on your device.\n• Inkify does not operate any third-party tracking servers, analytics SDKs, or advertising networks.\n\n2. Google Sign-In &amp; Google Drive Sync (Optional)\n• When you sign in with Google, Inkify accesses your basic email/display name and the private Google Drive AppData folder (drive.appdata scope).\n• Your synced books and reading progress are stored exclusively inside your own Google Drive account.\n• You can delete individual books from Google Drive or delete your entire cloud backup at any time in Profile &amp; Stats → Settings → Google Drive Sync.\n\n3. Dictionary &amp; Translation\n• When you look up or translate selected text while reading, only the selected word/phrase is sent over HTTPS to dictionary/translation endpoints.\n\n4. Permissions Used\n• INTERNET: Used only for optional Google Drive Sync and dictionary lookup.\n• POST_NOTIFICATIONS: Used for optional Lock Screen reading controls.\n• ACCESS_NOTIFICATION_POLICY: Used only when you enable Focus Mode (Do Not Disturb).\n• QUERY_ALL_PACKAGES (MAIN/LAUNCHER intent): Used solely by the optional eInk Home Launcher to list launchable apps in the App Drawer.\n\n5. Contact\n• For any privacy questions or data requests, contact: letuandat556@gmail.com</string>
     <string name="stats_contact_header">CONTACT &amp; FEEDBACK</string>
     <string name="stats_contact_desc">Send feature suggestions or bug reports via email:</string>
     <string name="stats_email_subject">[Inkify] Feedback / Bug Report</string>
