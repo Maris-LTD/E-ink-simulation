@@ -150,13 +150,20 @@ fun ReaderScreen(
       }
       (nav as? OverflowableNavigator)?.let(onNavigatorReady)
     }
-    LaunchedEffect(nav, settings) {
+    LaunchedEffect(nav, settings.grayscale, settings.contrast, settings.tone) {
       val view = nav.awaitView()
-      view.setLayerType(View.LAYER_TYPE_HARDWARE, EInkColorFilter.paintOf(settings))
+      view.setLayerType(
+        View.LAYER_TYPE_HARDWARE,
+        EInkColorFilter.paintOf(settings, contentAlreadyDark = nav is EpubNavigatorFragment),
+      )
+    }
+    val epubPreferences = remember(settings) { EInkPreferencesMapper.toEpub(settings) }
+    LaunchedEffect(nav, epubPreferences) {
       if (nav is EpubNavigatorFragment) {
-        nav.submitPreferences(EInkPreferencesMapper.toEpub(settings))
+        nav.awaitView()
+        nav.submitPreferences(epubPreferences)
         delay(120L)
-        applyReaderStrokeStyle(nav, settings)
+        applyReaderStrokeStyle(nav, viewModel.settings.value)
       }
     }
     LaunchedEffect(nav) {
@@ -316,7 +323,8 @@ fun ReaderScreen(
         tone = settings.tone,
         brightness = settings.brightness,
         onToneChange = { tone -> viewModel.updateSettings { it.copy(tone = tone) } },
-        onBrightnessChange = { value -> viewModel.updateSettings { it.copy(brightness = value) } },
+        onBrightnessChange = viewModel::previewBrightness,
+        onBrightnessChangeFinished = viewModel::commitBrightness,
         onSeekToProgress = { fraction ->
           if (positions.isNotEmpty()) {
             val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
@@ -514,11 +522,13 @@ fun ReaderScreen(
                   dragBrightness = if (latestBrightness < 0f) 0.5f else latestBrightness
                   brightnessHudVisible = true
                 },
+                onDragEnd = { viewModel.commitBrightness() },
+                onDragCancel = { viewModel.commitBrightness() },
                 onVerticalDrag = { change, dragAmount ->
                   change.consume()
                   val delta = -dragAmount / (edgeStripHeightPx * 0.65f)
                   dragBrightness = (dragBrightness + delta).coerceIn(0.02f, 1f)
-                  viewModel.updateSettings { it.copy(brightness = dragBrightness) }
+                  viewModel.previewBrightness(dragBrightness)
                   brightnessHudVisible = true
                 },
               )

@@ -92,6 +92,8 @@ class ReaderViewModel(
   private var searchIterator: SearchIterator? = null
   private var searchJob: Job? = null
   private var statsTickerJob: Job? = null
+  private var progressSaveJob: Job? = null
+  private var pendingProgress: Pair<Locator, Float>? = null
   private var lastInteractionMs: Long = 0L
   private var lastFlushMs: Long = 0L
   private var pendingPages: Int = 0
@@ -142,9 +144,21 @@ class ReaderViewModel(
   }
 
   fun updateSettings(transform: (EInkSettings) -> EInkSettings) {
+    val before = settingsStore.settings.value
     settingsStore.update(transform)
-    flashController.reset()
-    mutablePagesSinceFlash.value = 0
+    val after = settingsStore.settings.value
+    if (before.copy(brightness = after.brightness) != after) {
+      flashController.reset()
+      mutablePagesSinceFlash.value = 0
+    }
+  }
+
+  fun previewBrightness(value: Float) {
+    settingsStore.preview { it.copy(brightness = value) }
+  }
+
+  fun commitBrightness() {
+    settingsStore.persist()
   }
 
   fun updatePdfConfig(transform: (PdfBookConfig) -> PdfBookConfig) {
@@ -176,9 +190,20 @@ class ReaderViewModel(
         mutablePageTurnTrigger.value += 1
       }
     }
-    viewModelScope.launch {
-      repository.saveProgress(bookId, locator.toJSON().toString(), total)
+    pendingProgress = locator to total
+    if (progressSaveJob?.isActive != true) {
+      progressSaveJob =
+        viewModelScope.launch {
+          delay(PROGRESS_SAVE_INTERVAL_MS)
+          flushProgress()
+        }
     }
+  }
+
+  private suspend fun flushProgress() {
+    val (locator, total) = pendingProgress ?: return
+    pendingProgress = null
+    repository.saveProgress(bookId, locator.toJSON().toString(), total)
   }
 
   fun notifyUserInteraction() {
@@ -201,7 +226,12 @@ class ReaderViewModel(
     } else {
       statsTickerJob?.cancel()
       statsTickerJob = null
-      viewModelScope.launch(NonCancellable) { flushReadingStats() }
+      progressSaveJob?.cancel()
+      progressSaveJob = null
+      viewModelScope.launch(NonCancellable) {
+        flushProgress()
+        flushReadingStats()
+      }
     }
   }
 
@@ -414,9 +444,13 @@ class ReaderViewModel(
 
   override fun onCleared() {
     val modeToPersist = pdfBookConfigs?.get(bookId)?.mode
-    if (modeToPersist != null) {
+    val progressToPersist = pendingProgress
+    if (modeToPersist != null || progressToPersist != null) {
       kotlinx.coroutines.CoroutineScope(Dispatchers.IO + NonCancellable).launch {
-        repository.savePdfReadingMode(bookId, modeToPersist)
+        progressToPersist?.let { (locator, total) ->
+          repository.saveProgress(bookId, locator.toJSON().toString(), total)
+        }
+        if (modeToPersist != null) repository.savePdfReadingMode(bookId, modeToPersist)
       }
     }
     statsTickerJob?.cancel()
@@ -427,5 +461,6 @@ class ReaderViewModel(
 
   private companion object {
     const val INACTIVITY_TIMEOUT_MS = 120_000L
+    const val PROGRESS_SAVE_INTERVAL_MS = 1_500L
   }
 }

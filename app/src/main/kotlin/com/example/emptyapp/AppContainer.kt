@@ -10,8 +10,12 @@ import com.example.emptyapp.reader.EInkSettingsStore
 import com.example.emptyapp.reader.LockScreenReadingStore
 import com.example.emptyapp.reader.ReadiumEngine
 import com.example.emptyapp.reader.pdf.PdfBookConfigStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class AppContainer(context: Context) {
+  val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   val engine = ReadiumEngine(context)
   val library = LibraryRepository(context, engine)
   val settings = EInkSettingsStore(context)

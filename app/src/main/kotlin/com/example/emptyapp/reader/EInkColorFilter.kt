@@ -5,7 +5,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 
 object EInkColorFilter {
-  fun matrixOf(settings: EInkSettings): ColorMatrix {
+  fun matrixOf(settings: EInkSettings, contentAlreadyDark: Boolean = false): ColorMatrix {
     val matrix = ColorMatrix()
     if (settings.grayscale) matrix.setSaturation(0f)
     val contrast = settings.contrast
@@ -22,7 +22,7 @@ object EInkColorFilter {
       )
     matrix.postConcat(contrastMatrix)
     when (settings.tone) {
-      EInkTone.DARK -> {
+      EInkTone.DARK -> if (!contentAlreadyDark) {
         val invert =
           ColorMatrix(
             floatArrayOf(
@@ -51,6 +51,6 @@ object EInkColorFilter {
     return matrix
   }
 
-  fun paintOf(settings: EInkSettings): Paint =
-    Paint().apply { colorFilter = ColorMatrixColorFilter(matrixOf(settings)) }
+  fun paintOf(settings: EInkSettings, contentAlreadyDark: Boolean = false): Paint =
+    Paint().apply { colorFilter = ColorMatrixColorFilter(matrixOf(settings, contentAlreadyDark)) }
 }

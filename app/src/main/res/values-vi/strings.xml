@@ -200,6 +200,8 @@
     <string name="sync_syncing_drive">Đang đồng bộ Drive...</string>
     <string name="sync_success">Đồng bộ thành công</string>
     <string name="sync_failed">Đồng bộ thất bại</string>
+    <string name="pdf_reflow_preparing">Đang dàn trang chữ…</string>
+    <string name="sync_remote_read_failed">Không đọc được dữ liệu trên Google Drive (%1$s). Đã dừng đồng bộ để không ghi đè dữ liệu.</string>
     <string name="sync_downloading_book">Đang tải sách: %1$s</string>
     <string name="sync_uploading_book">Đang tải lên: %1$s</string>
     <string name="sync_deleting_cloud">Đang xóa dữ liệu trên Drive…</string>

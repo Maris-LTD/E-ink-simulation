@@ -1,6 +1,7 @@
 package com.example.emptyapp.data.annotation
 
 import android.content.Context
+import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -8,18 +9,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 
 class AnnotationRepository(context: Context) {
-  private val json = Json { ignoreUnknownKeys = true }
-  private val bookmarksFile = File(context.filesDir, "bookmarks.json")
-  private val highlightsFile = File(context.filesDir, "highlights.json")
+  private val bookmarksStore =
+    AtomicJsonFile(File(context.filesDir, "bookmarks.json"), ListSerializer(BookmarkEntry.serializer()))
+  private val highlightsStore =
+    AtomicJsonFile(File(context.filesDir, "highlights.json"), ListSerializer(HighlightEntry.serializer()))
+  private val writeMutex = Mutex()
 
-  private val bookmarkState = MutableStateFlow(readList(bookmarksFile, ListSerializer(BookmarkEntry.serializer())))
-  private val highlightState = MutableStateFlow(readList(highlightsFile, ListSerializer(HighlightEntry.serializer())))
+  private val bookmarkState = MutableStateFlow(bookmarksStore.read(emptyList()))
+  private val highlightState = MutableStateFlow(highlightsStore.read(emptyList()))
 
   val bookmarks: StateFlow<List<BookmarkEntry>> = bookmarkState.asStateFlow()
   val highlights: StateFlow<List<HighlightEntry>> = highlightState.asStateFlow()
@@ -111,23 +114,18 @@ class AnnotationRepository(context: Context) {
   }
 
   private suspend fun commitBookmarks(transform: (List<BookmarkEntry>) -> List<BookmarkEntry>) {
-    bookmarkState.update(transform)
-    val snapshot = bookmarkState.value
-    withContext(Dispatchers.IO) { writeList(bookmarksFile, ListSerializer(BookmarkEntry.serializer()), snapshot) }
+    writeMutex.withLock {
+      bookmarkState.update(transform)
+      val snapshot = bookmarkState.value
+      withContext(Dispatchers.IO) { bookmarksStore.write(snapshot) }
+    }
   }
 
   private suspend fun commitHighlights(transform: (List<HighlightEntry>) -> List<HighlightEntry>) {
-    highlightState.update(transform)
-    val snapshot = highlightState.value
-    withContext(Dispatchers.IO) { writeList(highlightsFile, ListSerializer(HighlightEntry.serializer()), snapshot) }
-  }
-
-  private fun <T> readList(file: File, serializer: KSerializer<List<T>>): List<T> {
-    if (!file.exists()) return emptyList()
-    return runCatching { json.decodeFromString(serializer, file.readText()) }.getOrDefault(emptyList())
-  }
-
-  private fun <T> writeList(file: File, serializer: KSerializer<List<T>>, items: List<T>) {
-    file.writeText(json.encodeToString(serializer, items))
+    writeMutex.withLock {
+      highlightState.update(transform)
+      val snapshot = highlightState.value
+      withContext(Dispatchers.IO) { highlightsStore.write(snapshot) }
+    }
   }
 }

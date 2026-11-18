@@ -17,12 +17,28 @@ android {
     targetSdk = 37
     versionCode = 1
     versionName = "1.0"
+    ndk {
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+    }
+  }
+
+  val releaseStoreFile = releaseSigningValue("RELEASE_STORE_FILE")
+  signingConfigs {
+    if (releaseStoreFile != null) {
+      create("release") {
+        storeFile = file(releaseStoreFile)
+        storePassword = releaseSigningValue("RELEASE_STORE_PASSWORD")
+        keyAlias = releaseSigningValue("RELEASE_KEY_ALIAS")
+        keyPassword = releaseSigningValue("RELEASE_KEY_PASSWORD")
+      }
+    }
   }
 
   buildTypes {
     release {
-      isMinifyEnabled = false
-      signingConfig = signingConfigs.getByName("debug")
+      isMinifyEnabled = true
+      isShrinkResources = true
+      signingConfig = signingConfigs.findByName("release")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }
@@ -41,6 +57,7 @@ android {
   packaging {
     resources {
       excludes += "/META-INF/{AL2.0,LGPL2.1}"
+      excludes += "org/bouncycastle/pqc/**/*.properties"
     }
   }
 }
@@ -48,6 +65,10 @@ android {
 kotlin {
   jvmToolchain(17)
 }
+
+fun releaseSigningValue(name: String): String? =
+  (findProperty(name) as? String)?.takeIf { it.isNotBlank() }
+    ?: System.getenv(name)?.takeIf { it.isNotBlank() }
 
 dependencies {
   val composeBom = platform(libs.androidx.compose.bom)

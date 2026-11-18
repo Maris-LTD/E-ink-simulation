@@ -197,6 +197,7 @@ fun ReaderBottomBar(
   brightness: Float,
   onToneChange: (EInkTone) -> Unit,
   onBrightnessChange: (Float) -> Unit,
+  onBrightnessChangeFinished: () -> Unit,
   onSeekToProgress: (Float) -> Unit,
   focusMode: Boolean,
   onToggleFocusMode: () -> Unit,
@@ -234,6 +235,7 @@ fun ReaderBottomBar(
       brightness = brightness,
       onToneChange = onToneChange,
       onBrightnessChange = onBrightnessChange,
+      onBrightnessChangeFinished = onBrightnessChangeFinished,
     )
     if (seekEnabled) {
       Slider(
@@ -306,6 +308,7 @@ private fun ThemeAndBrightnessRow(
   brightness: Float,
   onToneChange: (EInkTone) -> Unit,
   onBrightnessChange: (Float) -> Unit,
+  onBrightnessChangeFinished: () -> Unit,
 ) {
   val isAuto = brightness < 0f
   val displayValue = if (isAuto) 0.5f else brightness.coerceIn(0.02f, 1f)
@@ -339,6 +342,7 @@ private fun ThemeAndBrightnessRow(
     Slider(
       value = displayValue,
       onValueChange = { onBrightnessChange(it.coerceIn(0.02f, 1f)) },
+      onValueChangeFinished = onBrightnessChangeFinished,
       valueRange = 0.02f..1f,
       modifier = Modifier.weight(1f),
       colors =
@@ -353,7 +357,10 @@ private fun ThemeAndBrightnessRow(
       contentDescription =
         if (isAuto) stringResource(R.string.cd_brightness_auto)
         else stringResource(R.string.cd_brightness_pct, (displayValue * 100).roundToInt()),
-      onClick = { onBrightnessChange(if (isAuto) 0.5f else -1f) },
+      onClick = {
+        onBrightnessChange(if (isAuto) 0.5f else -1f)
+        onBrightnessChangeFinished()
+      },
     )
   }
 }

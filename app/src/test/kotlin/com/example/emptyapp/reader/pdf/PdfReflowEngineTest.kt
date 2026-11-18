@@ -74,6 +74,47 @@ class PdfReflowEngineTest {
   }
 
   @Test
+  fun twoColumnPageKeepsColumnReadingOrderWithImageInSecondColumn() {
+    val colA1 = PdfTextLine("Left column first paragraph.", PdfRect(0.08f, 0.12f, 0.46f, 0.14f), 11f)
+    val colA2 = PdfTextLine("Left column second paragraph.", PdfRect(0.08f, 0.40f, 0.46f, 0.42f), 11f)
+    val colB1 = PdfTextLine("Right column first paragraph.", PdfRect(0.54f, 0.12f, 0.92f, 0.14f), 11f)
+    val colB2 = PdfTextLine("Right column second paragraph.", PdfRect(0.54f, 0.40f, 0.92f, 0.42f), 11f)
+    val rightImage = PdfImageBlock(PdfRect(0.56f, 0.22f, 0.90f, 0.35f), 0.04f)
+
+    val page =
+      PdfPageAnalysis(
+        pageIndex = 7,
+        pageWidthPt = 595f,
+        pageHeightPt = 842f,
+        charCount = 200,
+        textLines = listOf(colA1, colB1, colA2, colB2),
+        imageBlocks = listOf(rightImage),
+        totalImageAreaFraction = 0.04f,
+        vectorOpCount = 0,
+        columnCount = 2,
+      )
+
+    val result = PdfReflowEngine.buildReflowPage(page) as ReflowPageResult.Reflowed
+    val order =
+      result.items.map { item ->
+        when (item) {
+          is ReflowItem.Paragraph -> item.text
+          is ReflowItem.Image -> "IMAGE"
+        }
+      }
+    assertEquals(
+      listOf(
+        "Left column first paragraph.",
+        "Left column second paragraph.",
+        "Right column first paragraph.",
+        "IMAGE",
+        "Right column second paragraph.",
+      ),
+      order,
+    )
+  }
+
+  @Test
   fun fallsBackToOriginalForFullPageImageAndComplexVectors() {
     val fullImagePage =
       PdfPageAnalysis(

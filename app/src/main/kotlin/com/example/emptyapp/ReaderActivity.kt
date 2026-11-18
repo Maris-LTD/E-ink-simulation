@@ -79,9 +79,11 @@ class ReaderActivity : FragmentActivity() {
   private val pdfController = PdfPagerController()
   private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
   private val focusModeController by lazy { FocusModeController(this) }
+  private var lastLockScreenPositionKey: String? = null
+  @Volatile private var cachedChapterSnippets: Pair<String, List<String>>? = null
   private val requestNotificationPermission =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-      if (granted) postLockScreenNotification()
+      if (granted) postLockScreenNotification(force = true)
     }
 
   private val viewModel: ReaderViewModel by lazy {
@@ -136,7 +138,7 @@ class ReaderActivity : FragmentActivity() {
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !LockScreenReadingNotifier.hasPermission(this@ReaderActivity)) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
           } else {
-            postLockScreenNotification()
+            postLockScreenNotification(force = true)
           }
         } else {
           LockScreenReadingNotifier.cancel(this@ReaderActivity)
@@ -162,19 +164,22 @@ class ReaderActivity : FragmentActivity() {
     }
   }
 
-  private fun postLockScreenNotification() {
+  private fun postLockScreenNotification(force: Boolean = false) {
     if (!viewModel.settings.value.lockScreenReader) return
     val ready = viewModel.state.value as? ReaderUiState.Ready ?: return
     val container = (application as EmptyApplication).container
     val coverPath = container.library.coverFileOf(ready.book)?.absolutePath
     val progress = viewModel.progress.value
     val locator = viewModel.currentLocatorSnapshot() ?: ready.initialLocator
+    val positionKey =
+      "${ready.book.id}|${locator?.href}|${locator?.locations?.position}|${locator?.locations?.progression}"
+    if (!force && positionKey == lastLockScreenPositionKey) return
+    lastLockScreenPositionKey = positionKey
+    val appContext = applicationContext
 
-    lifecycleScope.launch {
-      val (snippets, startIdx) =
-        withContext(Dispatchers.IO) {
-          extractLockScreenSnippets(ready, locator, progress)
-        }
+    container.appScope.launch(Dispatchers.IO) {
+      val (snippets, startIdx) = extractLockScreenSnippets(ready, locator, progress)
+      if (snippets.isEmpty()) return@launch
       val lockState =
         LockScreenReadingState(
           bookId = ready.book.id,
@@ -187,7 +192,7 @@ class ReaderActivity : FragmentActivity() {
         )
       container.lockScreenReading.updateSession(lockState)
       LockScreenReadingNotifier.show(
-        context = this@ReaderActivity,
+        context = appContext,
         bookId = ready.book.id,
         title = ready.book.title,
         progress = progress,
@@ -234,18 +239,24 @@ class ReaderActivity : FragmentActivity() {
         ready.publication.readingOrder.firstOrNull { it.url() == targetHref }
           ?: ready.publication.readingOrder.firstOrNull()
           ?: return emptyList<String>() to 0
-      val html =
-        runCatching<String?> {
-          val res = ready.publication.get(link) ?: return@runCatching null
-          try {
-            res.read().getOrNull()?.decodeToString()
-          } finally {
-            res.close()
+      val chapterKey = "${ready.book.id}|${link.url()}"
+      val snippets =
+        cachedChapterSnippets?.takeIf { it.first == chapterKey }?.second
+          ?: run {
+            val html =
+              runCatching<String?> {
+                val res = ready.publication.get(link) ?: return@runCatching null
+                try {
+                  res.read().getOrNull()?.decodeToString()
+                } finally {
+                  res.close()
+                }
+              }.getOrNull().orEmpty()
+            if (html.isBlank()) return emptyList<String>() to 0
+            val plain = LockScreenTextChunker.stripHtmlToPlainText(html)
+            LockScreenTextChunker.chunkText(plain, maxCharsPerSnippet = 260)
+              .also { cachedChapterSnippets = chapterKey to it }
           }
-        }.getOrNull().orEmpty()
-      if (html.isBlank()) return emptyList<String>() to 0
-      val plain = LockScreenTextChunker.stripHtmlToPlainText(html)
-      val snippets = LockScreenTextChunker.chunkText(plain, maxCharsPerSnippet = 260)
       val chapterProg = (locator?.locations?.progression ?: 0.0).toFloat()
       val idx = LockScreenTextChunker.estimateInitialSnippetIndex(snippets, chapterProg)
       return snippets to idx

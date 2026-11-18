@@ -17,6 +17,14 @@ class EInkSettingsStore(context: Context) {
     save(updated)
   }
 
+  fun preview(transform: (EInkSettings) -> EInkSettings) {
+    state.value = transform(state.value)
+  }
+
+  fun persist() {
+    save(state.value)
+  }
+
   private fun load(): EInkSettings {
     val defaults = EInkSettings()
     if (prefs.getInt(KEY_VERSION, 0) < SETTINGS_VERSION) {

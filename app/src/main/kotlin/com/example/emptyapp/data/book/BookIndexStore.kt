@@ -1,21 +1,13 @@
 package com.example.emptyapp.data.book
 
+import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 
-class BookIndexStore(private val indexFile: File) {
-  private val json = Json { ignoreUnknownKeys = true }
-  private val serializer = ListSerializer(BookEntry.serializer())
+class BookIndexStore(indexFile: File) {
+  private val store = AtomicJsonFile(indexFile, ListSerializer(BookEntry.serializer()))
 
-  fun read(): List<BookEntry> {
-    if (!indexFile.exists()) return emptyList()
-    return runCatching { json.decodeFromString(serializer, indexFile.readText()) }
-      .getOrDefault(emptyList())
-  }
+  fun read(): List<BookEntry> = store.read(emptyList())
 
-  fun write(books: List<BookEntry>) {
-    indexFile.parentFile?.mkdirs()
-    indexFile.writeText(json.encodeToString(serializer, books))
-  }
+  fun write(books: List<BookEntry>) = store.write(books)
 }

@@ -1,11 +1,5 @@
 package com.example.emptyapp.ui.reader
 
-import android.graphics.Bitmap
-import android.graphics.Color as AndroidColor
-import android.graphics.Matrix
-import android.graphics.pdf.PdfRenderer
-import android.os.ParcelFileDescriptor
-import android.util.LruCache
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -58,7 +53,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -73,7 +67,9 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
@@ -98,11 +94,13 @@ import com.example.emptyapp.reader.pdf.ReflowScreenPage
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class PdfPagerController {
@@ -208,17 +206,15 @@ fun PdfPagerReader(
 
   var currentPdfPage by remember(file) { mutableIntStateOf(initialPage.coerceIn(0, pageCount - 1)) }
 
-  val reflowMetas =
-    remember(loadedAnalyses) {
-      loadedAnalyses.mapIndexed { idx, analysis ->
-        val neighbors = listOfNotNull(loadedAnalyses.getOrNull(idx - 1), loadedAnalyses.getOrNull(idx + 1))
-        val result = PdfReflowEngine.buildReflowPage(analysis, neighbors)
-        ReflowPageMeta(
-          pageIndex = analysis.pageIndex,
-          hasSpecialObjects = PdfReflowPaginator.hasSpecialObjects(analysis, result),
-          result = result,
-        )
-      }
+  val isReflowMode = readingMode == PdfReadingMode.HYBRID_REFLOW
+  val reflowMetas by
+    produceState<List<ReflowPageMeta>?>(null, loadedAnalyses, isReflowMode) {
+      value =
+        if (isReflowMode) {
+          withContext(Dispatchers.Default) { buildReflowMetas(loadedAnalyses) }
+        } else {
+          null
+        }
     }
 
   val bodyWeightValue = (settings.fontWeight * 400.0).roundToInt().coerceIn(100, 900)
@@ -287,7 +283,12 @@ fun PdfPagerReader(
         .coerceAtLeast(120)
     val paragraphSpacingPx = with(density) { paragraphSpacingDp.roundToPx() }
 
-    val textMeasurer = rememberTextMeasurer()
+    val fontFamilyResolver = LocalFontFamilyResolver.current
+    val layoutDirection = LocalLayoutDirection.current
+    val backgroundTextMeasurer =
+      remember(fontFamilyResolver, density, layoutDirection) {
+        TextMeasurer(fontFamilyResolver, density, layoutDirection, cacheSize = 0)
+      }
     val bodyTextStyle =
       remember(reflowFontFamily, bodyFontWeight, baseFontSp, lineHeightSp, textAlign) {
         TextStyle(
@@ -309,28 +310,58 @@ fun PdfPagerReader(
         )
       }
 
-    val reflowScreens =
-      remember(
+    val reflowScreensState by
+      produceState<List<ReflowScreenPage>?>(
+        null,
         reflowMetas,
         contentWidthPx,
         contentHeightPx,
         paragraphSpacingPx,
         bodyTextStyle,
         headingTextStyle,
+        backgroundTextMeasurer,
       ) {
-        PdfReflowPaginator.paginate(
-          pages = reflowMetas,
-          maxContentWidthPx = contentWidthPx,
-          maxContentHeightPx = contentHeightPx,
-          paragraphSpacingPx = paragraphSpacingPx,
-        ) { text, isHeading, maxW ->
-          textMeasurer.measure(
-            text = text,
-            style = if (isHeading) headingTextStyle else bodyTextStyle,
-            constraints = Constraints(maxWidth = maxW),
-          ).size.height
+        val metas = reflowMetas
+        value =
+          if (metas == null) {
+            null
+          } else {
+            withContext(Dispatchers.Default) {
+              val job = coroutineContext[Job]
+              PdfReflowPaginator.paginate(
+                pages = metas,
+                maxContentWidthPx = contentWidthPx,
+                maxContentHeightPx = contentHeightPx,
+                paragraphSpacingPx = paragraphSpacingPx,
+              ) { text, isHeading, maxW ->
+                if (job?.isActive == false) throw CancellationException()
+                backgroundTextMeasurer.measure(
+                  text = text,
+                  style = if (isHeading) headingTextStyle else bodyTextStyle,
+                  constraints = Constraints(maxWidth = maxW),
+                ).size.height
+              }
+            }
+          }
+      }
+
+    if (isReflowMode && reflowScreensState == null) {
+      Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          CircularProgressIndicator(color = Color(settings.tone.text))
+          Text(
+            text = stringResource(R.string.pdf_reflow_preparing),
+            color = Color(settings.tone.text),
+            style = MaterialTheme.typography.bodyLarge,
+          )
         }
       }
+      return@BoxWithConstraints
+    }
+    val reflowScreens = reflowScreensState.orEmpty()
 
     // Pre-process & pre-warm adjacent pages (page - 1 and page + 1)
     LaunchedEffect(currentPdfPage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop, readingMode) {
@@ -1028,136 +1059,16 @@ private fun clampOffset(offset: Offset, scale: Float, widthPx: Int, heightPx: In
   )
 }
 
-private class PdfRendererHolder(
-  private val descriptor: ParcelFileDescriptor,
-  private val renderer: PdfRenderer,
-) {
-  private val mutex = Mutex()
-  private val cropCache = HashMap<Int, NormalizedCropRect>()
-  private val analysisCache = HashMap<Int, PdfPageAnalysis>()
-  private val pageBitmapCache = LruCache<String, ImageBitmap>(8)
-  val pageCount: Int = renderer.pageCount
-
-  fun seedAnalyses(pages: List<PdfPageAnalysis>) {
-    pages.forEach { analysisCache[it.pageIndex] = it }
-  }
-
-  suspend fun prefetchAdjacent(
-    centerIndex: Int,
-    maxWidth: Int,
-    maxHeight: Int,
-    autoCrop: Boolean,
-  ) {
-    for (neighbor in listOf(centerIndex - 1, centerIndex + 1)) {
-      if (neighbor in 0 until pageCount) {
-        renderPage(neighbor, maxWidth, maxHeight, autoCrop)
-      }
-    }
-  }
-
-  suspend fun renderRegion(index: Int, region: PdfRect, maxWidth: Int): ImageBitmap? =
-    withContext(Dispatchers.IO) {
-      mutex.withLock {
-        if (index !in 0 until pageCount) return@withContext null
-        runCatching {
-          renderer.openPage(index).use { page ->
-            val leftPt = page.width * region.left
-            val topPt = page.height * region.top
-            val widthPt = (page.width * region.width).coerceAtLeast(1f)
-            val heightPt = (page.height * region.height).coerceAtLeast(1f)
-            val scale = (maxWidth.toFloat() / widthPt).coerceIn(0.25f, 4f)
-            val outWidth = (widthPt * scale).toInt().coerceAtLeast(1)
-            val outHeight = (heightPt * scale).toInt().coerceAtLeast(1)
-            val transform =
-              Matrix().apply {
-                setScale(scale, scale)
-                postTranslate(-leftPt * scale, -topPt * scale)
-              }
-            val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(AndroidColor.WHITE)
-            page.render(bitmap, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            bitmap.asImageBitmap()
-          }
-        }.getOrNull()
-      }
-    }
-
-  suspend fun renderPage(
-    index: Int,
-    maxWidth: Int,
-    maxHeight: Int,
-    autoCrop: Boolean = false,
-  ): ImageBitmap? =
-    withContext(Dispatchers.IO) {
-      val cacheKey = "$index:$maxWidth:$maxHeight:$autoCrop"
-      pageBitmapCache.get(cacheKey)?.let { return@withContext it }
-      mutex.withLock {
-        pageBitmapCache.get(cacheKey)?.let { return@withContext it }
-        if (index !in 0 until pageCount) return@withContext null
-        runCatching {
-          renderer.openPage(index).use { page ->
-            val fitPageScale = minOf(maxWidth.toFloat() / page.width, maxHeight.toFloat() / page.height)
-            val crop = if (autoCrop) getOrDetectCropRect(index, page) else NormalizedCropRect.FULL
-            val rendered =
-              if (crop == NormalizedCropRect.FULL) {
-                val width = (page.width * fitPageScale).toInt().coerceAtLeast(1)
-                val height = (page.height * fitPageScale).toInt().coerceAtLeast(1)
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(AndroidColor.WHITE)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                bitmap.asImageBitmap()
-              } else {
-                val cropLeftPt = page.width * crop.left
-                val cropTopPt = page.height * crop.top
-                val cropWidthPt = (page.width * crop.width).coerceAtLeast(1f)
-                val cropHeightPt = (page.height * crop.height).coerceAtLeast(1f)
-                val cropScale =
-                  minOf(maxWidth.toFloat() / cropWidthPt, maxHeight.toFloat() / cropHeightPt)
-                    .coerceAtMost(fitPageScale * 3.5f)
-                val width = (cropWidthPt * cropScale).toInt().coerceAtLeast(1)
-                val height = (cropHeightPt * cropScale).toInt().coerceAtLeast(1)
-                val transform =
-                  Matrix().apply {
-                    setScale(cropScale, cropScale)
-                    postTranslate(-cropLeftPt * cropScale, -cropTopPt * cropScale)
-                  }
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(AndroidColor.WHITE)
-                page.render(bitmap, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                bitmap.asImageBitmap()
-              }
-            pageBitmapCache.put(cacheKey, rendered)
-            rendered
-          }
-        }.getOrNull()
-      }
-    }
-
-  private fun getOrDetectCropRect(index: Int, page: PdfRenderer.Page): NormalizedCropRect {
-    cropCache[index]?.let { return it }
-    val thumbScale = minOf(320f / page.width, 320f / page.height).coerceAtMost(1f)
-    val thumbWidth = (page.width * thumbScale).toInt().coerceAtLeast(1)
-    val thumbHeight = (page.height * thumbScale).toInt().coerceAtLeast(1)
-    val thumb = Bitmap.createBitmap(thumbWidth, thumbHeight, Bitmap.Config.ARGB_8888)
-    return try {
-      thumb.eraseColor(AndroidColor.WHITE)
-      page.render(thumb, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-      PdfMarginCropper.detectContentBounds(thumb).also { cropCache[index] = it }
-    } finally {
-      thumb.recycle()
-    }
-  }
-
-  fun close() {
-    pageBitmapCache.evictAll()
-    runCatching { renderer.close() }
-    runCatching { descriptor.close() }
+private suspend fun buildReflowMetas(analyses: List<PdfPageAnalysis>): List<ReflowPageMeta> {
+  val context = currentCoroutineContext()
+  return analyses.mapIndexed { idx, analysis ->
+    context.ensureActive()
+    val neighbors = listOfNotNull(analyses.getOrNull(idx - 1), analyses.getOrNull(idx + 1))
+    val result = PdfReflowEngine.buildReflowPage(analysis, neighbors)
+    ReflowPageMeta(
+      pageIndex = analysis.pageIndex,
+      hasSpecialObjects = PdfReflowPaginator.hasSpecialObjects(analysis, result),
+      result = result,
+    )
   }
 }
-
-private fun openPdfHolder(file: File): PdfRendererHolder? =
-  runCatching {
-    val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-    val renderer = PdfRenderer(descriptor)
-    PdfRendererHolder(descriptor, renderer)
-  }.getOrNull()

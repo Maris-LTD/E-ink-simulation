@@ -1,6 +1,7 @@
 package com.example.emptyapp.data.stats
 
 import android.content.Context
+import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
@@ -11,7 +12,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 @Serializable
 data class DailyReadingStat(
@@ -39,7 +39,7 @@ class ReadingStatsRepository(
 ) {
   constructor(context: Context) : this(File(context.filesDir, "reading_stats.json"))
 
-  private val json = Json { ignoreUnknownKeys = true }
+  private val store = AtomicJsonFile(statsFile, ReadingStatsData.serializer())
   private val mutex = Mutex()
   private val state = MutableStateFlow(recompute(readInitial()))
 
@@ -135,17 +135,10 @@ class ReadingStatsRepository(
     )
   }
 
-  private fun readInitial(): ReadingStatsData {
-    if (!statsFile.exists()) return ReadingStatsData()
-    return runCatching { json.decodeFromString(ReadingStatsData.serializer(), statsFile.readText()) }
-      .getOrDefault(ReadingStatsData())
-  }
+  private fun readInitial(): ReadingStatsData = store.read(ReadingStatsData())
 
   private suspend fun write(data: ReadingStatsData) {
-    withContext(Dispatchers.IO) {
-      statsFile.parentFile?.mkdirs()
-      statsFile.writeText(json.encodeToString(ReadingStatsData.serializer(), data))
-    }
+    withContext(Dispatchers.IO) { store.write(data) }
   }
 
   companion object {

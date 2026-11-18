@@ -1,21 +1,21 @@
 package com.example.emptyapp.reader.pdf
 
 import android.content.Context
+import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
 
-class PdfBookConfigStore(private val storageFile: File) {
+class PdfBookConfigStore(storageFile: File) {
   constructor(context: Context) : this(File(context.filesDir, "pdf_book_configs.json"))
 
-  private val json = Json { ignoreUnknownKeys = true }
-  private val serializer = MapSerializer(String.serializer(), PdfBookConfig.serializer())
+  private val store =
+    AtomicJsonFile(storageFile, MapSerializer(String.serializer(), PdfBookConfig.serializer()))
   private val lock = Any()
-  private val state = MutableStateFlow(readFromDisk())
+  private val state = MutableStateFlow(store.read(emptyMap()))
 
   val configs: StateFlow<Map<String, PdfBookConfig>> = state.asStateFlow()
 
@@ -27,21 +27,8 @@ class PdfBookConfigStore(private val storageFile: File) {
       val updated = transform(current)
       val nextMap = state.value.toMutableMap().apply { put(bookId, updated) }
       state.value = nextMap
-      writeToDisk(nextMap)
+      runCatching { store.write(nextMap) }
       return updated
-    }
-  }
-
-  private fun readFromDisk(): Map<String, PdfBookConfig> {
-    if (!storageFile.exists()) return emptyMap()
-    return runCatching { json.decodeFromString(serializer, storageFile.readText()) }
-      .getOrDefault(emptyMap())
-  }
-
-  private fun writeToDisk(map: Map<String, PdfBookConfig>) {
-    runCatching {
-      storageFile.parentFile?.mkdirs()
-      storageFile.writeText(json.encodeToString(serializer, map))
     }
   }
 }

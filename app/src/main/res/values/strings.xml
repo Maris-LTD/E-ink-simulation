@@ -200,6 +200,8 @@
     <string name="sync_syncing_drive">Syncing with Drive…</string>
     <string name="sync_success">Synced successfully</string>
     <string name="sync_failed">Sync failed</string>
+    <string name="pdf_reflow_preparing">Laying out text…</string>
+    <string name="sync_remote_read_failed">Couldn\'t read your Google Drive data (%1$s). Sync stopped so nothing gets overwritten.</string>
     <string name="sync_downloading_book">Downloading book: %1$s</string>
     <string name="sync_uploading_book">Uploading: %1$s</string>
     <string name="sync_deleting_cloud">Deleting cloud data…</string>

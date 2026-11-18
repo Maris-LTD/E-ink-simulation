@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class LibraryRepository(context: Context, val engine: ReadiumEngine) {
@@ -23,6 +25,7 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
   private val importer = BookImporter(context.applicationContext, engine, booksDir, coversDir)
   private val state = MutableStateFlow(store.read())
   private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private val writeMutex = Mutex()
 
   val books: StateFlow<List<BookEntry>> = state.asStateFlow()
 
@@ -174,12 +177,10 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
   }
 
   private suspend fun commit(transform: (List<BookEntry>) -> List<BookEntry>) {
-    val updated = state.updateAndGet(transform)
-    withContext(Dispatchers.IO) { store.write(updated) }
-  }
-
-  private fun <T> MutableStateFlow<T>.updateAndGet(transform: (T) -> T): T {
-    update(transform)
-    return value
+    writeMutex.withLock {
+      state.update(transform)
+      val snapshot = state.value
+      withContext(Dispatchers.IO) { store.write(snapshot) }
+    }
   }
 }
