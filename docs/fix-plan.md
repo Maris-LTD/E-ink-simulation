@@ -17,8 +17,8 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 10. D10 — Release: R8 + shrinkResources + signing config; backup rules
 
 ## Đợt 2 — Sync & dữ liệu
-- [ ] 11. D3 — Giữ annotation của sách không có trên máy khi upload
-- [ ] 12. D4 — Tombstone cho xoá bookmark/highlight/sách; giữ tombstone khi sign out; sửa "xoá toàn bộ cloud"
+- [x] 11. D3 — Giữ annotation của sách không có trên máy khi upload
+- [x] 12. D4 — Tombstone cho xoá bookmark/highlight/sách; giữ tombstone khi sign out; sửa "xoá toàn bộ cloud"
 - [ ] 13. D5 — Timeout upload JSON, lỗi upload 1 sách không chặn cả sync, merge `dailyGoalMinutes`
 - [ ] 14. D8 — Vị trí đọc: recreate activity, locator notification, reflow đổi font, bookmark toggle, settings ≠ lật trang
 - [ ] 15. D9 — Import trùng, cover xám, locale, import crash, widget sách đã xoá, PdfRenderer close race, wallpaper crash
@@ -202,3 +202,54 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** quy tắc keep cho Readium/PDFBox đang rộng (giữ toàn bộ) — thu hẹp sau khi bản release chạy ổn để giảm thêm dung lượng. Nên phát hành dạng App Bundle (AAB) để Play tách theo ABI (mỗi máy chỉ tải ~6 MB PDFium thay vì cả 4 ABI). `windowSoftInputMode` trên `<application>` vẫn để nguyên (vô tác dụng; chuyển lên activity có thể làm WebView EPUB dàn lại khi bật bàn phím — cần thử riêng).
 
 **Bước tiếp theo:** hết Đợt 1. Đợt 2 bắt đầu với mục 11 — D3, khi đồng bộ giữ lại highlight/bookmark của những sách không có trên máy hiện tại (hiện bị xoá khỏi cloud).
+
+> Đợt 1 đã commit: `786e663` trên nhánh `fix/audit-batch-1`.
+
+### 11. D3 — Giữ annotation của sách không có trên máy — 2026-11-18
+**Nguyên nhân:** `mergeRemoteIntoLocal` bỏ qua bookmark/highlight remote nếu sách không có trên máy (không có chỗ gắn `bookId`), rồi `buildLocalPayload` dựng danh sách upload **chỉ từ annotation local** → annotation của các sách đó bị xoá khỏi `eink_sync_v1.json` cho mọi thiết bị. Xảy ra khi máy tắt "đồng bộ file sách", sách > 100 MB, tải sách thất bại, hoặc user xoá sách khỏi máy nhưng giữ trên cloud. (Danh sách sách thì đã được giữ bằng `putIfAbsent`, chỉ annotation bị mất.)
+
+**Đã sửa:**
+- Mới `data/sync/SyncAnnotationMerger.kt` (thuần Kotlin, test được): danh sách upload = annotation local (bỏ sách đã xoá khỏi cloud) + annotation remote của sách **không có trên máy và chưa bị xoá**; trùng id thì bản local thắng.
+- `data/sync/GoogleDriveSyncManager.kt`: `buildLocalPayload` dùng merger cho cả bookmarks và highlights.
+- Test mới `SyncAnnotationMergerTest` (3 case: giữ annotation sách chỉ có trên cloud, bỏ annotation sách đã xoá, local thắng khi trùng id).
+
+**Cách kiểm tra:** `SyncAnnotationMergerTest` 3/3 pass (kèm compile). Kiểm tra tay với 2 máy: máy A có sách X + highlight; máy B tắt "đồng bộ file sách" (không có X) → B đồng bộ → A đồng bộ lại → highlight của X vẫn còn.
+
+**Còn để lại:** xoá bookmark/highlight của sách **có** trên máy vẫn bị hồi sinh ở lần sync sau (không có tombstone) → mục 12.
+
+**Bước tiếp theo:** mục 12 — D4, tombstone cho xoá bookmark/highlight/sách đưa vào `SyncPayload` (tương thích file cũ), giữ tombstone khi đăng xuất + thu hồi quyền Drive, sửa "Xoá toàn bộ dữ liệu cloud".
+
+### 12. D4 — Đồng bộ thao tác xoá (tombstone) — 2026-11-18
+**Nguyên nhân:**
+- Xoá bookmark/highlight chỉ xoá ở máy; lần sync sau merge theo id lấy lại bản trên cloud → hiện về.
+- Danh sách hash sách đã xoá khỏi cloud chỉ nằm trong SharedPreferences của một máy → máy khác tải sách lên lại.
+- Đăng xuất gọi `prefs.clear()` → mất luôn danh sách đó; không thu hồi quyền Drive.
+- "Xoá toàn bộ dữ liệu Drive" thêm mọi sách trên máy vào danh sách đã xoá → thư viện hiện tại không bao giờ đồng bộ lại, không báo gì; còn máy khác thì tải lên lại ngay.
+
+**Đã sửa:**
+- `SyncModels.kt`: thêm `SyncTombstone(key, changedAt, deleted)` (kiểu "ghi sau thắng": `deleted = false` là khôi phục); `SyncPayload` có thêm `bookTombstones`, `annotationTombstones` (mặc định rỗng → đọc được file cũ).
+- Mới `data/sync/SyncTombstoneMerger.kt` (thuần Kotlin): gộp theo key lấy bản mới hơn (bằng giờ thì "xoá" thắng), bỏ dấu cũ hơn 365 ngày, `upsert` không đổi gì nếu trạng thái giữ nguyên, `withoutDeleted` lọc payload.
+- Mới `data/sync/SyncTombstoneStore.kt`: lưu ở `files/sync_tombstones.json` (qua `AtomicJsonFile`, không nằm trong SharedPreferences nên đăng xuất không xoá); gắn với email tài khoản — đăng nhập tài khoản **khác** thì bắt đầu lại từ rỗng. Danh sách cũ trong prefs được chuyển sang một lần khi khởi động.
+- `AnnotationRepository`: xoá bookmark/highlight → ghi dấu xoá; hoàn tác (undo) → ghi dấu khôi phục; thêm `dropDeleted(ids)` để áp dấu xoá từ máy khác. Xoá sách chỉ khỏi máy (`removeAllForBook`) **không** ghi dấu, annotation vẫn còn trên cloud.
+- `GoogleDriveSyncManager`:
+  - Sync: tải payload → gộp dấu xoá từ cloud → xoá local các annotation đã bị xoá ở máy khác → lọc remote → upload kèm toàn bộ dấu xoá.
+  - Xoá 1 sách khỏi cloud: cũng gộp + ghi dấu xoá vào file trên Drive.
+  - Nhập lại sách đã xoá: ghi dấu khôi phục (thắng dấu xoá cũ trên các máy khác).
+  - Đăng xuất: giữ dấu xoá, thu hồi quyền Drive qua `https://oauth2.googleapis.com/revoke` (bản `play-services-auth` 21.3.0 chưa có `revokeAccess`).
+  - "Xoá toàn bộ dữ liệu Drive": xoá file → xoá dấu xoá local → thu hồi quyền → **đăng xuất máy này** (thay vì chặn đồng bộ vĩnh viễn). Hộp thoại xác nhận và thông báo hoàn tất (vi/en) nói rõ điều này và việc máy khác còn đăng nhập có thể tải lên lại.
+- Test mới `SyncTombstoneMergerTest` (6 case) + 1 case mới trong `SyncAnnotationMergerTest`.
+
+**Cách kiểm tra:** 10/10 test trong `data.sync` pass (kèm compile). Kiểm tra tay với 2 máy cùng tài khoản:
+1. Máy A xoá 1 highlight → sync → máy B sync: highlight biến mất trên B, không quay lại trên A.
+2. Máy A xoá sách X khỏi cloud → máy B sync: B không tải X lên lại (B vẫn giữ X trên máy).
+3. Máy B nhập lại X → sync → A sync: X có lại trên cloud.
+4. Đăng xuất rồi đăng nhập lại: sách đã xoá khỏi cloud không bị tải về.
+5. "Xoá toàn bộ dữ liệu Drive": máy bị đăng xuất, đăng nhập lại thì cả thư viện đồng bộ bình thường.
+
+**Còn để lại:**
+- Bản app cũ (chưa có mục này) ghi file sync sẽ làm rơi trường dấu xoá; máy bản mới vẫn còn dấu xoá ở local nên ghi lại ở lần sync kế tiếp.
+- Dấu xoá quá 365 ngày bị bỏ: máy offline hơn 1 năm có thể làm hồi sinh mục đã xoá.
+- Đang sync mà bấm đăng xuất thì `fetchUserProfile` của lượt sync đó có thể ghi lại email (lỗi có từ trước, hiếm).
+- `GoogleDriveSyncManager.kt` vẫn rất dài (~780 dòng) — nên tách phần HTTP Drive ra file riêng ở một mục dọn dẹp sau.
+
+**Bước tiếp theo:** mục 13 — D5: thêm timeout cho `uploadSyncJson`, lỗi upload một sách không làm hỏng cả lượt sync, merge `dailyGoalMinutes` của thống kê theo thời điểm sửa.

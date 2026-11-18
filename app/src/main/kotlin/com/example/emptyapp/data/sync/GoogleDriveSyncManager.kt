@@ -54,6 +54,7 @@ class GoogleDriveSyncManager(
   private val library: LibraryRepository,
   private val annotations: AnnotationRepository,
   private val stats: ReadingStatsRepository,
+  private val tombstones: SyncTombstoneStore,
 ) {
   private val appContext = context.applicationContext
   private fun str(resId: Int): String = LocaleHelper.wrap(appContext).getString(resId)
@@ -81,19 +82,20 @@ class GoogleDriveSyncManager(
     prefs.edit().putString(KEY_CLOUD_BOOKS_JSON, encoded).apply()
   }
 
-  private fun getDeletedHashes(): Set<String> =
-    prefs.getStringSet(KEY_DELETED_HASHES, emptySet())?.toSet() ?: emptySet()
-
-  private fun addDeletedHash(contentHash: String) {
-    val next = getDeletedHashes() + contentHash
-    prefs.edit().putStringSet(KEY_DELETED_HASHES, next).apply()
+  init {
+    val legacyDeletedHashes = prefs.getStringSet(KEY_DELETED_HASHES, null)
+    if (legacyDeletedHashes != null) {
+      tombstones.markBooks(legacyDeletedHashes.toSet(), deleted = true)
+      prefs.edit().remove(KEY_DELETED_HASHES).apply()
+    }
   }
 
   fun unmarkDeletedHash(contentHash: String?) {
     if (contentHash.isNullOrBlank()) return
-    val current = getDeletedHashes()
-    if (contentHash in current) {
-      prefs.edit().putStringSet(KEY_DELETED_HASHES, current - contentHash).apply()
+    backgroundScope.launch {
+      if (contentHash in tombstones.deletedBookHashes()) {
+        tombstones.markBooks(listOf(contentHash), deleted = false)
+      }
     }
   }
 
@@ -202,28 +204,41 @@ class GoogleDriveSyncManager(
   }
 
   fun signOut() {
+    val wasSignedIn = state.value.isSignedIn
+    clearAccountState(statusMessage = null)
+    if (!wasSignedIn) return
+    backgroundScope.launch {
+      runCatching {
+        val authResult = authorizeScopes()
+        val token = authResult.accessToken
+        if (!authResult.hasResolution() && !token.isNullOrBlank()) revokeToken(token)
+      }
+    }
+  }
+
+  private fun clearAccountState(statusMessage: String?) {
     val keepSyncBooks = state.value.syncBookFiles
     prefs.edit().clear().putBoolean(KEY_SYNC_BOOKS, keepSyncBooks).apply()
-    state.value = SyncUiState(syncBookFiles = keepSyncBooks)
+    state.value = SyncUiState(syncBookFiles = keepSyncBooks, statusMessage = statusMessage)
     runCatching { Identity.getSignInClient(appContext).signOut() }
   }
 
   fun deleteBookFromCloudAsync(contentHash: String?, title: String? = null) {
     if (contentHash.isNullOrBlank()) return
-    addDeletedHash(contentHash)
     val remaining = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
     saveCloudBooks(remaining)
     state.update { it.copy(cloudBooks = remaining) }
-    if (!state.value.isSignedIn) return
+    val signedIn = state.value.isSignedIn
     backgroundScope.launch {
-      deleteBookFromCloud(contentHash, title)
+      tombstones.markBooks(listOf(contentHash), deleted = true)
+      if (signedIn) deleteBookFromCloud(contentHash, title)
     }
   }
 
   suspend fun deleteBookFromCloud(contentHash: String, title: String? = null): SyncActionResult =
     mutex.withLock {
       withContext(Dispatchers.IO) {
-        addDeletedHash(contentHash)
+        tombstones.markBooks(listOf(contentHash), deleted = true)
         val remainingLocalCloud = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
         saveCloudBooks(remainingLocalCloud)
         state.update {
@@ -248,13 +263,17 @@ class GoogleDriveSyncManager(
           val syncFileId = appDataFiles[SYNC_FILE_NAME]
           if (syncFileId != null) {
             val remote = downloadSyncPayload(token, syncFileId)
-            val deletedSet = getDeletedHashes()
+            tombstones.mergeRemote(remote.bookTombstones, remote.annotationTombstones)
+            val tombstoneSnapshot = tombstones.snapshot()
             val updatedPayload =
-              remote.copy(
+              SyncTombstoneMerger.withoutDeleted(
+                payload = remote,
+                deletedBookHashes = tombstones.deletedBookHashes(),
+                deletedAnnotationIds = tombstones.deletedAnnotationIds(),
+              ).copy(
                 updatedAt = System.currentTimeMillis(),
-                books = remote.books.filterNot { it.contentHash == contentHash || it.contentHash in deletedSet },
-                bookmarks = remote.bookmarks.filterNot { it.bookContentHash == contentHash || it.bookContentHash in deletedSet },
-                highlights = remote.highlights.filterNot { it.bookContentHash == contentHash || it.bookContentHash in deletedSet },
+                bookTombstones = tombstoneSnapshot.books,
+                annotationTombstones = tombstoneSnapshot.annotations,
               )
             val encoded = json.encodeToString(SyncPayload.serializer(), updatedPayload)
             uploadSyncJson(token, syncFileId, encoded)
@@ -290,21 +309,9 @@ class GoogleDriveSyncManager(
               httpDeleteFile(token, fileId)
             }
           }
-          val allLocalHashes = library.books.value.mapNotNull { it.contentHash }.toSet()
-          prefs.edit()
-            .putLong(KEY_LAST_SYNC, 0L)
-            .remove(KEY_CLOUD_BOOKS_JSON)
-            .putStringSet(KEY_DELETED_HASHES, getDeletedHashes() + allLocalHashes)
-            .apply()
-          val doneMsg = str(R.string.sync_all_cloud_deleted)
-          state.update {
-            it.copy(
-              syncing = false,
-              lastSyncedAt = 0L,
-              cloudBooks = emptyList(),
-              statusMessage = doneMsg,
-            )
-          }
+          tombstones.clear()
+          runCatching { revokeToken(token) }
+          clearAccountState(statusMessage = str(R.string.sync_all_cloud_deleted))
           SyncActionResult.Synced
         }.getOrElse { err ->
           val msg = err.localizedMessage ?: str(R.string.sync_failed)
@@ -320,10 +327,19 @@ class GoogleDriveSyncManager(
         runCatching {
           state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_syncing_drive)) }
           runCatching { fetchUserProfile(token) }
+          state.value.email?.let(tombstones::bindToAccount)
           library.ensureContentHashes()
 
-          val deletedHashes = getDeletedHashes()
           val rawAppDataFiles = listAppDataFiles(token)
+          val syncFileId = rawAppDataFiles[SYNC_FILE_NAME]
+          val rawRemote = syncFileId?.let { downloadSyncPayload(token, it) }
+          if (rawRemote != null) {
+            tombstones.mergeRemote(rawRemote.bookTombstones, rawRemote.annotationTombstones)
+          }
+          val deletedHashes = tombstones.deletedBookHashes()
+          val deletedAnnotationIds = tombstones.deletedAnnotationIds()
+          annotations.dropDeleted(deletedAnnotationIds)
+
           for ((name, fileId) in rawAppDataFiles) {
             if (deletedHashes.any { hash -> name.startsWith("book_${hash}.") }) {
               httpDeleteFile(token, fileId)
@@ -333,14 +349,8 @@ class GoogleDriveSyncManager(
             rawAppDataFiles.filterKeys { name ->
               deletedHashes.none { hash -> name.startsWith("book_${hash}.") }
             }
-          val syncFileId = appDataFiles[SYNC_FILE_NAME]
-          val rawRemote = syncFileId?.let { downloadSyncPayload(token, it) }
           val remote =
-            rawRemote?.copy(
-              books = rawRemote.books.filterNot { it.contentHash in deletedHashes },
-              bookmarks = rawRemote.bookmarks.filterNot { it.bookContentHash in deletedHashes },
-              highlights = rawRemote.highlights.filterNot { it.bookContentHash in deletedHashes },
-            )
+            rawRemote?.let { SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds) }
 
           if (state.value.syncBookFiles) {
             if (remote != null) {
@@ -353,7 +363,7 @@ class GoogleDriveSyncManager(
             mergeRemoteIntoLocal(remote)
           }
 
-          val mergedPayload = buildLocalPayload(remote, deletedHashes)
+          val mergedPayload = buildLocalPayload(remote, deletedHashes, deletedAnnotationIds)
           val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
           uploadSyncJson(token, syncFileId, encoded)
           saveCloudBooks(mergedPayload.books)
@@ -446,6 +456,7 @@ class GoogleDriveSyncManager(
   private fun buildLocalPayload(
     remote: SyncPayload?,
     deletedHashes: Set<String>,
+    deletedAnnotationIds: Set<String>,
   ): SyncPayload {
     val books = library.books.value.filter { it.contentHash != null && it.contentHash !in deletedHashes }
     val hashById = books.mapNotNull { book -> book.contentHash?.let { book.id to it } }.toMap()
@@ -495,13 +506,31 @@ class GoogleDriveSyncManager(
           createdAt = hl.createdAt,
         )
       }
+    val localBookHashes = library.books.value.mapNotNull { it.contentHash }.toSet()
+    val tombstoneSnapshot = tombstones.snapshot()
     return SyncPayload(
       version = 1,
       updatedAt = System.currentTimeMillis(),
       books = booksByHash.values.toList(),
-      bookmarks = syncedBookmarks,
-      highlights = syncedHighlights,
+      bookmarks =
+        SyncAnnotationMerger.bookmarksToUpload(
+          local = syncedBookmarks,
+          remote = remote?.bookmarks.orEmpty(),
+          localBookHashes = localBookHashes,
+          deletedHashes = deletedHashes,
+          deletedIds = deletedAnnotationIds,
+        ),
+      highlights =
+        SyncAnnotationMerger.highlightsToUpload(
+          local = syncedHighlights,
+          remote = remote?.highlights.orEmpty(),
+          localBookHashes = localBookHashes,
+          deletedHashes = deletedHashes,
+          deletedIds = deletedAnnotationIds,
+        ),
       stats = stats.stats.value,
+      bookTombstones = tombstoneSnapshot.books,
+      annotationTombstones = tombstoneSnapshot.annotations,
     )
   }
 
@@ -696,6 +725,24 @@ class GoogleDriveSyncManager(
       conn.responseCode in 200..299 || conn.responseCode == 404
     } catch (_: Exception) {
       false
+    } finally {
+      conn.disconnect()
+    }
+  }
+
+  private fun revokeToken(token: String) {
+    val body = "token=" + URLEncoder.encode(token, "UTF-8")
+    val conn =
+      (URL("https://oauth2.googleapis.com/revoke").openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        doOutput = true
+        connectTimeout = 10_000
+        readTimeout = 15_000
+        setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+      }
+    try {
+      conn.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+      conn.responseCode
     } finally {
       conn.disconnect()
     }

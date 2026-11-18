@@ -205,7 +205,7 @@
     <string name="sync_downloading_book">Downloading book: %1$s</string>
     <string name="sync_uploading_book">Uploading: %1$s</string>
     <string name="sync_deleting_cloud">Deleting cloud data…</string>
-    <string name="sync_all_cloud_deleted">All Google Drive backup data deleted</string>
+    <string name="sync_all_cloud_deleted">All Google Drive backup data deleted and sync turned off on this device</string>
     <string name="sync_book_deleted_cloud">Removed "%1$s" from Google Drive</string>
 
     <!-- Tutorial -->
@@ -283,7 +283,7 @@
     <string name="stats_sign_in_google">Sign in with Google</string>
     <string name="stats_sync_delete_all_btn">Delete Drive data</string>
     <string name="stats_sync_delete_all_title">Delete all Google Drive data?</string>
-    <string name="stats_sync_delete_all_message">This will permanently delete all backed-up book files, reading progress, bookmarks, highlights, and stats from your Google Drive AppData folder. Books on this device will not be deleted.</string>
+    <string name="stats_sync_delete_all_message">This will permanently delete all backed-up book files, reading progress, bookmarks, highlights, and stats from your Google Drive AppData folder. Books on this device will not be deleted. This device will be signed out of sync; other devices that are still signed in may upload their data again.</string>
     <string name="stats_sync_cloud_books_header">Books backed up on Drive (%1$d)</string>
     <string name="stats_sync_delete_book_btn">Remove from Drive</string>
     <string name="stats_sync_delete_book_title">Remove book from Google Drive?</string>

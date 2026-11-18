@@ -205,7 +205,7 @@
     <string name="sync_downloading_book">Đang tải sách: %1$s</string>
     <string name="sync_uploading_book">Đang tải lên: %1$s</string>
     <string name="sync_deleting_cloud">Đang xóa dữ liệu trên Drive…</string>
-    <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive</string>
+    <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive và ngắt đồng bộ trên máy này</string>
     <string name="sync_book_deleted_cloud">Đã xóa "%1$s" khỏi Google Drive</string>
 
     <!-- Tutorial -->
@@ -283,7 +283,7 @@
     <string name="stats_sign_in_google">Đăng nhập với Google</string>
     <string name="stats_sync_delete_all_btn">Xóa dữ liệu trên Drive</string>
     <string name="stats_sync_delete_all_title">Xóa toàn bộ dữ liệu trên Google Drive?</string>
-    <string name="stats_sync_delete_all_message">Thao tác này sẽ xóa vĩnh viễn toàn bộ file sách, tiến độ đọc, dấu trang, highlight và thống kê đã sao lưu trong thư mục Google Drive AppData của bạn. Sách đang có trên thiết bị sẽ không bị xóa.</string>
+    <string name="stats_sync_delete_all_message">Thao tác này sẽ xóa vĩnh viễn toàn bộ file sách, tiến độ đọc, dấu trang, highlight và thống kê đã sao lưu trong thư mục Google Drive AppData của bạn. Sách đang có trên thiết bị sẽ không bị xóa. Máy này sẽ được đăng xuất khỏi đồng bộ; máy khác còn đăng nhập có thể tải dữ liệu của nó lên lại.</string>
     <string name="stats_sync_cloud_books_header">Sách đã lưu trên Drive (%1$d)</string>
     <string name="stats_sync_delete_book_btn">Xóa khỏi Drive</string>
     <string name="stats_sync_delete_book_title">Xóa sách khỏi Google Drive?</string>

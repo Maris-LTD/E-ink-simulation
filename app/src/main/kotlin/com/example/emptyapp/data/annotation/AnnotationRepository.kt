@@ -2,6 +2,7 @@ package com.example.emptyapp.data.annotation
 
 import android.content.Context
 import com.example.emptyapp.data.storage.AtomicJsonFile
+import com.example.emptyapp.data.sync.SyncTombstoneStore
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +15,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 
-class AnnotationRepository(context: Context) {
+class AnnotationRepository(
+  context: Context,
+  private val tombstones: SyncTombstoneStore,
+) {
   private val bookmarksStore =
     AtomicJsonFile(File(context.filesDir, "bookmarks.json"), ListSerializer(BookmarkEntry.serializer()))
   private val highlightsStore =
@@ -42,9 +46,11 @@ class AnnotationRepository(context: Context) {
 
   suspend fun removeBookmark(id: String) {
     commitBookmarks { list -> list.filterNot { it.id == id } }
+    markSyncDeleted(id, deleted = true)
   }
 
   suspend fun restoreBookmark(entry: BookmarkEntry) {
+    markSyncDeleted(entry.id, deleted = false)
     commitBookmarks { list ->
       if (list.any { it.id == entry.id }) list
       else (listOf(entry) + list).sortedByDescending { it.createdAt }
@@ -75,9 +81,11 @@ class AnnotationRepository(context: Context) {
 
   suspend fun removeHighlight(id: String) {
     commitHighlights { list -> list.filterNot { it.id == id } }
+    markSyncDeleted(id, deleted = true)
   }
 
   suspend fun restoreHighlight(entry: HighlightEntry) {
+    markSyncDeleted(entry.id, deleted = false)
     commitHighlights { list ->
       if (list.any { it.id == entry.id }) list
       else (listOf(entry) + list).sortedByDescending { it.createdAt }
@@ -111,6 +119,20 @@ class AnnotationRepository(context: Context) {
         byId.values.toList()
       }
     }
+  }
+
+  suspend fun dropDeleted(ids: Set<String>) {
+    if (ids.isEmpty()) return
+    if (bookmarkState.value.any { it.id in ids }) {
+      commitBookmarks { list -> list.filterNot { it.id in ids } }
+    }
+    if (highlightState.value.any { it.id in ids }) {
+      commitHighlights { list -> list.filterNot { it.id in ids } }
+    }
+  }
+
+  private suspend fun markSyncDeleted(id: String, deleted: Boolean) {
+    withContext(Dispatchers.IO) { tombstones.markAnnotations(listOf(id), deleted) }
   }
 
   private suspend fun commitBookmarks(transform: (List<BookmarkEntry>) -> List<BookmarkEntry>) {
