@@ -17,12 +17,28 @@ android {
     targetSdk = 37
     versionCode = 1
     versionName = "1.0"
+    ndk {
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+    }
+  }
+
+  val releaseStoreFile = releaseSigningValue("RELEASE_STORE_FILE")
+  signingConfigs {
+    if (releaseStoreFile != null) {
+      create("release") {
+        storeFile = file(releaseStoreFile)
+        storePassword = releaseSigningValue("RELEASE_STORE_PASSWORD")
+        keyAlias = releaseSigningValue("RELEASE_KEY_ALIAS")
+        keyPassword = releaseSigningValue("RELEASE_KEY_PASSWORD")
+      }
+    }
   }
 
   buildTypes {
     release {
-      isMinifyEnabled = false
-      signingConfig = signingConfigs.getByName("debug")
+      isMinifyEnabled = true
+      isShrinkResources = true
+      signingConfig = signingConfigs.findByName("release")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }
@@ -41,13 +57,42 @@ android {
   packaging {
     resources {
       excludes += "/META-INF/{AL2.0,LGPL2.1}"
+      excludes += "org/bouncycastle/pqc/**/*.properties"
     }
+  }
+
+  bundle {
+    language {
+      enableSplit = false
+    }
+  }
+
+  lint {
+    disable += "TrustAllX509TrustManager"
+  }
+
+  testOptions {
+    unitTests.isReturnDefaultValues = true
   }
 }
 
 kotlin {
   jvmToolchain(17)
 }
+
+val packagePdfBoxTestResources =
+  tasks.register<org.gradle.jvm.tasks.Jar>("packagePdfBoxTestResources") {
+    dependsOn("mergeDebugAssets")
+    from(layout.buildDirectory.dir("intermediates/assets/debug/mergeDebugAssets")) {
+      include("com/tom_roush/pdfbox/resources/**")
+    }
+    archiveBaseName.set("pdfbox-test-resources")
+    destinationDirectory.set(layout.buildDirectory.dir("intermediates/pdfbox_test_res"))
+  }
+
+fun releaseSigningValue(name: String): String? =
+  (findProperty(name) as? String)?.takeIf { it.isNotBlank() }
+    ?: System.getenv(name)?.takeIf { it.isNotBlank() }
 
 dependencies {
   val composeBom = platform(libs.androidx.compose.bom)
@@ -76,6 +121,7 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(files(packagePdfBoxTestResources))
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)
@@ -98,4 +144,5 @@ dependencies {
   implementation(libs.readium.adapter.pdfium)
   implementation(libs.play.services.auth)
   implementation(libs.pdfbox.android)
+  implementation(libs.billing.ktx)
 }

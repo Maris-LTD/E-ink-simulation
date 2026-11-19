@@ -38,6 +38,13 @@ data class SyncedHighlight(
 )
 
 @Serializable
+data class SyncTombstone(
+  val key: String,
+  val changedAt: Long,
+  val deleted: Boolean = true,
+)
+
+@Serializable
 data class SyncPayload(
   val version: Int = 1,
   val updatedAt: Long = 0L,
@@ -45,6 +52,8 @@ data class SyncPayload(
   val bookmarks: List<SyncedBookmark> = emptyList(),
   val highlights: List<SyncedHighlight> = emptyList(),
   val stats: ReadingStatsData = ReadingStatsData(),
+  val bookTombstones: List<SyncTombstone> = emptyList(),
+  val annotationTombstones: List<SyncTombstone> = emptyList(),
 )
 
 data class SyncUiState(
@@ -53,6 +62,7 @@ data class SyncUiState(
   val lastSyncedAt: Long = 0L,
   val syncBookFiles: Boolean = true,
   val syncing: Boolean = false,
+  val needsReconnect: Boolean = false,
   val statusMessage: String? = null,
   val cloudBooks: List<SyncedBookProgress> = emptyList(),
 ) {

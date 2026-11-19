@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.delay
@@ -21,6 +22,7 @@ fun RefreshFlashOverlay(
   ghostBitmap: ImageBitmap?,
   ghostAlpha: Float,
   flashTrigger: Int = 0,
+  ghostColorFilter: ColorFilter? = null,
   modifier: Modifier = Modifier,
 ) {
   var flashPhase by remember { mutableIntStateOf(0) }
@@ -45,6 +47,7 @@ fun RefreshFlashOverlay(
       contentDescription = null,
       contentScale = ContentScale.FillBounds,
       alpha = ghostAlpha,
+      colorFilter = ghostColorFilter,
       modifier = modifier.fillMaxSize(),
     )
   }

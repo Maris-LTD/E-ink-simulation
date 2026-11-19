@@ -1,14 +1,7 @@
 package com.example.emptyapp
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -24,63 +17,87 @@ fun MainNavigation() {
   val context = LocalContext.current
   val container = (context.applicationContext as EmptyApplication).container
   val backStack = rememberNavBackStack(Library)
+  val viewModel = viewModel {
+    LibraryViewModel(
+      repository = container.library,
+      annotations = container.annotations,
+      statsRepository = container.stats,
+      context = context.applicationContext,
+      tombstones = container.syncTombstones,
+    )
+  }
 
   NavDisplay(
     backStack = backStack,
-    onBack = { backStack.removeLastOrNull() },
+    onBack = {
+      if (backStack.size > 1) {
+        backStack.removeLastOrNull()
+      }
+    },
     entryProvider =
       entryProvider {
         entry<Library> {
-          val viewModel = viewModel {
-            LibraryViewModel(container.library, container.annotations, container.stats, context.applicationContext)
-          }
+          val settings by container.settings.settings.collectAsStateWithLifecycle()
+          LibraryScreen(
+            viewModel = viewModel,
+            settings = settings,
+            onUpdateSettings = container.settings::update,
+            grayscaleCovers = settings.grayscale,
+            billing = container.billing,
+            proGate = container.proGate,
+            onOpenBook = { id, locatorJson ->
+              context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
+            },
+            onOpenStats = {
+              pushNavKeyIfNotTop(backStack, ReadingStats)
+            },
+          )
+        }
+        entry<ReadingStats> {
           val books by viewModel.books.collectAsStateWithLifecycle()
           val highlights by viewModel.highlights.collectAsStateWithLifecycle()
           val stats by viewModel.stats.collectAsStateWithLifecycle()
           val settings by container.settings.settings.collectAsStateWithLifecycle()
           val syncState by container.sync.uiState.collectAsStateWithLifecycle()
-          var statsOpen by rememberSaveable { mutableStateOf(false) }
-
-          BackHandler(enabled = statsOpen) {
-            statsOpen = false
-          }
-
-          Box(modifier = Modifier.fillMaxSize()) {
-            if (!statsOpen) {
-              LibraryScreen(
-                viewModel = viewModel,
-                settings = settings,
-                onUpdateSettings = container.settings::update,
-                grayscaleCovers = settings.grayscale,
-                onOpenBook = { id, locatorJson ->
-                  context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
-                },
-                onOpenStats = { statsOpen = true },
-              )
-            } else {
-              ReadingStatsScreen(
-                stats = stats,
-                completedBooksCount = books.count { it.progress >= 0.99f },
-                highlightsCount = highlights.size,
-                syncState = syncState,
-                onSignInAndSync = { container.sync.signInAndSync() },
-                onHandleSyncConsent = { data -> container.sync.handleConsentResult(data) },
-                onToggleSyncBookFiles = { enabled -> container.sync.setSyncBookFiles(enabled) },
-                onDeleteCloudBook = { book -> container.sync.deleteBookFromCloud(book.contentHash, book.title) },
-                onDeleteAllCloudData = { container.sync.deleteAllCloudData() },
-                onSignOutSync = { container.sync.signOut() },
-                onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
-                settings = settings,
-                onUpdateSettings = container.settings::update,
-                currentLanguage = settings.appLanguage,
-                onChangeLanguage = { lang ->
-                  container.settings.update { it.copy(appLanguage = lang) }
-                  (context as? android.app.Activity)?.recreate()
-                },
-                onBack = { statsOpen = false },
-              )
-            }
-          }
+          val writeError by viewModel.writeError.collectAsStateWithLifecycle()
+          ReadingStatsScreen(
+            stats = stats,
+            completedBooksCount = books.count { it.progress >= 0.99f },
+            highlightsCount = highlights.size,
+            syncState = syncState,
+            shouldConfirmMeteredBookSync = container.sync::shouldConfirmMeteredBookSync,
+            onSignInAndSync = { allowBookFiles -> container.sync.signInAndSync(allowBookFiles) },
+            onHandleSyncConsent = { data, allowBookFiles -> container.sync.handleConsentResult(data, allowBookFiles) },
+            onLaunchSignInAndSync = { allowBookFiles, onNeedConsent ->
+              container.sync.launchSignInAndSync(allowBookFiles = allowBookFiles, onNeedConsent = onNeedConsent)
+            },
+            onLaunchHandleSyncConsent = { data, allowBookFiles ->
+              container.sync.launchHandleConsentResult(data, allowBookFiles = allowBookFiles)
+            },
+            onToggleSyncBookFiles = { enabled -> container.sync.setSyncBookFiles(enabled) },
+            onDeleteCloudBook = { book -> container.sync.deleteBookFromCloud(book.contentHash, book.title) },
+            onLaunchDeleteCloudBook = { book -> container.sync.deleteBookFromCloudAsync(book.contentHash, book.title) },
+            onDeleteAllCloudData = { container.sync.deleteAllCloudData() },
+            onLaunchDeleteAllCloudData = { container.sync.launchDeleteAllCloudData() },
+            onSignOutSync = { container.sync.signOut() },
+            onChangeGoalMinutes = viewModel::setDailyGoalMinutes,
+            settings = settings,
+            onUpdateSettings = container.settings::update,
+            currentLanguage = settings.appLanguage,
+            onChangeLanguage = { lang ->
+              container.settings.update { it.copy(appLanguage = lang) }
+              com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(context)
+              (context as? android.app.Activity)?.recreate()
+            },
+            writeError = writeError,
+            billing = container.billing,
+            proGate = container.proGate,
+            onBack = {
+              if (backStack.size > 1 && backStack.lastOrNull() == ReadingStats) {
+                backStack.removeLastOrNull()
+              }
+            },
+          )
         }
       },
   )

@@ -128,12 +128,145 @@ object PdfRegionNavigator {
     val dx = (centerX - 0.5f) * dispW
     val dy = (centerY - 0.5f) * dispH
 
-    val maxX = ((containerWidth * (scale - 1f)) / 2f).coerceAtLeast(0f)
-    val maxY = ((containerHeight * (scale - 1f)) / 2f).coerceAtLeast(0f)
+    val (offsetX, offsetY) =
+      clampOffsetForFitContent(
+        offsetX = -dx * scale,
+        offsetY = -dy * scale,
+        scale = scale,
+        containerWidth = containerWidth,
+        containerHeight = containerHeight,
+        bitmapWidth = bitmapWidth,
+        bitmapHeight = bitmapHeight,
+      )
     return CameraTransform(
       scale = scale,
-      offsetX = (-dx * scale).coerceIn(-maxX, maxX),
-      offsetY = (-dy * scale).coerceIn(-maxY, maxY),
+      offsetX = offsetX,
+      offsetY = offsetY,
+    )
+  }
+
+  fun mapPageRectToCropSpace(
+    rect: PdfRect,
+    crop: PdfRect,
+  ): PdfRect {
+    val cropW = crop.width
+    val cropH = crop.height
+    if (cropW <= 1e-4f || cropH <= 1e-4f) return rect
+    val left = ((rect.left - crop.left) / cropW).coerceIn(0f, 1f)
+    val top = ((rect.top - crop.top) / cropH).coerceIn(0f, 1f)
+    val right = ((rect.right - crop.left) / cropW).coerceIn(0f, 1f)
+    val bottom = ((rect.bottom - crop.top) / cropH).coerceIn(0f, 1f)
+    if (right - left < 0.02f || bottom - top < 0.02f) {
+      return rect
+    }
+    return PdfRect(
+      left = left,
+      top = top,
+      right = right,
+      bottom = bottom,
+    )
+  }
+
+  fun clampOffsetForFitContent(
+    offsetX: Float,
+    offsetY: Float,
+    scale: Float,
+    containerWidth: Float,
+    containerHeight: Float,
+    bitmapWidth: Float = 0f,
+    bitmapHeight: Float = 0f,
+  ): Pair<Float, Float> {
+    if (containerWidth <= 0f || containerHeight <= 0f || scale <= 1f) {
+      return 0f to 0f
+    }
+    val (dispW, dispH) =
+      if (bitmapWidth > 0f && bitmapHeight > 0f) {
+        val fitScale = minOf(containerWidth / bitmapWidth, containerHeight / bitmapHeight)
+        (bitmapWidth * fitScale) to (bitmapHeight * fitScale)
+      } else {
+        containerWidth to containerHeight
+      }
+    val maxX = ((dispW * scale - containerWidth) / 2f).coerceAtLeast(0f)
+    val maxY = ((dispH * scale - containerHeight) / 2f).coerceAtLeast(0f)
+    return offsetX.coerceIn(-maxX, maxX) to offsetY.coerceIn(-maxY, maxY)
+  }
+
+  fun computeVisibleViewportBitmapRect(
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    containerWidth: Float,
+    containerHeight: Float,
+    bitmapWidth: Float,
+    bitmapHeight: Float,
+  ): PdfRect? {
+    if (
+      scale <= 0f ||
+      containerWidth <= 0f ||
+      containerHeight <= 0f ||
+      bitmapWidth <= 0f ||
+      bitmapHeight <= 0f ||
+      !scale.isFinite() ||
+      !offsetX.isFinite() ||
+      !offsetY.isFinite()
+    ) {
+      return null
+    }
+    val fitScale = minOf(containerWidth / bitmapWidth, containerHeight / bitmapHeight)
+    val scaledW = bitmapWidth * fitScale * scale
+    val scaledH = bitmapHeight * fitScale * scale
+    if (scaledW <= 0f || scaledH <= 0f) return null
+
+    val left = (0.5f + (-containerWidth / 2f - offsetX) / scaledW).coerceIn(0f, 1f)
+    val right = (0.5f + (containerWidth / 2f - offsetX) / scaledW).coerceIn(0f, 1f)
+    val top = (0.5f + (-containerHeight / 2f - offsetY) / scaledH).coerceIn(0f, 1f)
+    val bottom = (0.5f + (containerHeight / 2f - offsetY) / scaledH).coerceIn(0f, 1f)
+    if (right - left <= 1e-4f || bottom - top <= 1e-4f) return null
+
+    return PdfRect(
+      left = left,
+      top = top,
+      right = right,
+      bottom = bottom,
+    )
+  }
+
+  fun computeVisibleViewportPageRect(
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    containerWidth: Float,
+    containerHeight: Float,
+    bitmapWidth: Float,
+    bitmapHeight: Float,
+    cropRect: PdfRect? = null,
+  ): PdfRect? {
+    val bitmapRect =
+      computeVisibleViewportBitmapRect(
+        scale = scale,
+        offsetX = offsetX,
+        offsetY = offsetY,
+        containerWidth = containerWidth,
+        containerHeight = containerHeight,
+        bitmapWidth = bitmapWidth,
+        bitmapHeight = bitmapHeight,
+      ) ?: return null
+
+    if (cropRect == null || cropRect.width <= 1e-4f || cropRect.height <= 1e-4f) {
+      return bitmapRect
+    }
+
+    val left = (cropRect.left + bitmapRect.left * cropRect.width).coerceIn(0f, 1f)
+    val top = (cropRect.top + bitmapRect.top * cropRect.height).coerceIn(0f, 1f)
+    val right = (cropRect.left + bitmapRect.right * cropRect.width).coerceIn(0f, 1f)
+    val bottom = (cropRect.top + bitmapRect.bottom * cropRect.height).coerceIn(0f, 1f)
+    if (right - left <= 1e-4f || bottom - top <= 1e-4f) return null
+
+    return PdfRect(
+      left = left,
+      top = top,
+      right = right,
+      bottom = bottom,
     )
   }
 

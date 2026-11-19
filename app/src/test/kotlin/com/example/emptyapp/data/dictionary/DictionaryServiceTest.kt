@@ -1,6 +1,8 @@
 package com.example.emptyapp.data.dictionary
 
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -10,6 +12,45 @@ class DictionaryServiceTest {
     assertEquals("ephemeral", DictionaryService.normalizeWord("  “Ephemeral,” "))
     assertEquals("read-only", DictionaryService.normalizeWord("(Read-Only)!"))
     assertEquals("Hello world, how are you?", DictionaryService.normalizeQuery("  Hello   world,\n how are you? "))
+  }
+
+  @Test
+  fun normalizeQueryTruncatesToMaxQueryChars() {
+    val longInput = "a".repeat(800)
+    val normalized = DictionaryService.normalizeQuery(longInput)
+    assertEquals(DictionaryService.MAX_QUERY_CHARS, normalized.length)
+
+    val longPhrase = ("word ".repeat(200))
+    val normalizedPhrase = DictionaryService.normalizeQuery(longPhrase)
+    assertTrue(normalizedPhrase.length <= DictionaryService.MAX_QUERY_CHARS)
+  }
+
+  @Test
+  fun myMemoryFallbackUsesAutoSourceLanguageAndTargetLang() = runTest {
+    val requestedUrls = mutableListOf<String>()
+    val service =
+      DictionaryService(
+        httpGetter = { url ->
+          requestedUrls += url
+          when {
+            url.contains("translate.googleapis.com") -> null
+            url.contains("api.mymemory.translated.net") ->
+              """{"responseData":{"translatedText":"Bonjour"}}"""
+            else -> null
+          }
+        },
+      )
+
+    val longText = "Hello world ".repeat(100)
+    val result = service.lookup(longText, targetLang = "fr")
+
+    assertTrue(result.isSuccess)
+    assertEquals("Bonjour", result.getOrThrow().translation)
+    val myMemoryCall = requestedUrls.first { it.contains("api.mymemory.translated.net") }
+    assertTrue(myMemoryCall.contains("langpair=auto|fr"))
+    assertFalse(myMemoryCall.contains("langpair=en|vi"))
+    assertEquals("auto|vi", DictionaryService.buildMyMemoryLangPair("vi"))
+    assertEquals("auto|en", DictionaryService.buildMyMemoryLangPair("en"))
   }
 
   @Test

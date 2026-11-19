@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,15 +32,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +63,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import com.example.emptyapp.reader.AppLanguage
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkTone
@@ -63,6 +78,11 @@ import com.example.emptyapp.reader.OrientationLock
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeature
+import com.example.emptyapp.data.billing.ProFeatureGate
+import com.example.emptyapp.data.billing.PurchaseType
 import com.example.emptyapp.data.stats.DailyReadingStat
 import com.example.emptyapp.data.stats.ReadingBadge
 import com.example.emptyapp.data.stats.ReadingGamification
@@ -73,9 +93,10 @@ import com.example.emptyapp.data.sync.SyncUiState
 import com.example.emptyapp.data.sync.SyncedBookProgress
 import com.example.emptyapp.system.EInkWallpaperService
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.text.SimpleDateFormat
-import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.format.TextStyle
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -111,50 +132,145 @@ fun ReadingStatsScreen(
   completedBooksCount: Int,
   highlightsCount: Int,
   syncState: SyncUiState = SyncUiState(),
-  onSignInAndSync: suspend () -> SyncActionResult = { SyncActionResult.Synced },
-  onHandleSyncConsent: suspend (Intent?) -> SyncActionResult = { SyncActionResult.Synced },
+  shouldConfirmMeteredBookSync: () -> Boolean = { false },
+  onSignInAndSync: suspend (allowBookFiles: Boolean) -> SyncActionResult = { SyncActionResult.Synced },
+  onHandleSyncConsent: suspend (Intent?, allowBookFiles: Boolean) -> SyncActionResult = { _, _ -> SyncActionResult.Synced },
+  onLaunchSignInAndSync: ((allowBookFiles: Boolean, onNeedConsent: (IntentSenderRequest) -> Unit) -> Unit)? = null,
+  onLaunchHandleSyncConsent: ((Intent?, allowBookFiles: Boolean) -> Unit)? = null,
   onToggleSyncBookFiles: (Boolean) -> Unit = {},
   onDeleteCloudBook: suspend (SyncedBookProgress) -> SyncActionResult = { SyncActionResult.Synced },
+  onLaunchDeleteCloudBook: ((SyncedBookProgress) -> Unit)? = null,
   onDeleteAllCloudData: suspend () -> SyncActionResult = { SyncActionResult.Synced },
+  onLaunchDeleteAllCloudData: (() -> Unit)? = null,
   onSignOutSync: () -> Unit = {},
   onChangeGoalMinutes: (Int) -> Unit,
   settings: EInkSettings = EInkSettings(),
   onUpdateSettings: ((EInkSettings) -> EInkSettings) -> Unit = {},
   currentLanguage: AppLanguage = AppLanguage.SYSTEM,
   onChangeLanguage: (AppLanguage) -> Unit = {},
+  writeError: Boolean = false,
+  billing: PlayBillingManager? = null,
+  proGate: ProFeatureGate? = null,
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
+  var paywallOpen by remember { mutableStateOf(false) }
+  var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
+  val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
+  val saveErrorMsg = stringResource(R.string.error_save_data)
+  LaunchedEffect(writeError) {
+    if (writeError) {
+      Toast.makeText(context, saveErrorMsg, Toast.LENGTH_SHORT).show()
+    }
+  }
+  var pendingConsentAllowBookFiles by remember { mutableStateOf(syncState.syncBookFiles) }
+  var showMeteredSyncConfirm by remember { mutableStateOf(false) }
   val consentLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
-      scope.launch { onHandleSyncConsent(res.data) }
-    }
-  fun triggerSync() {
-    scope.launch {
-      val result = onSignInAndSync()
-      if (result is SyncActionResult.NeedsConsent) {
-        consentLauncher.launch(IntentSenderRequest.Builder(result.pendingIntent).build())
+      val allowBookFiles = pendingConsentAllowBookFiles
+      if (onLaunchHandleSyncConsent != null) {
+        onLaunchHandleSyncConsent(res.data, allowBookFiles)
+      } else {
+        scope.launch { onHandleSyncConsent(res.data, allowBookFiles) }
       }
     }
+  fun startSync(allowBookFiles: Boolean) {
+    pendingConsentAllowBookFiles = allowBookFiles
+    if (onLaunchSignInAndSync != null) {
+      onLaunchSignInAndSync(allowBookFiles) { request ->
+        runCatching { consentLauncher.launch(request) }
+      }
+    } else {
+      scope.launch {
+        val result = onSignInAndSync(allowBookFiles)
+        if (result is SyncActionResult.NeedsConsent) {
+          runCatching {
+            consentLauncher.launch(IntentSenderRequest.Builder(result.pendingIntent).build())
+          }
+        }
+      }
+    }
+  }
+  fun triggerSync() {
+    if (proGate != null && !proGate.hasAccess(ProFeature.DRIVE_SYNC)) {
+      paywallFeature = ProFeature.DRIVE_SYNC
+      paywallOpen = true
+      return
+    }
+    if (shouldConfirmMeteredBookSync()) {
+      showMeteredSyncConfirm = true
+    } else {
+      startSync(allowBookFiles = syncState.syncBookFiles)
+    }
+  }
+  if (showMeteredSyncConfirm) {
+    AlertDialog(
+      onDismissRequest = { showMeteredSyncConfirm = false },
+      containerColor = MaterialTheme.colorScheme.background,
+      title = { EInkText(stringResource(R.string.sync_metered_confirm_title), style = MaterialTheme.typography.titleMedium) },
+      text = { EInkText(stringResource(R.string.sync_metered_confirm_message), style = MaterialTheme.typography.bodyMedium) },
+      confirmButton = {
+        Column(horizontalAlignment = Alignment.End) {
+          TextButton(
+            onClick = {
+              showMeteredSyncConfirm = false
+              startSync(allowBookFiles = true)
+            },
+          ) {
+            EInkText(stringResource(R.string.sync_metered_allow_books), style = MaterialTheme.typography.labelLarge)
+          }
+          TextButton(
+            onClick = {
+              showMeteredSyncConfirm = false
+              startSync(allowBookFiles = false)
+            },
+          ) {
+            EInkText(stringResource(R.string.sync_metered_metadata_only), style = MaterialTheme.typography.labelLarge)
+          }
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showMeteredSyncConfirm = false }) {
+          EInkText(
+            stringResource(R.string.action_cancel),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary,
+          )
+        }
+      },
+    )
   }
   val todaySeconds = stats.todaySeconds()
   val todayMinutes = todaySeconds / 60
   val goalMinutes = stats.dailyGoalMinutes.coerceAtLeast(5)
   val progress = (todaySeconds.toFloat() / (goalMinutes * 60f)).coerceIn(0f, 1f)
-  val today = LocalDate.now()
-  val weekSeries = ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 7, today = today)
-  val heatmapDays = ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 84, today = today)
-  val activeDaysCount = stats.dailyStats.count { it.secondsRead > 0 }
-  val avgMinutes7d = (weekSeries.sumOf { it.secondsRead } / 60) / 7
+  val weekSeries =
+    remember(stats.dailyStats) {
+      ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 7, today = LocalDate.now())
+    }
+  val heatmapDays =
+    remember(stats.dailyStats) {
+      ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 84, today = LocalDate.now())
+    }
+  val activeDaysCount = remember(stats.dailyStats) { stats.dailyStats.count { it.secondsRead > 0 } }
+  val avgMinutes7d = remember(weekSeries) { (weekSeries.sumOf { it.secondsRead } / 60) / 7 }
   val pagesPerHour =
-    if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
-    else 0
-  val rank = ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount, context)
-  val badges = ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
+    remember(stats.totalSeconds, stats.totalPagesTurned) {
+      if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
+      else 0
+    }
+  val rank =
+    remember(stats, completedBooksCount, highlightsCount) {
+      ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount, context)
+    }
+  val badges =
+    remember(stats, completedBooksCount, highlightsCount) {
+      ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
+    }
 
-  var selectedTab by remember { mutableIntStateOf(0) }
+  var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
   ) {
@@ -162,7 +278,13 @@ fun ReadingStatsScreen(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      TextButton(onClick = onBack) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
+      val backCd = stringResource(R.string.cd_back)
+      TextButton(
+        onClick = onBack,
+        modifier =
+          Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+            .semantics { contentDescription = backCd },
+      ) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
       EInkText(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge)
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
@@ -174,6 +296,10 @@ fun ReadingStatsScreen(
             Modifier.weight(1f)
               .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
               .clickable { selectedTab = index }
+              .semantics {
+                role = androidx.compose.ui.semantics.Role.Tab
+                selected = active
+              }
               .padding(vertical = 11.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -196,17 +322,51 @@ fun ReadingStatsScreen(
       verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
       if (selectedTab == 1) {
+        if (billing != null && proGate != null) {
+          InkifyProSettingsCard(
+            entitlement = entitlement,
+            onOpenPaywall = {
+              paywallFeature = null
+              paywallOpen = true
+            },
+          )
+        }
         EInkDisplaySettingsCard(settings = settings, onUpdateSettings = onUpdateSettings)
         LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
         GoogleSyncCard(
           syncState = syncState,
           onSyncOrSignIn = ::triggerSync,
-          onToggleSyncBookFiles = onToggleSyncBookFiles,
-          onDeleteCloudBook = { book -> scope.launch { onDeleteCloudBook(book) } },
-          onDeleteAllCloudData = { scope.launch { onDeleteAllCloudData() } },
+          onToggleSyncBookFiles = { enabled ->
+            if (enabled && proGate != null && !proGate.hasAccess(ProFeature.DRIVE_SYNC)) {
+              paywallFeature = ProFeature.DRIVE_SYNC
+              paywallOpen = true
+            } else {
+              onToggleSyncBookFiles(enabled)
+            }
+          },
+          onDeleteCloudBook = { book ->
+            if (onLaunchDeleteCloudBook != null) {
+              onLaunchDeleteCloudBook(book)
+            } else {
+              scope.launch { onDeleteCloudBook(book) }
+            }
+          },
+          onDeleteAllCloudData = {
+            if (onLaunchDeleteAllCloudData != null) {
+              onLaunchDeleteAllCloudData()
+            } else {
+              scope.launch { onDeleteAllCloudData() }
+            }
+          },
           onSignOut = onSignOutSync,
         )
-        SystemEInkModeCard()
+        SystemEInkModeCard(
+          proGate = proGate,
+          onRequirePro = { feature ->
+            paywallFeature = feature
+            paywallOpen = true
+          },
+        )
         PrivacyPolicyCard()
         ContactCard()
       } else {
@@ -237,7 +397,13 @@ fun ReadingStatsScreen(
               style = MaterialTheme.typography.titleMedium,
             )
             EInkText(
-              text = stringResource(R.string.stats_xp_streak_format, rank.xp, stats.currentStreak, stats.longestStreak),
+              text = androidx.compose.ui.res.pluralStringResource(
+                R.plurals.stats_xp_streak_plurals,
+                stats.currentStreak,
+                rank.xp,
+                stats.currentStreak,
+                stats.longestStreak,
+              ),
               style = MaterialTheme.typography.labelMedium,
               color = MaterialTheme.colorScheme.secondary,
             )
@@ -268,6 +434,16 @@ fun ReadingStatsScreen(
           text = nextLabel,
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.secondary,
+        )
+      }
+
+      if (billing != null && proGate != null) {
+        InkifyProCompactRow(
+          entitlement = entitlement,
+          onOpenPaywall = {
+            paywallFeature = null
+            paywallOpen = true
+          },
         )
       }
 
@@ -314,9 +490,17 @@ fun ReadingStatsScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
           ) {
-            GoalStepCircleButton(label = "−5", onClick = { onChangeGoalMinutes(goalMinutes - 5) })
+            GoalStepCircleButton(
+              label = "−5",
+              contentDesc = stringResource(R.string.cd_goal_decrease),
+              onClick = { onChangeGoalMinutes(goalMinutes - 5) },
+            )
             EInkText(stringResource(R.string.stats_goal_chip_min, goalMinutes), style = MaterialTheme.typography.labelLarge, maxLines = 1)
-            GoalStepCircleButton(label = "+5", onClick = { onChangeGoalMinutes(goalMinutes + 5) })
+            GoalStepCircleButton(
+              label = "+5",
+              contentDesc = stringResource(R.string.cd_goal_increase),
+              onClick = { onChangeGoalMinutes(goalMinutes + 5) },
+            )
           }
         }
       }
@@ -359,10 +543,126 @@ fun ReadingStatsScreen(
       }
     }
   }
+  if (paywallOpen && billing != null && proGate != null) {
+    ProPaywallSheet(
+      billing = billing,
+      proGate = proGate,
+      feature = paywallFeature,
+      onDismiss = { paywallOpen = false },
+    )
+  }
 }
 
 @Composable
-private fun SystemEInkModeCard() {
+private fun InkifyProSettingsCard(
+  entitlement: ProEntitlement,
+  onOpenPaywall: () -> Unit,
+) {
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(2.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText(stringResource(R.string.pro_card_title), style = MaterialTheme.typography.titleMedium)
+      if (entitlement.isPro) {
+        Box(
+          modifier =
+            Modifier.background(MaterialTheme.colorScheme.primary)
+              .padding(horizontal = 8.dp, vertical = 2.dp),
+        ) {
+          EInkText(
+            text = stringResource(R.string.paywall_badge_pro),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimary,
+          )
+        }
+      }
+    }
+    val statusText =
+      when {
+        entitlement.isPro -> {
+          val plan =
+            if (entitlement.purchaseType == PurchaseType.LIFETIME) {
+              stringResource(R.string.pro_card_plan_lifetime)
+            } else {
+              stringResource(R.string.pro_card_plan_subscription)
+            }
+          stringResource(R.string.pro_card_status_active, plan)
+        }
+        entitlement.isPending -> stringResource(R.string.pro_card_status_pending)
+        else -> stringResource(R.string.pro_card_upgrade_desc)
+      }
+    EInkText(
+      text = statusText,
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    if (entitlement.isPro) {
+      OutlinedButton(
+        onClick = onOpenPaywall,
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+      ) {
+        EInkText(stringResource(R.string.pro_card_cta_manage), style = MaterialTheme.typography.labelLarge)
+      }
+    } else {
+      Button(
+        onClick = onOpenPaywall,
+        shape = RectangleShape,
+        colors =
+          ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+          ),
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+      ) {
+        EInkText(
+          text = stringResource(R.string.pro_card_cta_upgrade),
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.onPrimary,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun InkifyProCompactRow(
+  entitlement: ProEntitlement,
+  onOpenPaywall: () -> Unit,
+) {
+  Row(
+    modifier =
+      Modifier.fillMaxWidth()
+        .defaultMinSize(minHeight = 48.dp)
+        .background(if (entitlement.isPro) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surfaceVariant)
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clickable(onClick = onOpenPaywall)
+        .padding(horizontal = 14.dp, vertical = 12.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    EInkText(
+      text =
+        stringResource(
+          if (entitlement.isPro) R.string.pro_compact_active else R.string.pro_compact_free
+        ),
+      style = MaterialTheme.typography.labelLarge,
+    )
+  }
+}
+
+@Composable
+private fun SystemEInkModeCard(
+  proGate: ProFeatureGate? = null,
+  onRequirePro: (ProFeature) -> Unit = {},
+) {
   val context = LocalContext.current
   Column(
     modifier =
@@ -378,13 +678,17 @@ private fun SystemEInkModeCard() {
       color = MaterialTheme.colorScheme.secondary,
     )
     OutlinedButton(
-      onClick = { com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context) },
+      onClick = {
+        com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context)
+      },
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_launcher))
     }
     OutlinedButton(
-      onClick = { com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context) },
+      onClick = {
+        com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context)
+      },
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_wallpaper))
@@ -471,6 +775,37 @@ private fun BadgeCard(
   }
 }
 
+internal fun buildSevenDayChartAccessibilityDescription(
+  chartTitle: String,
+  chartSubtitle: String,
+  weekSeries: List<DailyReadingStat>,
+  minUnit: String,
+  locale: Locale,
+): String {
+  val header = "$chartTitle. $chartSubtitle"
+  if (weekSeries.isEmpty()) return header
+  val dayEntries =
+    weekSeries.joinToString(", ") { stat ->
+      val minutes = stat.secondsRead / 60
+      val weekday = shortWeekdayLabel(stat.date, locale)
+      "$weekday: $minutes$minUnit"
+    }
+  return "$header. $dayEntries"
+}
+
+internal fun buildHeatmapAccessibilityDescription(
+  heatmapTitle: String,
+  activeDaysSummary: String,
+  days: List<DailyReadingStat>,
+  goalSeconds: Int,
+): String {
+  val totalDays = days.size
+  val activeInWindow = days.count { it.secondsRead > 0 }
+  val effectiveGoal = goalSeconds.coerceAtLeast(60)
+  val goalMetCount = days.count { it.secondsRead >= effectiveGoal }
+  return "$heatmapTitle. $activeDaysSummary ($activeInWindow/$totalDays, $goalMetCount ≥ 100%)"
+}
+
 @Composable
 private fun SevenDayBarChartCard(
   weekSeries: List<DailyReadingStat>,
@@ -479,8 +814,21 @@ private fun SevenDayBarChartCard(
   pagesPerHour: Int,
 ) {
   val maxMinutes = maxOf(goalMinutes, weekSeries.maxOfOrNull { it.secondsRead / 60 } ?: 0, 1)
-  val isEn = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(LocalContext.current) == "en"
-  val minUnit = if (isEn) "m" else "p"
+  val context = LocalContext.current
+  val appLocale = remember(context) { com.example.emptyapp.LocaleHelper.effectiveLocale(context) }
+  val minUnit = stringResource(R.string.stats_unit_minute_short)
+  val chartTitle = stringResource(R.string.stats_chart_7d)
+  val chartSubtitle = pluralStringResource(R.plurals.stats_chart_7d_sub, pagesPerHour, avgMinutes7d, pagesPerHour)
+  val chartA11yDesc =
+    remember(chartTitle, chartSubtitle, weekSeries, minUnit, appLocale) {
+      buildSevenDayChartAccessibilityDescription(
+        chartTitle = chartTitle,
+        chartSubtitle = chartSubtitle,
+        weekSeries = weekSeries,
+        minUnit = minUnit,
+        locale = appLocale,
+      )
+    }
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -493,15 +841,18 @@ private fun SevenDayBarChartCard(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText(stringResource(R.string.stats_chart_7d), style = MaterialTheme.typography.titleSmall)
+      EInkText(chartTitle, style = MaterialTheme.typography.titleSmall)
       EInkText(
-        text = stringResource(R.string.stats_chart_7d_sub, avgMinutes7d, pagesPerHour),
+        text = chartSubtitle,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth().height(128.dp),
+      modifier =
+        Modifier.fillMaxWidth()
+          .height(128.dp)
+          .clearAndSetSemantics { contentDescription = chartA11yDesc },
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.Bottom,
     ) {
@@ -537,7 +888,7 @@ private fun SevenDayBarChartCard(
           }
           Spacer(modifier = Modifier.height(6.dp))
           EInkText(
-            text = shortWeekdayLabel(stat.date, isEn),
+            text = shortWeekdayLabel(stat.date, appLocale),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.secondary,
           )
@@ -557,6 +908,17 @@ private fun ReadingHeatmapCard(
   val fg = MaterialTheme.colorScheme.onBackground
   val border = MaterialTheme.colorScheme.outlineVariant
   val weeks = days.chunked(7)
+  val heatmapTitle = stringResource(R.string.stats_heatmap_12w)
+  val activeDaysSummary = pluralStringResource(R.plurals.stats_heatmap_days, activeDaysCount, activeDaysCount)
+  val heatmapA11yDesc =
+    remember(heatmapTitle, activeDaysSummary, days, goalSeconds) {
+      buildHeatmapAccessibilityDescription(
+        heatmapTitle = heatmapTitle,
+        activeDaysSummary = activeDaysSummary,
+        days = days,
+        goalSeconds = goalSeconds,
+      )
+    }
 
   Column(
     modifier =
@@ -570,15 +932,17 @@ private fun ReadingHeatmapCard(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText(stringResource(R.string.stats_heatmap_12w), style = MaterialTheme.typography.titleSmall)
+      EInkText(heatmapTitle, style = MaterialTheme.typography.titleSmall)
       EInkText(
-        text = stringResource(R.string.stats_heatmap_days, activeDaysCount),
+        text = activeDaysSummary,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .clearAndSetSemantics { contentDescription = heatmapA11yDesc },
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       weeks.forEach { week ->
@@ -627,42 +991,24 @@ private fun heatmapCellColor(
   }
 }
 
-private fun shortWeekdayLabel(isoDate: String, isEn: Boolean = false): String {
+internal fun shortWeekdayLabel(isoDate: String, locale: Locale): String {
   val date = runCatching { LocalDate.parse(isoDate) }.getOrNull() ?: return isoDate
-  return if (isEn) {
-    when (date.dayOfWeek) {
-      DayOfWeek.MONDAY -> "Mon"
-      DayOfWeek.TUESDAY -> "Tue"
-      DayOfWeek.WEDNESDAY -> "Wed"
-      DayOfWeek.THURSDAY -> "Thu"
-      DayOfWeek.FRIDAY -> "Fri"
-      DayOfWeek.SATURDAY -> "Sat"
-      DayOfWeek.SUNDAY -> "Sun"
-    }
-  } else {
-    when (date.dayOfWeek) {
-      DayOfWeek.MONDAY -> "T2"
-      DayOfWeek.TUESDAY -> "T3"
-      DayOfWeek.WEDNESDAY -> "T4"
-      DayOfWeek.THURSDAY -> "T5"
-      DayOfWeek.FRIDAY -> "T6"
-      DayOfWeek.SATURDAY -> "T7"
-      DayOfWeek.SUNDAY -> "CN"
-    }
-  }
+  return date.dayOfWeek.getDisplayName(TextStyle.SHORT, locale)
 }
 
 @Composable
 private fun GoalStepCircleButton(
   label: String,
+  contentDesc: String,
   onClick: () -> Unit,
 ) {
   Box(
     modifier =
-      Modifier.size(36.dp)
+      Modifier.size(48.dp)
         .clip(CircleShape)
         .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-        .clickable(onClick = onClick),
+        .clickable(onClick = onClick)
+        .semantics { contentDescription = contentDesc },
     contentAlignment = Alignment.Center,
   ) {
     EInkText(text = label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
@@ -734,7 +1080,15 @@ private fun GoogleSyncCard(
         color = MaterialTheme.colorScheme.secondary,
       )
       Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+          Modifier.fillMaxWidth()
+            .toggleable(
+              value = syncState.syncBookFiles,
+              enabled = !syncState.syncing,
+              role = Role.Switch,
+              onValueChange = onToggleSyncBookFiles,
+            )
+            .semantics(mergeDescendants = true) {},
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
       ) {
@@ -745,7 +1099,7 @@ private fun GoogleSyncCard(
         )
         Switch(
           checked = syncState.syncBookFiles,
-          onCheckedChange = onToggleSyncBookFiles,
+          onCheckedChange = null,
           enabled = !syncState.syncing,
         )
       }
@@ -758,7 +1112,13 @@ private fun GoogleSyncCard(
           onClick = onSyncOrSignIn,
           enabled = !syncState.syncing,
         ) {
-          EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_syncing) else stringResource(R.string.stats_sync_now))
+          val btnText =
+            when {
+              syncState.syncing -> stringResource(R.string.stats_sync_syncing)
+              syncState.needsReconnect -> stringResource(R.string.sync_reconnect_btn)
+              else -> stringResource(R.string.stats_sync_now)
+            }
+          EInkText(btnText)
         }
         OutlinedButton(
           onClick = { confirmDeleteAll = true },
@@ -939,7 +1299,11 @@ private fun EInkDisplaySettingsCard(
             Modifier
               .border(1.5.dp, MaterialTheme.colorScheme.outline)
               .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-              .clickable { onUpdateSettings { it.copy(tone = tone) } }
+              .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = { onUpdateSettings { it.copy(tone = tone) } },
+              )
               .padding(horizontal = 12.dp, vertical = 8.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -953,36 +1317,57 @@ private fun EInkDisplaySettingsCard(
       }
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .toggleable(
+            value = settings.paperGrain,
+            role = Role.Switch,
+            onValueChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
+          )
+          .semantics(mergeDescendants = true) {},
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       EInkText(stringResource(R.string.settings_paper_grain), style = MaterialTheme.typography.bodyMedium)
       Switch(
         checked = settings.paperGrain,
-        onCheckedChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
+        onCheckedChange = null,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .toggleable(
+            value = settings.grayscale,
+            role = Role.Switch,
+            onValueChange = { on -> onUpdateSettings { it.copy(grayscale = on) } },
+          )
+          .semantics(mergeDescendants = true) {},
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       EInkText(stringResource(R.string.settings_grayscale), style = MaterialTheme.typography.bodyMedium)
       Switch(
         checked = settings.grayscale,
-        onCheckedChange = { on -> onUpdateSettings { it.copy(grayscale = on) } },
+        onCheckedChange = null,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .toggleable(
+            value = settings.flashEnabled,
+            role = Role.Switch,
+            onValueChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
+          )
+          .semantics(mergeDescendants = true) {},
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       EInkText(stringResource(R.string.onboard_toggle_flash), style = MaterialTheme.typography.bodyMedium)
       Switch(
         checked = settings.flashEnabled,
-        onCheckedChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
+        onCheckedChange = null,
       )
     }
     EInkText(
@@ -1006,7 +1391,11 @@ private fun EInkDisplaySettingsCard(
             Modifier.weight(1f)
               .border(1.5.dp, MaterialTheme.colorScheme.outline)
               .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-              .clickable { onUpdateSettings { it.copy(orientationLock = lock) } }
+              .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = { onUpdateSettings { it.copy(orientationLock = lock) } },
+              )
               .padding(vertical = 8.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -1059,7 +1448,11 @@ private fun LanguageCard(
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
               )
               .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-              .clickable { if (!selected) onChangeLanguage(lang) }
+              .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = { if (!selected) onChangeLanguage(lang) },
+              )
               .padding(vertical = 10.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -1140,7 +1533,10 @@ private fun PrivacyPolicyCard() {
 @Composable
 private fun ContactCard() {
   val context = LocalContext.current
-  val email = context.getString(R.string.contact_email)
+  val email = stringResource(R.string.contact_email)
+  val emailSubject = stringResource(R.string.stats_email_subject)
+  val noEmailAppMsg = stringResource(R.string.stats_no_email_app)
+  val copiedEmailMsg = stringResource(R.string.stats_copied_email, email)
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -1162,14 +1558,13 @@ private fun ContactCard() {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       OutlinedButton(
         onClick = {
-          val subject = context.getString(R.string.stats_email_subject)
           val intent =
             Intent(Intent.ACTION_SENDTO).apply {
-              data = Uri.parse("mailto:$email?subject=${Uri.encode(subject)}")
+              data = Uri.parse("mailto:$email?subject=${Uri.encode(emailSubject)}")
             }
           val launched = runCatching { context.startActivity(intent) }.isSuccess
           if (!launched) {
-            Toast.makeText(context, context.getString(R.string.stats_no_email_app), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, noEmailAppMsg, Toast.LENGTH_SHORT).show()
           }
         },
       ) {
@@ -1179,7 +1574,7 @@ private fun ContactCard() {
         onClick = {
           val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
           clipboard.setPrimaryClip(ClipData.newPlainText("Email", email))
-          Toast.makeText(context, context.getString(R.string.stats_copied_email, email), Toast.LENGTH_SHORT).show()
+          Toast.makeText(context, copiedEmailMsg, Toast.LENGTH_SHORT).show()
         },
       ) {
         EInkText(stringResource(R.string.stats_copy), color = MaterialTheme.colorScheme.secondary)
@@ -1193,8 +1588,7 @@ private fun formatDuration(totalSeconds: Long): String {
   val totalMinutes = totalSeconds / 60L
   val hours = totalMinutes / 60L
   val minutes = totalMinutes % 60L
-  val isEn = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(LocalContext.current) == "en"
-  val hUnit = if (isEn) "h" else "g"
-  val mUnit = if (isEn) "m" else "p"
+  val hUnit = stringResource(R.string.stats_unit_hour_short)
+  val mUnit = stringResource(R.string.stats_unit_minute_short)
   return if (hours > 0L) "${hours}$hUnit ${minutes}$mUnit" else "${minutes}$mUnit"
 }

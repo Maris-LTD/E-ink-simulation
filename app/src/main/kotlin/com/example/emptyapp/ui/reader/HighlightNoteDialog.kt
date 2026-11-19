@@ -13,26 +13,27 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.emptyapp.R
 import com.example.emptyapp.ui.eink.EInkText
 
 @Composable
 fun HighlightNoteDialog(
   quote: String,
+  note: String,
+  onNoteChange: (String) -> Unit,
   onSave: (String) -> Unit,
   onDismiss: () -> Unit,
 ) {
-  var note by remember { mutableStateOf("") }
-  Dialog(onDismissRequest = onDismiss) {
+  Dialog(
+    onDismissRequest = onDismiss,
+    properties = DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
+  ) {
     Column(
       modifier =
         Modifier.fillMaxWidth()
@@ -51,7 +52,7 @@ fun HighlightNoteDialog(
       )
       OutlinedTextField(
         value = note,
-        onValueChange = { note = it },
+        onValueChange = onNoteChange,
         placeholder = { Text(stringResource(R.string.highlight_note_placeholder)) },
         minLines = 2,
         maxLines = 4,

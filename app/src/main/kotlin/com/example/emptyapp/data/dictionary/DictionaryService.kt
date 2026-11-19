@@ -66,7 +66,10 @@ private data class MyMemoryData(
   val translatedText: String? = null,
 )
 
-class DictionaryService(private val context: Context? = null) {
+class DictionaryService(
+  private val context: Context? = null,
+  private val httpGetter: ((String) -> String?)? = null,
+) {
   private val json = Json { ignoreUnknownKeys = true }
   private val listSerializer = ListSerializer(ApiEntry.serializer())
 
@@ -116,26 +119,29 @@ class DictionaryService(private val context: Context? = null) {
 
   private fun lookupEnglishDictionary(word: String): Result<DictionaryEntry> {
     val encoded = URLEncoder.encode(word.lowercase(), "UTF-8").replace("+", "%20")
-    val body = httpGet("https://api.dictionaryapi.dev/api/v2/entries/en/$encoded")
+    val body = performGet("https://api.dictionaryapi.dev/api/v2/entries/en/$encoded")
       ?: return Result.failure(NoSuchElementException(str(R.string.dict_not_found, "Không tìm thấy định nghĩa")))
     return parseResponse(body)
   }
 
   private fun translate(text: String, targetLang: String): String? {
-    val encoded = URLEncoder.encode(text, "UTF-8")
+    val boundedText = text.take(MAX_QUERY_CHARS)
+    val encoded = URLEncoder.encode(boundedText, "UTF-8")
     val googleBody =
-      httpGet("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLang&dt=t&q=$encoded")
+      performGet("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLang&dt=t&q=$encoded")
     if (googleBody != null) {
       parseGoogleTranslate(googleBody)?.let { return it }
     }
-    val langPair = if (targetLang == "en") "vi|en" else "en|vi"
-    val myMemoryBody =
-      httpGet("https://api.mymemory.translated.net/get?q=$encoded&langpair=$langPair")
+    val myMemoryUrl = buildMyMemoryUrl(boundedText, targetLang)
+    val myMemoryBody = performGet(myMemoryUrl)
     if (myMemoryBody != null) {
       parseMyMemory(myMemoryBody)?.let { return it }
     }
     return null
   }
+
+  private fun performGet(urlString: String): String? =
+    httpGetter?.invoke(urlString) ?: httpGet(urlString)
 
   private fun httpGet(urlString: String): String? {
     val connection =
@@ -159,7 +165,7 @@ class DictionaryService(private val context: Context? = null) {
   internal fun parseResponse(jsonText: String): Result<DictionaryEntry> =
     runCatching {
       val entries = json.decodeFromString(listSerializer, jsonText)
-      val first = entries.firstOrNull() ?: error("Không có dữ liệu từ điển")
+      val first = entries.firstOrNull() ?: error(str(com.example.emptyapp.R.string.dict_no_data, "No dictionary data"))
       val phonetic =
         first.phonetic?.takeIf { it.isNotBlank() }
           ?: first.phonetics.firstNotNullOfOrNull { it.text?.takeIf(String::isNotBlank) }
@@ -173,7 +179,7 @@ class DictionaryService(private val context: Context? = null) {
           if (defs.isEmpty()) null
           else DictionaryMeaning(meaning.partOfSpeech, defs)
         }
-      if (meanings.isEmpty()) error("Không có định nghĩa")
+      if (meanings.isEmpty()) error(str(com.example.emptyapp.R.string.dict_no_definition, "No definition found"))
       DictionaryEntry(
         word = first.word.ifBlank { "" },
         phonetic = phonetic,
@@ -202,18 +208,32 @@ class DictionaryService(private val context: Context? = null) {
     }.getOrNull()
 
   companion object {
+    const val MAX_QUERY_CHARS = 500
+
     private val EDGE_PUNCTUATION = charArrayOf(
       '.', ',', '!', '?', ';', ':', '"', '\'', '(', ')', '[', ']', '{', '}',
       '“', '”', '‘', '’', '—', '–', '-', '…',
     )
 
     fun normalizeQuery(raw: String): String {
-      val collapsed = raw.trim().replace(Regex("\\s+"), " ")
+      val trimmedInput = raw.trim().take(MAX_QUERY_CHARS)
+      val collapsed = trimmedInput.replace(Regex("\\s+"), " ").trim().take(MAX_QUERY_CHARS)
       if (collapsed.isEmpty()) return ""
       return if (collapsed.contains(' ')) collapsed else collapsed.trim(*EDGE_PUNCTUATION)
     }
 
     fun normalizeWord(raw: String): String =
-      raw.trim().trim(*EDGE_PUNCTUATION).lowercase()
+      raw.trim().take(MAX_QUERY_CHARS).trim(*EDGE_PUNCTUATION).lowercase()
+
+    fun buildMyMemoryLangPair(targetLang: String): String {
+      val normalizedTarget = targetLang.trim().ifEmpty { "vi" }
+      return "auto|$normalizedTarget"
+    }
+
+    fun buildMyMemoryUrl(text: String, targetLang: String): String {
+      val encoded = URLEncoder.encode(text.take(MAX_QUERY_CHARS), "UTF-8")
+      val langPair = buildMyMemoryLangPair(targetLang)
+      return "https://api.mymemory.translated.net/get?q=$encoded&langpair=$langPair"
+    }
   }
 }

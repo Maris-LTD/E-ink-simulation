@@ -6,8 +6,14 @@ import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import java.io.File
 import java.time.LocalDate
+import kotlin.io.path.createTempDirectory
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReadingStatsTest {
@@ -88,5 +94,96 @@ class ReadingStatsTest {
       setOf("first_page", "streak_3", "streak_7", "pages_100", "book_done_1", "annotator"),
       unlockedIds,
     )
+  }
+
+  @Test
+  fun mergeFromRemoteUsesNewerDailyGoalTimestampEvenWhenLower(): Unit = runBlocking {
+    val tempFile = File.createTempFile("reading_stats_merge", ".json")
+    tempFile.delete()
+    var now = 2000L
+    val today = LocalDate.of(2026, 11, 14)
+    val repo = ReadingStatsRepository(tempFile, todayProvider = { today }, nowProvider = { now })
+
+    repo.setDailyGoalMinutes(15)
+    repo.mergeFromRemote(ReadingStatsData(dailyGoalMinutes = 45, dailyGoalUpdatedAt = 1000L))
+    assertEquals(15, repo.stats.value.dailyGoalMinutes)
+    assertEquals(2000L, repo.stats.value.dailyGoalUpdatedAt)
+
+    repo.mergeFromRemote(ReadingStatsData(dailyGoalMinutes = 10, dailyGoalUpdatedAt = 3000L))
+    assertEquals(10, repo.stats.value.dailyGoalMinutes)
+    assertEquals(3000L, repo.stats.value.dailyGoalUpdatedAt)
+    tempFile.delete()
+  }
+
+  @Test
+  fun mergeFromRemoteLegacyZeroTimestampsFallBackToMax(): Unit = runBlocking {
+    val tempFile = File.createTempFile("reading_stats_legacy", ".json")
+    tempFile.delete()
+    val today = LocalDate.of(2026, 11, 14)
+    val repo = ReadingStatsRepository(tempFile, todayProvider = { today }, nowProvider = { 0L })
+
+    repo.mergeFromRemote(ReadingStatsData(dailyGoalMinutes = 35, dailyGoalUpdatedAt = 0L))
+    assertEquals(35, repo.stats.value.dailyGoalMinutes)
+    tempFile.delete()
+  }
+
+  @Test
+  fun writeIoExceptionDoesNotCrashKeepsDirtyAndFlushesOnZeroDelta(): Unit = runBlocking {
+    val dir = createTempDirectory("stats_write_error_test").toFile()
+    try {
+      val statsFile = File(dir, "reading_stats.json")
+      val today = LocalDate.of(2026, 11, 14)
+      val repo = ReadingStatsRepository(statsFile, todayProvider = { today })
+
+      statsFile.mkdirs()
+      File(statsFile, "blocker").writeText("x")
+
+      repo.recordReading(deltaSeconds = 120, deltaPages = 5)
+      assertEquals(120L, repo.stats.value.totalSeconds)
+      assertEquals(5, repo.stats.value.totalPagesTurned)
+      assertTrue(repo.lastWriteError.value)
+
+      statsFile.deleteRecursively()
+      repo.recordReading(deltaSeconds = 0, deltaPages = 0)
+      assertFalse(repo.lastWriteError.value)
+
+      val reloaded = ReadingStatsRepository(statsFile, todayProvider = { today })
+      assertEquals(120L, reloaded.stats.value.totalSeconds)
+      assertEquals(5, reloaded.stats.value.totalPagesTurned)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun asyncPreloadLoadsDiskStatsBeforeRecordReading() = runTest {
+    val dir = createTempDirectory("stats_async_preload_test").toFile()
+    try {
+      val statsFile = File(dir, "reading_stats.json")
+      val today = LocalDate.of(2026, 11, 14)
+      val seed = ReadingStatsRepository(statsFile, todayProvider = { today })
+      seed.recordReading(deltaSeconds = 300, deltaPages = 10)
+
+      val ioDispatcher = StandardTestDispatcher(testScheduler)
+      val repo =
+        ReadingStatsRepository(
+          statsFile = statsFile,
+          todayProvider = { today },
+          nowProvider = { 1_000L },
+          preloadInBackground = true,
+          ioDispatcher = ioDispatcher,
+        )
+
+      assertFalse(repo.loaded.value)
+      assertEquals(0L, repo.stats.value.totalSeconds)
+
+      repo.recordReading(deltaSeconds = 120, deltaPages = 3)
+      assertTrue(repo.loaded.value)
+      assertEquals(420L, repo.stats.value.totalSeconds)
+      assertEquals(13, repo.stats.value.totalPagesTurned)
+    } finally {
+      dir.deleteRecursively()
+    }
   }
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -58,14 +60,25 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeature
+import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.monet.LibraryProMilestoneNudge
+import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -88,6 +101,14 @@ private enum class LibraryTab(val labelRes: Int) {
   HIGHLIGHTS(com.example.emptyapp.R.string.lib_tab_highlights),
 }
 
+private enum class LibrarySort(val labelRes: Int) {
+  RECENT(com.example.emptyapp.R.string.lib_sort_recent),
+  TITLE(com.example.emptyapp.R.string.lib_sort_title),
+  PROGRESS(com.example.emptyapp.R.string.lib_sort_progress);
+
+  fun next(): LibrarySort = entries[(ordinal + 1) % entries.size]
+}
+
 private enum class LibraryViewMode(val labelRes: Int, val columns: Int) {
   LIST(com.example.emptyapp.R.string.lib_view_list, 1),
   GRID_2(com.example.emptyapp.R.string.lib_view_grid_2, 2),
@@ -103,6 +124,8 @@ fun LibraryScreen(
   settings: com.example.emptyapp.reader.EInkSettings = com.example.emptyapp.reader.EInkSettings(),
   onUpdateSettings: ((com.example.emptyapp.reader.EInkSettings) -> com.example.emptyapp.reader.EInkSettings) -> Unit = {},
   grayscaleCovers: Boolean = true,
+  billing: PlayBillingManager? = null,
+  proGate: ProFeatureGate? = null,
   onOpenBook: (String, String?) -> Unit,
   onOpenStats: () -> Unit,
   modifier: Modifier = Modifier,
@@ -116,7 +139,13 @@ fun LibraryScreen(
     )
   }
   var tutorialInitialPage by remember { mutableStateOf(0) }
+  var paywallOpen by remember { mutableStateOf(false) }
+  var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
+  val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
   var setupBannerDismissed by remember { mutableStateOf(tutorialPrefs.getBoolean("setup_banner_dismissed", false)) }
+  var milestoneNudgeDismissed by remember {
+    mutableStateOf(tutorialPrefs.getBoolean("pro_milestone_nudge_dismissed", false))
+  }
   fun markTutorialSeen() {
     tutorialPrefs.edit().putBoolean("tutorial_seen", true).apply()
   }
@@ -126,21 +155,39 @@ fun LibraryScreen(
   }
 
   val books by viewModel.books.collectAsStateWithLifecycle()
+  val booksLoaded by viewModel.booksLoaded.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+  val stats by viewModel.stats.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
+  val writeError by viewModel.writeError.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
-  var selectedTab by remember { mutableStateOf(LibraryTab.ALL) }
-  var selectedAuthor by remember { mutableStateOf<String?>(null) }
-  var query by remember { mutableStateOf("") }
+  var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.ALL) }
+  var selectedAuthor by rememberSaveable { mutableStateOf<String?>(null) }
+  var sortMode by rememberSaveable { mutableStateOf(LibrarySort.RECENT) }
+  var query by rememberSaveable { mutableStateOf("") }
   var pendingDeleteBook by remember { mutableStateOf<BookEntry?>(null) }
   var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.LIST) }
+  var pickerLaunching by remember { mutableStateOf(false) }
   val picker =
     rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+      pickerLaunching = false
       uri?.let(viewModel::import)
     }
+  fun launchImportPicker(mimes: Array<String> = SUPPORTED_MIMES) {
+    if (importing || pickerLaunching) return
+    pickerLaunching = true
+    runCatching { picker.launch(mimes) }.onFailure { pickerLaunching = false }
+  }
+  val importEnabled = !importing && !pickerLaunching
+  val saveErrorMsg = stringResource(com.example.emptyapp.R.string.error_save_data)
   LaunchedEffect(Unit) { viewModel.messages.collect { snackbarHostState.showSnackbar(it) } }
+  LaunchedEffect(writeError) {
+    if (writeError) {
+      snackbarHostState.showSnackbar(saveErrorMsg, duration = SnackbarDuration.Short)
+    }
+  }
 
   val tabBooks =
     remember(books, selectedTab) {
@@ -155,20 +202,32 @@ fun LibraryScreen(
       }
     }
 
+  val appLocale = remember(context) { com.example.emptyapp.LocaleHelper.effectiveLocale(context) }
+  val nameComparator = remember(appLocale) { com.example.emptyapp.LocaleHelper.nameComparator(appLocale) }
+
   val filteredBooks =
-    remember(tabBooks, selectedTab, selectedAuthor, query) {
-      tabBooks.filter { book ->
-        val authorMatch = selectedAuthor == null || book.author == selectedAuthor
-        val queryMatch =
-          query.isBlank() ||
-            book.title.contains(query, ignoreCase = true) ||
-            book.author.contains(query, ignoreCase = true)
-        authorMatch && queryMatch
-      }.sortedByDescending { it.updatedAt }
+    remember(tabBooks, selectedTab, selectedAuthor, query, sortMode, nameComparator) {
+      val matching =
+        tabBooks.filter { book ->
+          val authorMatch = selectedAuthor == null || book.author == selectedAuthor
+          val queryMatch =
+            query.isBlank() ||
+              book.title.contains(query, ignoreCase = true) ||
+              book.author.contains(query, ignoreCase = true)
+          authorMatch && queryMatch
+        }
+      when (sortMode) {
+        LibrarySort.RECENT -> matching.sortedByDescending { it.updatedAt }
+        LibrarySort.TITLE -> matching.sortedWith { a, b -> nameComparator.compare(a.title, b.title) }
+        LibrarySort.PROGRESS -> matching.sortedByDescending { it.progress }
+      }
     }
-  val authors = remember(tabBooks) { tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct() }
-  LaunchedEffect(authors) {
-    if (selectedAuthor != null && selectedAuthor !in authors) {
+  val authors =
+    remember(tabBooks, nameComparator) {
+      tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct().sortedWith(nameComparator)
+    }
+  LaunchedEffect(booksLoaded, authors) {
+    if (booksLoaded && selectedAuthor != null && selectedAuthor !in authors) {
       selectedAuthor = null
     }
   }
@@ -179,15 +238,40 @@ fun LibraryScreen(
     contentWindowInsets = WindowInsets(0),
     snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
-    Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+    Column(
+      modifier =
+        Modifier.padding(padding)
+          .fillMaxSize()
+          .then(if (tutorialOpen) Modifier.clearAndSetSemantics {} else Modifier),
+    ) {
       LibraryHeader(
+        isPro = entitlement.isPro,
+        showProButton = billing != null && proGate != null,
+        onOpenPaywall = {
+          paywallFeature = null
+          paywallOpen = true
+        },
         onOpenTutorial = {
           tutorialInitialPage = 0
           tutorialOpen = true
         },
         onOpenStats = onOpenStats,
       )
-      val wallpaperActive = com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+      var wallpaperActive by remember {
+        mutableStateOf(com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context))
+      }
+      val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+      androidx.compose.runtime.DisposableEffect(lifecycleOwner, context) {
+        val observer =
+          androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+              wallpaperActive =
+                com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+            }
+          }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+      }
       val notifActive =
         com.example.emptyapp.reader.LockScreenReadingNotifier.hasPermission(context) &&
           settings.lockScreenReader
@@ -210,30 +294,61 @@ fun LibraryScreen(
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.weight(1f),
           )
+          val dismissBannerCd = stringResource(com.example.emptyapp.R.string.cd_dismiss_banner)
           EInkText(
             text = "✕",
             style = MaterialTheme.typography.labelLarge,
             modifier =
-              Modifier.clickable {
-                setupBannerDismissed = true
-                tutorialPrefs.edit().putBoolean("setup_banner_dismissed", true).apply()
-              }.padding(start = 12.dp),
+              Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                .clickable {
+                  setupBannerDismissed = true
+                  tutorialPrefs.edit().putBoolean("setup_banner_dismissed", true).apply()
+                }
+                .semantics { contentDescription = dismissBannerCd }
+                .padding(horizontal = 12.dp, vertical = 12.dp),
           )
         }
         HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
       }
-      EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
-      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
+      val completedBooksCount = remember(books) { books.count { it.progress >= 0.99f } }
+      if (
+        billing != null &&
+          proGate != null &&
+          ReadingGamification.shouldShowMilestoneNudge(
+            isPro = entitlement.isPro,
+            dismissed = milestoneNudgeDismissed,
+            stats = stats,
+            completedBooksCount = completedBooksCount,
+          )
+      ) {
+        LibraryProMilestoneNudge(
+          onExplorePro = {
+            paywallFeature = null
+            paywallOpen = true
+          },
+          onDismiss = {
+            milestoneNudgeDismissed = true
+            tutorialPrefs.edit().putBoolean("pro_milestone_nudge_dismissed", true).apply()
+          },
+          modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+      }
+      EInkTabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
+      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && (authors.isNotEmpty() || tabBooks.isNotEmpty())) {
         AuthorFilterRow(
           totalCount = tabBooks.size,
           authors = authors,
           selectedAuthor = selectedAuthor,
+          sortMode = sortMode,
+          onSelectSort = { sortMode = it },
           onSelect = { selectedAuthor = it },
         )
         HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
       }
       Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         if (selectedTab == LibraryTab.BOOKMARKS) {
+          val bookmarkDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_bookmark_deleted)
+          val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
           val bookTitlesById = remember(books) { books.associate { it.id to it.title } }
           val filteredBookmarks =
             remember(bookmarks, bookTitlesById, query) {
@@ -256,8 +371,8 @@ fun LibraryScreen(
                 scope.launch {
                   val res =
                     snackbarHostState.showSnackbar(
-                      message = context.getString(com.example.emptyapp.R.string.lib_bookmark_deleted),
-                      actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                      message = bookmarkDeletedMsg,
+                      actionLabel = undoActionLabel,
                       duration = SnackbarDuration.Short,
                     )
                   if (res == SnackbarResult.ActionPerformed) {
@@ -268,6 +383,8 @@ fun LibraryScreen(
             },
           )
         } else if (selectedTab == LibraryTab.HIGHLIGHTS) {
+          val highlightDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_highlight_deleted)
+          val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
           val filteredHighlights =
             remember(highlights, query) {
               if (query.isBlank()) highlights
@@ -289,8 +406,8 @@ fun LibraryScreen(
                 scope.launch {
                   val res =
                     snackbarHostState.showSnackbar(
-                      message = context.getString(com.example.emptyapp.R.string.lib_highlight_deleted),
-                      actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                      message = highlightDeletedMsg,
+                      actionLabel = undoActionLabel,
                       duration = SnackbarDuration.Short,
                     )
                   if (res == SnackbarResult.ActionPerformed) {
@@ -300,8 +417,14 @@ fun LibraryScreen(
               }
             },
           )
+        } else if (!booksLoaded) {
+          Box(modifier = Modifier.fillMaxSize())
         } else if (filteredBooks.isEmpty()) {
-          EmptyLibrary(hasAnyBooks = books.isNotEmpty())
+          EmptyLibrary(
+            hasAnyBooks = books.isNotEmpty(),
+            importEnabled = importEnabled,
+            onImportBook = { launchImportPicker() },
+          )
         } else if (viewMode == LibraryViewMode.LIST) {
           BookList(
             books = filteredBooks,
@@ -333,13 +456,14 @@ fun LibraryScreen(
         query = query,
         searchPlaceholder = searchPlaceholder,
         importing = importing,
+        importEnabled = importEnabled,
         onCycleViewMode = { viewMode = viewMode.next() },
         onQueryChange = { query = it },
-        onAddBook = { picker.launch(SUPPORTED_MIMES) },
+        onAddBook = { launchImportPicker() },
       )
     }
     pendingDeleteBook?.let { bookToDelete ->
-      var deleteFromCloud by remember(bookToDelete.id) { mutableStateOf(true) }
+      var deleteFromCloud by remember(bookToDelete.id) { mutableStateOf(false) }
       AlertDialog(
         onDismissRequest = { pendingDeleteBook = null },
         containerColor = MaterialTheme.colorScheme.background,
@@ -394,11 +518,24 @@ fun LibraryScreen(
         settings = settings,
         onUpdateSettings = onUpdateSettings,
         onImportBook = {
-          picker.launch(arrayOf("application/epub+zip", "application/pdf", "application/vnd.comicbook+zip", "application/x-cbz"))
+          launchImportPicker(arrayOf("application/epub+zip", "application/pdf", "application/vnd.comicbook+zip", "application/x-cbz"))
         },
         onMarkSeen = ::markTutorialSeen,
         onDismiss = ::dismissTutorial,
         initialPage = tutorialInitialPage,
+        proGate = proGate,
+        onRequirePro = { feature ->
+          paywallFeature = feature
+          paywallOpen = true
+        },
+      )
+    }
+    if (paywallOpen && billing != null && proGate != null) {
+      ProPaywallSheet(
+        billing = billing,
+        proGate = proGate,
+        feature = paywallFeature,
+        onDismiss = { paywallOpen = false },
       )
     }
   }
@@ -406,6 +543,9 @@ fun LibraryScreen(
 
 @Composable
 private fun LibraryHeader(
+  isPro: Boolean,
+  showProButton: Boolean,
+  onOpenPaywall: () -> Unit,
   onOpenTutorial: () -> Unit,
   onOpenStats: () -> Unit,
 ) {
@@ -415,30 +555,68 @@ private fun LibraryHeader(
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     EInkText(stringResource(com.example.emptyapp.R.string.app_name), style = MaterialTheme.typography.headlineLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+      if (showProButton) {
+        val proCd = stringResource(com.example.emptyapp.R.string.pro_card_title)
+        Box(
+          modifier =
+            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+              .clickable(onClick = onOpenPaywall)
+              .semantics { contentDescription = proCd },
+          contentAlignment = Alignment.Center,
+        ) {
+          Box(
+            modifier =
+              Modifier.background(
+                if (isPro) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
+              )
+                .border(1.5.dp, MaterialTheme.colorScheme.outline)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+          ) {
+            EInkText(
+              text = stringResource(com.example.emptyapp.R.string.paywall_badge_pro),
+              style = MaterialTheme.typography.labelSmall,
+              color = if (isPro) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+            )
+          }
+        }
+      }
       val tutorialCd = stringResource(com.example.emptyapp.R.string.cd_tutorial)
       Box(
         modifier =
-          Modifier.size(36.dp)
-            .clip(CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+          Modifier.size(48.dp)
             .clickable(onClick = onOpenTutorial)
             .semantics { contentDescription = tutorialCd },
         contentAlignment = Alignment.Center,
       ) {
-        EInkText("?", style = MaterialTheme.typography.titleMedium)
+        Box(
+          modifier =
+            Modifier.size(36.dp)
+              .clip(CircleShape)
+              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+          contentAlignment = Alignment.Center,
+        ) {
+          EInkText("?", style = MaterialTheme.typography.titleMedium)
+        }
       }
       val statsCd = stringResource(com.example.emptyapp.R.string.cd_reading_stats)
       Box(
         modifier =
-          Modifier.size(36.dp)
-            .clip(CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+          Modifier.size(48.dp)
             .clickable(onClick = onOpenStats)
             .semantics { contentDescription = statsCd },
         contentAlignment = Alignment.Center,
       ) {
-        ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+        Box(
+          modifier =
+            Modifier.size(36.dp)
+              .clip(CircleShape)
+              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+          contentAlignment = Alignment.Center,
+        ) {
+          ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+        }
       }
     }
   }
@@ -451,6 +629,7 @@ private fun LibraryBottomBar(
   query: String,
   searchPlaceholder: String,
   importing: Boolean,
+  importEnabled: Boolean,
   onCycleViewMode: () -> Unit,
   onQueryChange: (String) -> Unit,
   onAddBook: () -> Unit,
@@ -480,7 +659,7 @@ private fun LibraryBottomBar(
         IconButton(
           onClick = onCycleViewMode,
           modifier =
-            Modifier.size(40.dp).semantics { contentDescription = viewModeCd },
+            Modifier.size(48.dp).semantics { contentDescription = viewModeCd },
         ) {
           ViewModeIcon(viewMode = viewMode)
         }
@@ -494,24 +673,30 @@ private fun LibraryBottomBar(
       val addBookCd = stringResource(com.example.emptyapp.R.string.cd_add_book)
       Box(
         modifier =
-          Modifier.size(40.dp)
-            .clip(CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-            .clickable(enabled = !importing, onClick = onAddBook)
+          Modifier.size(48.dp)
+            .clickable(enabled = importEnabled, onClick = onAddBook)
             .semantics { contentDescription = addBookCd },
         contentAlignment = Alignment.Center,
       ) {
-        if (importing) {
-          CircularProgressIndicator(
-            modifier = Modifier.size(18.dp),
-            strokeWidth = 2.dp,
-            color = MaterialTheme.colorScheme.onBackground,
-          )
-        } else {
-          EInkText(
-            text = "+",
-            style = MaterialTheme.typography.titleLarge,
-          )
+        Box(
+          modifier =
+            Modifier.size(40.dp)
+              .clip(CircleShape)
+              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+          contentAlignment = Alignment.Center,
+        ) {
+          if (importing) {
+            CircularProgressIndicator(
+              modifier = Modifier.size(18.dp),
+              strokeWidth = 2.dp,
+              color = MaterialTheme.colorScheme.onBackground,
+            )
+          } else {
+            EInkText(
+              text = "+",
+              style = MaterialTheme.typography.titleLarge,
+            )
+          }
         }
       }
     }
@@ -529,11 +714,11 @@ private fun GoogleStyleSearchBar(
   Row(
     modifier =
       modifier
-        .height(40.dp)
+        .height(48.dp)
         .clip(RoundedCornerShape(50))
         .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
         .background(MaterialTheme.colorScheme.background)
-        .padding(horizontal = 14.dp),
+        .padding(start = 14.dp, end = if (query.isNotEmpty()) 4.dp else 14.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -571,7 +756,7 @@ private fun GoogleStyleSearchBar(
       val clearCd = stringResource(com.example.emptyapp.R.string.cd_clear_search)
       Box(
         modifier =
-          Modifier.size(24.dp)
+          Modifier.size(48.dp)
             .clip(CircleShape)
             .clickable { onQueryChange("") }
             .semantics { contentDescription = clearCd },
@@ -612,12 +797,12 @@ private fun ViewModeIcon(viewMode: LibraryViewMode) {
 }
 
 @Composable
-private fun EInkTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
+private fun EInkTabRow(selectedTab: LibraryTab, onSelect: (LibraryTab) -> Unit) {
   Column {
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
     Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
       LibraryTab.entries.forEach { tab ->
-        val active = tab == selected
+        val active = tab == selectedTab
         Box(
           modifier =
             Modifier
@@ -625,6 +810,10 @@ private fun EInkTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
                 if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
               )
               .clickable { onSelect(tab) }
+              .semantics {
+                role = Role.Tab
+                selected = active
+              }
               .padding(horizontal = 14.dp, vertical = 12.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -649,6 +838,8 @@ private fun AuthorFilterRow(
   totalCount: Int,
   authors: List<String>,
   selectedAuthor: String?,
+  sortMode: LibrarySort,
+  onSelectSort: (LibrarySort) -> Unit,
   onSelect: (String?) -> Unit,
 ) {
   Row(
@@ -658,6 +849,13 @@ private fun AuthorFilterRow(
         .padding(horizontal = 16.dp, vertical = 12.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
+    LibrarySort.entries.forEach { option ->
+      FilterPill(
+        label = stringResource(option.labelRes),
+        active = sortMode == option,
+        onClick = { onSelectSort(option) },
+      )
+    }
     FilterPill(
       label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
       active = selectedAuthor == null,
@@ -680,7 +878,7 @@ private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
       Modifier.clip(RoundedCornerShape(50))
         .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
         .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
-        .clickable(onClick = onClick)
+        .selectable(selected = active, role = Role.RadioButton, onClick = onClick)
         .padding(horizontal = 14.dp, vertical = 6.dp)
   ) {
     EInkText(
@@ -693,15 +891,32 @@ private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmptyLibrary(hasAnyBooks: Boolean) {
-  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-    EInkText(
-      text =
-        if (hasAnyBooks) stringResource(com.example.emptyapp.R.string.lib_empty_filtered)
-        else stringResource(com.example.emptyapp.R.string.lib_empty_all),
-      style = MaterialTheme.typography.titleSmall,
-      color = MaterialTheme.colorScheme.secondary,
-    )
+private fun EmptyLibrary(
+  hasAnyBooks: Boolean,
+  importEnabled: Boolean,
+  onImportBook: () -> Unit,
+) {
+  Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      EInkText(
+        text =
+          if (hasAnyBooks) stringResource(com.example.emptyapp.R.string.lib_empty_filtered)
+          else stringResource(com.example.emptyapp.R.string.lib_empty_all),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+      if (!hasAnyBooks) {
+        androidx.compose.material3.OutlinedButton(
+          onClick = onImportBook,
+          enabled = importEnabled,
+        ) {
+          EInkText(stringResource(com.example.emptyapp.R.string.lib_import_first_book))
+        }
+      }
+    }
   }
 }
 

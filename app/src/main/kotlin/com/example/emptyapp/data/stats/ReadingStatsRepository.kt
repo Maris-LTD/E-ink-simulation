@@ -1,17 +1,22 @@
 package com.example.emptyapp.data.stats
 
 import android.content.Context
+import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 @Serializable
 data class DailyReadingStat(
@@ -23,6 +28,7 @@ data class DailyReadingStat(
 @Serializable
 data class ReadingStatsData(
   val dailyGoalMinutes: Int = 20,
+  val dailyGoalUpdatedAt: Long = 0L,
   val currentStreak: Int = 0,
   val longestStreak: Int = 0,
   val totalSeconds: Long = 0L,
@@ -33,25 +39,85 @@ data class ReadingStatsData(
     dailyStats.firstOrNull { it.date == today }?.secondsRead ?: 0
 }
 
-class ReadingStatsRepository(
+class ReadingStatsRepository internal constructor(
   private val statsFile: File,
   private val todayProvider: () -> LocalDate = { LocalDate.now() },
+  private val nowProvider: () -> Long = { System.currentTimeMillis() },
+  preloadInBackground: Boolean,
+  private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-  constructor(context: Context) : this(File(context.filesDir, "reading_stats.json"))
+  constructor(
+    statsFile: File,
+    todayProvider: () -> LocalDate = { LocalDate.now() },
+    nowProvider: () -> Long = { System.currentTimeMillis() },
+  ) : this(
+    statsFile = statsFile,
+    todayProvider = todayProvider,
+    nowProvider = nowProvider,
+    preloadInBackground = false,
+    ioDispatcher = Dispatchers.IO,
+  )
 
-  private val json = Json { ignoreUnknownKeys = true }
+  constructor(context: Context) : this(
+    statsFile = File(context.applicationContext.filesDir, "reading_stats.json"),
+    todayProvider = { LocalDate.now() },
+    nowProvider = { System.currentTimeMillis() },
+    preloadInBackground = true,
+    ioDispatcher = Dispatchers.IO,
+  )
+
+  private val store = AtomicJsonFile(statsFile, ReadingStatsData.serializer())
   private val mutex = Mutex()
-  private val state = MutableStateFlow(recompute(readInitial()))
+  private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+  @Volatile private var dirty = false
+  @Volatile private var isLoaded = !preloadInBackground
+  private val mutableLoaded = MutableStateFlow(!preloadInBackground)
+  private val mutableLastWriteError = MutableStateFlow(false)
+  private val state =
+    MutableStateFlow(if (preloadInBackground) ReadingStatsData() else recompute(readInitial()))
 
   val stats: StateFlow<ReadingStatsData> = state.asStateFlow()
+  val loaded: StateFlow<Boolean> = mutableLoaded.asStateFlow()
+  val lastWriteError: StateFlow<Boolean> = mutableLastWriteError.asStateFlow()
+
+  init {
+    if (preloadInBackground) {
+      backgroundScope.launch {
+        awaitLoaded()
+      }
+    }
+  }
+
+  suspend fun awaitLoaded() {
+    if (isLoaded) return
+    withContext(ioDispatcher) {
+      mutex.withLock {
+        ensureLoadedLocked()
+      }
+    }
+  }
+
+  private fun ensureLoadedLocked() {
+    if (isLoaded) return
+    state.value = recompute(readInitial())
+    isLoaded = true
+    mutableLoaded.value = true
+  }
 
   suspend fun recordReading(deltaSeconds: Int, deltaPages: Int = 0) {
-    if (deltaSeconds <= 0 && deltaPages <= 0) return
+    if (deltaSeconds <= 0 && deltaPages <= 0 && !dirty) return
     val safeSeconds = deltaSeconds.coerceAtLeast(0)
     val safePages = deltaPages.coerceAtLeast(0)
     val today = todayProvider()
     val todayKey = today.toString()
     mutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
+      if (safeSeconds == 0 && safePages == 0) {
+        persistLocked(state.value)
+        return
+      }
       val current = state.value
       val updatedList = current.dailyStats.toMutableList()
       val existingIndex = updatedList.indexOfFirst { it.date == todayKey }
@@ -74,24 +140,33 @@ class ReadingStatsRepository(
           ),
           today = today,
         )
-      state.value = next
-      write(next)
+      persistLocked(next)
     }
   }
 
   suspend fun setDailyGoalMinutes(minutes: Int) {
     val clamped = minutes.coerceIn(5, 180)
     val today = todayProvider()
+    val updatedAt = nowProvider()
     mutex.withLock {
-      val next = recompute(state.value.copy(dailyGoalMinutes = clamped), today = today)
-      state.value = next
-      write(next)
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
+      val next =
+        recompute(
+          state.value.copy(dailyGoalMinutes = clamped, dailyGoalUpdatedAt = updatedAt),
+          today = today,
+        )
+      persistLocked(next)
     }
   }
 
   suspend fun mergeFromRemote(remote: ReadingStatsData) {
     val today = todayProvider()
     mutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
       val local = state.value
       val byDate = LinkedHashMap<String, DailyReadingStat>()
       for (item in local.dailyStats) byDate[item.date] = item
@@ -108,10 +183,20 @@ class ReadingStatsRepository(
       val mergedDaily = byDate.values.sortedBy { it.date }
       val totalSec = maxOf(local.totalSeconds, remote.totalSeconds, mergedDaily.sumOf { it.secondsRead.toLong() })
       val totalPages = maxOf(local.totalPagesTurned, remote.totalPagesTurned, mergedDaily.sumOf { it.pagesTurned })
+      val (mergedGoal, mergedGoalUpdatedAt) =
+        when {
+          remote.dailyGoalUpdatedAt > local.dailyGoalUpdatedAt ->
+            remote.dailyGoalMinutes.coerceIn(5, 180) to remote.dailyGoalUpdatedAt
+          local.dailyGoalUpdatedAt > remote.dailyGoalUpdatedAt ->
+            local.dailyGoalMinutes.coerceIn(5, 180) to local.dailyGoalUpdatedAt
+          else ->
+            maxOf(local.dailyGoalMinutes, remote.dailyGoalMinutes).coerceIn(5, 180) to local.dailyGoalUpdatedAt
+        }
       val next =
         recompute(
           local.copy(
-            dailyGoalMinutes = maxOf(local.dailyGoalMinutes, remote.dailyGoalMinutes),
+            dailyGoalMinutes = mergedGoal,
+            dailyGoalUpdatedAt = mergedGoalUpdatedAt,
             longestStreak = maxOf(local.longestStreak, remote.longestStreak),
             totalSeconds = totalSec,
             totalPagesTurned = totalPages,
@@ -119,8 +204,26 @@ class ReadingStatsRepository(
           ),
           today = today,
         )
+      persistLocked(next)
+    }
+  }
+
+  private suspend fun persistLocked(next: ReadingStatsData) {
+    val changed = next != state.value
+    if (!changed && !dirty) return
+    if (changed) {
       state.value = next
-      write(next)
+      dirty = true
+    }
+    try {
+      write(state.value)
+      dirty = false
+      mutableLastWriteError.value = false
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: Throwable) {
+      dirty = true
+      mutableLastWriteError.value = true
     }
   }
 
@@ -135,17 +238,10 @@ class ReadingStatsRepository(
     )
   }
 
-  private fun readInitial(): ReadingStatsData {
-    if (!statsFile.exists()) return ReadingStatsData()
-    return runCatching { json.decodeFromString(ReadingStatsData.serializer(), statsFile.readText()) }
-      .getOrDefault(ReadingStatsData())
-  }
+  private fun readInitial(): ReadingStatsData = store.read(ReadingStatsData())
 
   private suspend fun write(data: ReadingStatsData) {
-    withContext(Dispatchers.IO) {
-      statsFile.parentFile?.mkdirs()
-      statsFile.writeText(json.encodeToString(ReadingStatsData.serializer(), data))
-    }
+    withContext(ioDispatcher) { store.write(data) }
   }
 
   companion object {

@@ -18,7 +18,7 @@ class BookImporter(
   private val booksDir: File,
   private val coversDir: File,
 ) {
-  suspend fun import(uri: Uri): Result<BookEntry> =
+  suspend fun import(uri: Uri, existingHashes: Set<String> = emptySet()): Result<BookEntry> =
     withContext(Dispatchers.IO) {
       val localized = LocaleHelper.wrap(context)
       val displayName = resolveDisplayName(uri)
@@ -37,26 +37,50 @@ class BookImporter(
         target.delete()
         return@withContext Result.failure(copied.exceptionOrNull() ?: IllegalStateException())
       }
+      val contentHash = sha256Hex(target)
+      if (contentHash != null && contentHash in existingHashes) {
+        target.delete()
+        return@withContext Result.failure(IllegalStateException(localized.getString(R.string.lib_import_duplicate)))
+      }
       val publication = engine.open(target).getOrElse {
         target.delete()
         return@withContext Result.failure(it)
       }
       val coverName = "$id.jpg"
       val coverFile = File(coversDir, coverName)
-      val hasCover = CoverExtractor.extract(target, format, publication, coverFile)
-      val entry =
-        BookEntry(
-          id = id,
-          title = publication.metadata.title?.takeIf { it.isNotBlank() } ?: fallbackTitle(displayName, uri),
-          author = publication.metadata.authors.joinToString { it.name },
-          fileName = fileName,
-          format = format,
-          coverFileName = if (hasCover) coverName else null,
-          contentHash = sha256Hex(target),
-          updatedAt = System.currentTimeMillis(),
-        )
-      publication.close()
-      Result.success(entry)
+      try {
+        val hasCover =
+          try {
+            CoverExtractor.extract(target, format, publication, coverFile)
+          } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+          } catch (_: Throwable) {
+            coverFile.delete()
+            false
+          }
+        val entry =
+          BookEntry(
+            id = id,
+            title = publication.metadata.title?.takeIf { it.isNotBlank() } ?: fallbackTitle(displayName, uri),
+            author = publication.metadata.authors.joinToString { it.name },
+            fileName = fileName,
+            format = format,
+            coverFileName = if (hasCover && coverFile.exists()) coverName else null,
+            contentHash = contentHash,
+            updatedAt = System.currentTimeMillis(),
+          )
+        Result.success(entry)
+      } catch (e: kotlinx.coroutines.CancellationException) {
+        target.delete()
+        coverFile.delete()
+        throw e
+      } catch (t: Throwable) {
+        target.delete()
+        coverFile.delete()
+        Result.failure(t)
+      } finally {
+        publication.close()
+      }
     }
 
   private fun resolveDisplayName(uri: Uri): String? =

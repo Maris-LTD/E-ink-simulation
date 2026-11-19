@@ -1,11 +1,5 @@
 package com.example.emptyapp.ui.reader
 
-import android.graphics.Bitmap
-import android.graphics.Color as AndroidColor
-import android.graphics.Matrix
-import android.graphics.pdf.PdfRenderer
-import android.os.ParcelFileDescriptor
-import android.util.LruCache
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -13,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -23,13 +18,16 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -38,16 +36,21 @@ import androidx.compose.foundation.pager.PagerSnapDistance
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -58,7 +61,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -73,7 +75,9 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
@@ -83,8 +87,10 @@ import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
+import com.example.emptyapp.reader.pdf.CameraTransform
 import com.example.emptyapp.reader.pdf.PaginatedReflowElement
 import com.example.emptyapp.reader.pdf.PdfDocumentCache
+import com.example.emptyapp.reader.pdf.PdfGuidedNavigation
 import com.example.emptyapp.reader.pdf.PdfPageAnalysis
 import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
 import com.example.emptyapp.reader.pdf.PdfReadingMode
@@ -93,29 +99,76 @@ import com.example.emptyapp.reader.pdf.PdfReflowEngine
 import com.example.emptyapp.reader.pdf.PdfReflowPaginator
 import com.example.emptyapp.reader.pdf.PdfRegionNavigator
 import com.example.emptyapp.reader.pdf.ReflowImageKind
+import com.example.emptyapp.reader.pdf.ReflowImageTapAction
 import com.example.emptyapp.reader.pdf.ReflowPageMeta
+import com.example.emptyapp.reader.pdf.ReflowReadingAnchor
 import com.example.emptyapp.reader.pdf.ReflowScreenPage
+import com.example.emptyapp.reader.pdf.resolveReflowImageTapAction
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+private sealed interface PdfHolderLoadState {
+  data object Loading : PdfHolderLoadState
+  data class Ready(val holder: PdfRendererHolder) : PdfHolderLoadState
+  data object Failed : PdfHolderLoadState
+}
+
+private data class ViewportTileSnapshot(
+  val scale: Float,
+  val offset: Offset,
+  val bitmapWidth: Int,
+  val bitmapHeight: Int,
+)
+
+private data class ViewportTileState(
+  val bitmap: ImageBitmap,
+  val bitmapRect: PdfRect,
+)
+
+private sealed interface ReflowZoomTarget {
+  val sourcePage: Int
+
+  data class InlineRegion(val element: PaginatedReflowElement.InlineImage) : ReflowZoomTarget {
+    override val sourcePage: Int
+      get() = element.sourcePage
+  }
+
+  data class FallbackPage(
+    override val sourcePage: Int,
+    val autoCrop: Boolean,
+  ) : ReflowZoomTarget
+}
 
 class PdfPagerController {
   internal var onPrev: (() -> Unit)? = null
   internal var onNext: (() -> Unit)? = null
   internal var onJumpTo: ((Int) -> Unit)? = null
+  internal var overlayOpen: Boolean = false
 
   fun goBackward() {
-    onPrev?.invoke()
+    if (!overlayOpen) {
+      onPrev?.invoke()
+    }
   }
 
   fun goForward() {
-    onNext?.invoke()
+    if (!overlayOpen) {
+      onNext?.invoke()
+    }
   }
 
   fun jumpToPage(pageIndex: Int) {
@@ -123,7 +176,7 @@ class PdfPagerController {
   }
 }
 
-@OptIn(ExperimentalTextApi::class)
+@OptIn(ExperimentalTextApi::class, FlowPreview::class)
 @Composable
 fun PdfPagerReader(
   file: File,
@@ -134,28 +187,88 @@ fun PdfPagerReader(
   onPageChanged: (pageIndex: Int, pageCount: Int) -> Unit,
   onCenterTap: () -> Unit,
   modifier: Modifier = Modifier,
+  onScreenTurn: () -> Unit = {},
 ) {
   val context = LocalContext.current
+  val holderContext = context.applicationContext ?: context
   val density = LocalDensity.current
-  val holder = remember(file) { openPdfHolder(file) }
-  DisposableEffect(holder) {
-    onDispose { holder?.close() }
-  }
-
-  if (holder == null || holder.pageCount <= 0) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text(stringResource(R.string.pdf_load_error), style = MaterialTheme.typography.bodyLarge)
+  val latestOnPageChanged by rememberUpdatedState(onPageChanged)
+  val latestOnScreenTurn by rememberUpdatedState(onScreenTurn)
+  val latestOnCenterTap by rememberUpdatedState(onCenterTap)
+  val latestController by rememberUpdatedState(controller)
+  val holderState by
+    produceState<PdfHolderLoadState>(initialValue = PdfHolderLoadState.Loading, file, holderContext) {
+      value = PdfHolderLoadState.Loading
+      var opened: PdfRendererHolder? = null
+      try {
+        withContext(Dispatchers.IO) {
+          opened = openPdfHolder(file, holderContext)
+        }
+        val ready = opened
+        if (ready != null && ready.pageCount > 0) {
+          value = PdfHolderLoadState.Ready(ready)
+          awaitCancellation()
+        } else {
+          ready?.close()
+          opened = null
+          value = PdfHolderLoadState.Failed
+        }
+      } finally {
+        opened?.close()
+      }
     }
-    return
+
+  val readyHolder =
+    when (val state = holderState) {
+      PdfHolderLoadState.Loading -> {
+        Box(
+          modifier =
+            modifier
+              .fillMaxSize()
+              .background(Color(settings.tone.background))
+              .pointerInput(Unit) { detectTapGestures(onTap = { latestOnCenterTap() }) },
+          contentAlignment = Alignment.Center,
+        ) {
+          CircularProgressIndicator(color = Color(settings.tone.text))
+        }
+        return
+      }
+      PdfHolderLoadState.Failed -> {
+        Box(
+          modifier =
+            modifier
+              .fillMaxSize()
+              .background(Color(settings.tone.background))
+              .pointerInput(Unit) { detectTapGestures(onTap = { latestOnCenterTap() }) },
+          contentAlignment = Alignment.Center,
+        ) {
+          Text(
+            text = stringResource(R.string.pdf_load_error),
+            color = Color(settings.tone.text),
+            style = MaterialTheme.typography.bodyLarge,
+          )
+        }
+        return
+      }
+      is PdfHolderLoadState.Ready -> state.holder
+    }
+
+  val holder = readyHolder
+  DisposableEffect(holder) {
+    onDispose { holder.close() }
   }
 
   val pageCount = holder.pageCount
+  var currentPdfPage by remember(file) { mutableIntStateOf(initialPage.coerceIn(0, pageCount - 1)) }
+  var currentReflowAnchor by remember(file) { mutableStateOf<ReflowReadingAnchor?>(null) }
+  val isReflowMode = readingMode == PdfReadingMode.HYBRID_REFLOW
   val cache = remember(context) { PdfDocumentCache(File(context.filesDir, "pdf_cache")) }
   var allAnalyses by remember(file) { mutableStateOf<List<PdfPageAnalysis>?>(null) }
   var analyzeDone by remember(file) { mutableIntStateOf(0) }
   var analyzeTotal by remember(file) { mutableIntStateOf(pageCount) }
 
-  LaunchedEffect(file, holder) {
+  LaunchedEffect(file, holder, isReflowMode) {
+    if (!isReflowMode || allAnalyses != null) return@LaunchedEffect
     val cached = withContext(Dispatchers.IO) { cache.load(file) }
     if (cached != null && cached.size == pageCount) {
       holder.seedAnalyses(cached)
@@ -163,22 +276,34 @@ fun PdfPagerReader(
     } else {
       val computed =
         withContext(Dispatchers.IO) {
-          PdfPageAnalyzer.analyzeAllPages(file) { done, total ->
+          PdfPageAnalyzer.ensureInitialized(context)
+          PdfPageAnalyzer.analyzeAllPages(
+            file = file,
+            shouldContinue = { isActive },
+          ) { done, total ->
             analyzeDone = done
             analyzeTotal = total
           }.also { pages ->
             if (pages.isNotEmpty()) cache.save(file, pages)
           }
         }
-      holder.seedAnalyses(computed)
-      allAnalyses = computed
+      if (computed.isNotEmpty()) {
+        holder.seedAnalyses(computed)
+        allAnalyses = computed
+      } else if (isActive) {
+        allAnalyses = emptyList()
+      }
     }
   }
 
   val loadedAnalyses = allAnalyses
-  if (loadedAnalyses == null) {
+  if (isReflowMode && loadedAnalyses == null) {
     Box(
-      modifier = modifier.fillMaxSize().background(Color(settings.tone.background)),
+      modifier =
+        modifier
+          .fillMaxSize()
+          .background(Color(settings.tone.background))
+          .pointerInput(onCenterTap) { detectTapGestures(onTap = { onCenterTap() }) },
       contentAlignment = Alignment.Center,
     ) {
       Column(
@@ -206,19 +331,14 @@ fun PdfPagerReader(
       ColorFilter.colorMatrix(ColorMatrix(EInkColorFilter.matrixOf(settings).array))
     }
 
-  var currentPdfPage by remember(file) { mutableIntStateOf(initialPage.coerceIn(0, pageCount - 1)) }
-
-  val reflowMetas =
-    remember(loadedAnalyses) {
-      loadedAnalyses.mapIndexed { idx, analysis ->
-        val neighbors = listOfNotNull(loadedAnalyses.getOrNull(idx - 1), loadedAnalyses.getOrNull(idx + 1))
-        val result = PdfReflowEngine.buildReflowPage(analysis, neighbors)
-        ReflowPageMeta(
-          pageIndex = analysis.pageIndex,
-          hasSpecialObjects = PdfReflowPaginator.hasSpecialObjects(analysis, result),
-          result = result,
-        )
-      }
+  val reflowMetas by
+    produceState<List<ReflowPageMeta>?>(null, loadedAnalyses, isReflowMode) {
+      value =
+        if (isReflowMode && loadedAnalyses != null) {
+          withContext(Dispatchers.Default) { buildReflowMetas(loadedAnalyses) }
+        } else {
+          null
+        }
     }
 
   val bodyWeightValue = (settings.fontWeight * 400.0).roundToInt().coerceIn(100, 900)
@@ -287,7 +407,12 @@ fun PdfPagerReader(
         .coerceAtLeast(120)
     val paragraphSpacingPx = with(density) { paragraphSpacingDp.roundToPx() }
 
-    val textMeasurer = rememberTextMeasurer()
+    val fontFamilyResolver = LocalFontFamilyResolver.current
+    val layoutDirection = LocalLayoutDirection.current
+    val backgroundTextMeasurer =
+      remember(fontFamilyResolver, density, layoutDirection) {
+        TextMeasurer(fontFamilyResolver, density, layoutDirection, cacheSize = 0)
+      }
     val bodyTextStyle =
       remember(reflowFontFamily, bodyFontWeight, baseFontSp, lineHeightSp, textAlign) {
         TextStyle(
@@ -309,65 +434,110 @@ fun PdfPagerReader(
         )
       }
 
-    val reflowScreens =
-      remember(
+    val reflowScreensState by
+      produceState<List<ReflowScreenPage>?>(
+        null,
         reflowMetas,
         contentWidthPx,
         contentHeightPx,
         paragraphSpacingPx,
         bodyTextStyle,
         headingTextStyle,
+        backgroundTextMeasurer,
       ) {
-        PdfReflowPaginator.paginate(
-          pages = reflowMetas,
-          maxContentWidthPx = contentWidthPx,
-          maxContentHeightPx = contentHeightPx,
-          paragraphSpacingPx = paragraphSpacingPx,
-        ) { text, isHeading, maxW ->
-          textMeasurer.measure(
-            text = text,
-            style = if (isHeading) headingTextStyle else bodyTextStyle,
-            constraints = Constraints(maxWidth = maxW),
-          ).size.height
-        }
+        val metas = reflowMetas
+        value =
+          if (metas == null) {
+            null
+          } else {
+            withContext(Dispatchers.Default) {
+              val job = coroutineContext[Job]
+              PdfReflowPaginator.paginate(
+                pages = metas,
+                maxContentWidthPx = contentWidthPx,
+                maxContentHeightPx = contentHeightPx,
+                paragraphSpacingPx = paragraphSpacingPx,
+              ) { text, isHeading, maxW ->
+                if (job?.isActive == false) throw CancellationException()
+                backgroundTextMeasurer.measure(
+                  text = text,
+                  style = if (isHeading) headingTextStyle else bodyTextStyle,
+                  constraints = Constraints(maxWidth = maxW),
+                ).size.height
+              }
+            }
+          }
       }
 
-    // Pre-process & pre-warm adjacent pages (page - 1 and page + 1)
-    LaunchedEffect(currentPdfPage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop, readingMode) {
-      val autoCrop = settings.pdfAutoCrop && readingMode != PdfReadingMode.GUIDED_COLUMN
-      val mult = if (readingMode == PdfReadingMode.GUIDED_COLUMN) 2 else 1
-      holder.prefetchAdjacent(
-        centerIndex = currentPdfPage,
-        maxWidth = targetWidthPx * mult,
-        maxHeight = targetHeightPx * mult,
-        autoCrop = autoCrop,
-      )
+    if (isReflowMode && reflowScreensState == null) {
+      Box(
+        modifier =
+          Modifier.fillMaxSize()
+            .pointerInput(onCenterTap) { detectTapGestures(onTap = { onCenterTap() }) },
+        contentAlignment = Alignment.Center,
+      ) {
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          CircularProgressIndicator(color = Color(settings.tone.text))
+          Text(
+            text = stringResource(R.string.pdf_reflow_preparing),
+            color = Color(settings.tone.text),
+            style = MaterialTheme.typography.bodyLarge,
+          )
+        }
+      }
+      return@BoxWithConstraints
     }
+    val reflowScreens = reflowScreensState.orEmpty()
 
     if (readingMode == PdfReadingMode.HYBRID_REFLOW && reflowScreens.isNotEmpty()) {
-      var zoomedImageElement by remember { mutableStateOf<PaginatedReflowElement.InlineImage?>(null) }
+      var zoomedTarget by remember { mutableStateOf<ReflowZoomTarget?>(null) }
+      var pendingJumpTargetScreen by remember { mutableStateOf<Int?>(null) }
+      val initialAnchor = currentReflowAnchor ?: ReflowReadingAnchor(sourcePageIndex = currentPdfPage)
       val startScreen = remember(reflowScreens) {
-        PdfReflowPaginator.findScreenIndexForPdfPage(reflowScreens, currentPdfPage)
+        PdfReflowPaginator.findScreenIndexForAnchor(reflowScreens, initialAnchor)
+          .coerceIn(0, reflowScreens.lastIndex)
       }
       val reflowPagerState =
         rememberPagerState(
-          initialPage = startScreen.coerceIn(0, reflowScreens.lastIndex),
+          initialPage = startScreen,
           pageCount = { reflowScreens.size },
         )
       val scope = rememberCoroutineScope()
 
+      DisposableEffect(controller, zoomedTarget) {
+        controller.overlayOpen = zoomedTarget != null
+        onDispose {
+          controller.overlayOpen = false
+        }
+      }
+
       DisposableEffect(controller, reflowPagerState, reflowScreens) {
         controller.onPrev = {
-          val target = (reflowPagerState.currentPage - 1).coerceAtLeast(0)
-          if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          if (zoomedTarget == null) {
+            val target = (reflowPagerState.currentPage - 1).coerceAtLeast(0)
+            if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          }
         }
         controller.onNext = {
-          val target = (reflowPagerState.currentPage + 1).coerceAtMost(reflowScreens.lastIndex)
-          if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          if (zoomedTarget == null) {
+            val target = (reflowPagerState.currentPage + 1).coerceAtMost(reflowScreens.lastIndex)
+            if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          }
         }
         controller.onJumpTo = { pdfIdx ->
-          val screenIdx = PdfReflowPaginator.findScreenIndexForPdfPage(reflowScreens, pdfIdx)
-          scope.launch { reflowPagerState.scrollToPage(screenIdx) }
+          val targetPdf = pdfIdx.coerceIn(0, pageCount - 1)
+          val jumpAnchor = ReflowReadingAnchor(sourcePageIndex = targetPdf)
+          currentReflowAnchor = jumpAnchor
+          val screenIdx =
+            PdfReflowPaginator.findScreenIndexForAnchor(reflowScreens, jumpAnchor)
+              .coerceIn(0, reflowScreens.lastIndex)
+          if (screenIdx != reflowPagerState.currentPage || screenIdx != reflowPagerState.settledPage) {
+            pendingJumpTargetScreen = screenIdx
+            scope.launch { reflowPagerState.scrollToPage(screenIdx) }
+          }
         }
         onDispose {
           controller.onPrev = null
@@ -377,19 +547,47 @@ fun PdfPagerReader(
       }
 
       LaunchedEffect(reflowPagerState, reflowScreens) {
+        val targetAnchor = currentReflowAnchor ?: ReflowReadingAnchor(sourcePageIndex = currentPdfPage)
+        if (currentReflowAnchor == null) {
+          currentReflowAnchor = targetAnchor
+        }
+        val targetScreen =
+          PdfReflowPaginator.findScreenIndexForAnchor(reflowScreens, targetAnchor)
+            .coerceIn(0, reflowScreens.lastIndex)
+        if (reflowPagerState.currentPage != targetScreen || reflowPagerState.settledPage != targetScreen) {
+          pendingJumpTargetScreen = null
+          reflowPagerState.scrollToPage(targetScreen)
+        }
+        var lastSettledScreen: Int? = null
         snapshotFlow { reflowPagerState.settledPage }
           .distinctUntilChanged()
           .collect { screenIdx ->
             val screen = reflowScreens.getOrNull(screenIdx) ?: return@collect
-            val snapPage = PdfReflowPaginator.resolveSnapBackPage(screen)
-            currentPdfPage = snapPage
-            onPageChanged(snapPage, pageCount)
+            val isExplicitJump = pendingJumpTargetScreen == screenIdx
+            if (lastSettledScreen != null && lastSettledScreen != screenIdx) {
+              pendingJumpTargetScreen = null
+            }
+            val settle =
+              PdfReflowPaginator.evaluateScreenSettle(
+                screen = screen,
+                previousScreenIndex = lastSettledScreen,
+                previousPdfPage = currentPdfPage,
+                isExplicitJump = isExplicitJump,
+              )
+            lastSettledScreen = screenIdx
+            settle.updatedAnchor?.let { currentReflowAnchor = it }
+            currentPdfPage = settle.snapPdfPage
+            latestOnPageChanged(settle.snapPdfPage, pageCount)
+            if (settle.isSubPageTurn) {
+              latestOnScreenTurn()
+            }
           }
       }
 
       HorizontalPager(
         state = reflowPagerState,
         beyondViewportPageCount = 1,
+        userScrollEnabled = zoomedTarget == null,
         flingBehavior =
           PagerDefaults.flingBehavior(
             state = reflowPagerState,
@@ -404,40 +602,77 @@ fun PdfPagerReader(
           var fallbackBitmap by remember(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop) {
             mutableStateOf<ImageBitmap?>(null)
           }
-          LaunchedEffect(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop) {
-            fallbackBitmap =
+          var renderFailed by remember(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop) {
+            mutableStateOf(false)
+          }
+          var retryNonce by remember(singleFallback.sourcePage) { mutableIntStateOf(0) }
+          val latestFallbackBitmap by rememberUpdatedState(fallbackBitmap)
+
+          LaunchedEffect(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop, retryNonce) {
+            renderFailed = false
+            val rendered =
               holder.renderPage(
                 index = singleFallback.sourcePage,
                 maxWidth = targetWidthPx,
                 maxHeight = targetHeightPx,
                 autoCrop = settings.pdfAutoCrop,
               )
+            if (rendered != null) {
+              fallbackBitmap = rendered
+            } else if (fallbackBitmap == null) {
+              renderFailed = true
+            }
           }
           Box(
             modifier =
               Modifier.fillMaxSize()
-                .pointerInput(controller, onCenterTap) {
+                .pointerInput(controller, onCenterTap, singleFallback.sourcePage, settings.pdfAutoCrop) {
                   detectTapGestures(
+                    onDoubleTap = {
+                      if (latestFallbackBitmap != null) {
+                        zoomedTarget =
+                          ReflowZoomTarget.FallbackPage(
+                            sourcePage = singleFallback.sourcePage,
+                            autoCrop = settings.pdfAutoCrop,
+                          )
+                      }
+                    },
                     onTap = { tapOffset ->
-                      val w = size.width.toFloat().coerceAtLeast(1f)
-                      when {
-                        tapOffset.x < w * 0.25f -> controller.goBackward()
-                        tapOffset.x > w * 0.75f -> controller.goForward()
-                        else -> onCenterTap()
+                      when (resolveReflowImageTapAction(tapOffset.x, size.width.toFloat())) {
+                        ReflowImageTapAction.PREV_PAGE -> controller.goBackward()
+                        ReflowImageTapAction.NEXT_PAGE -> controller.goForward()
+                        ReflowImageTapAction.OPEN_ZOOM -> onCenterTap()
                       }
                     },
                   )
                 },
             contentAlignment = Alignment.Center,
           ) {
-            fallbackBitmap?.let { bmp ->
+            val currentBmp = fallbackBitmap
+            if (currentBmp != null) {
               Image(
-                bitmap = bmp,
-                contentDescription = "Trang ${singleFallback.sourcePage + 1}",
+                bitmap = currentBmp,
+                contentDescription = stringResource(R.string.cd_pdf_page, singleFallback.sourcePage + 1),
                 contentScale = ContentScale.Fit,
                 colorFilter = colorFilter,
                 modifier = Modifier.fillMaxSize(),
               )
+            } else if (renderFailed) {
+              Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+              ) {
+                Text(
+                  text = stringResource(R.string.pdf_page_render_error),
+                  color = Color(settings.tone.text),
+                  style = MaterialTheme.typography.bodyLarge,
+                )
+                OutlinedButton(onClick = { retryNonce += 1 }) {
+                  Text(text = stringResource(R.string.action_retry))
+                }
+              }
+            } else {
+              CircularProgressIndicator(color = Color(settings.tone.text))
             }
           }
         } else {
@@ -456,21 +691,22 @@ fun PdfPagerReader(
             onPrevPage = { controller.goBackward() },
             onNextPage = { controller.goForward() },
             onCenterTap = onCenterTap,
-            onImageTap = { element -> zoomedImageElement = element },
+            onImageTap = { element -> zoomedTarget = ReflowZoomTarget.InlineRegion(element) },
             modifier = Modifier.fillMaxSize(),
           )
         }
       }
 
-      zoomedImageElement?.let { zoomed ->
-        BackHandler { zoomedImageElement = null }
+      zoomedTarget?.let { zoomed ->
+        BackHandler { zoomedTarget = null }
         PdfReflowImageZoomOverlay(
-          element = zoomed,
+          target = zoomed,
           holder = holder,
           maxRenderWidthPx = targetWidthPx * 2,
+          maxRenderHeightPx = targetHeightPx * 2,
           settings = settings,
           colorFilter = colorFilter,
-          onDismiss = { zoomedImageElement = null },
+          onDismiss = { zoomedTarget = null },
           modifier = Modifier.fillMaxSize(),
         )
       }
@@ -528,8 +764,31 @@ fun PdfPagerReader(
           .collect { page ->
             isZoomed = false
             currentPdfPage = page
-            onPageChanged(page, pageCount)
+            currentReflowAnchor = null
+            latestOnPageChanged(page, pageCount)
           }
+      }
+
+      LaunchedEffect(readingMode) {
+        if (readingMode != PdfReadingMode.GUIDED_COLUMN) {
+          pendingBackwardLandingPage = null
+        }
+        if (readingMode != PdfReadingMode.HYBRID_REFLOW) {
+          currentReflowAnchor = null
+        }
+      }
+
+      LaunchedEffect(holder, pagerState.currentPage, readingMode, loadedAnalyses) {
+        if (readingMode == PdfReadingMode.GUIDED_COLUMN && loadedAnalyses == null) {
+          holder.getOrAnalyzePage(pagerState.currentPage)
+          holder.prefetchAdjacentAnalyses(pagerState.currentPage)
+        }
+      }
+
+      LaunchedEffect(holder, pagerState.settledPage, readingMode, loadedAnalyses) {
+        if (readingMode == PdfReadingMode.SMART_ORIGINAL && loadedAnalyses == null) {
+          holder.getOrAnalyzePage(pagerState.settledPage)
+        }
       }
 
       HorizontalPager(
@@ -546,13 +805,45 @@ fun PdfPagerReader(
       ) { pageIndex ->
         var scale by remember(pageIndex, readingMode) { mutableFloatStateOf(1f) }
         var offset by remember(pageIndex, readingMode) { mutableStateOf(Offset.Zero) }
-        val renderMultiplier = if (scale > 1.35f || readingMode == PdfReadingMode.GUIDED_COLUMN) 2 else 1
+        val isCurrentPage by remember(pagerState, pageIndex) {
+          derivedStateOf { pagerState.currentPage == pageIndex }
+        }
+        val isPageZoomed by remember(pageIndex, readingMode) {
+          derivedStateOf { readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f }
+        }
+        val isDeepZoomed by remember(pagerState, pageIndex, readingMode) {
+          derivedStateOf {
+            pagerState.currentPage == pageIndex &&
+              readingMode != PdfReadingMode.GUIDED_COLUMN &&
+              scale > 2.0f
+          }
+        }
+        val renderMultiplier by remember(pagerState, pageIndex, readingMode) {
+          derivedStateOf {
+            if (pagerState.currentPage == pageIndex &&
+              (readingMode == PdfReadingMode.GUIDED_COLUMN || scale > 1.35f)
+            ) {
+              2
+            } else {
+              1
+            }
+          }
+        }
         val autoCrop = settings.pdfAutoCrop && readingMode != PdfReadingMode.GUIDED_COLUMN
-        val pageAnalysis = loadedAnalyses.getOrNull(pageIndex)
+        val analysisVersion by holder.analysisVersion.collectAsState()
+        val pageAnalysis =
+          remember(holder, pageIndex, loadedAnalyses, analysisVersion) {
+            loadedAnalyses?.getOrNull(pageIndex) ?: holder.cachedAnalysis(pageIndex)
+          }
         var guidedRegionIndex by remember(pageIndex, readingMode) { mutableIntStateOf(0) }
-        var bitmap by remember(holder, pageIndex, targetWidthPx, targetHeightPx, renderMultiplier, autoCrop) {
+        var bitmap by remember(holder, pageIndex, autoCrop) {
           mutableStateOf<ImageBitmap?>(null)
         }
+        var viewportTile by remember(holder, pageIndex, autoCrop) {
+          mutableStateOf<ViewportTileState?>(null)
+        }
+        var renderFailed by remember(holder, pageIndex, autoCrop) { mutableStateOf(false) }
+        var retryNonce by remember(pageIndex) { mutableIntStateOf(0) }
 
         val guidedRegions =
           remember(pageAnalysis, targetWidthPx, targetHeightPx, readingMode) {
@@ -566,25 +857,52 @@ fun PdfPagerReader(
             }
           }
 
-        DisposableEffect(pagerState.currentPage, pageIndex, readingMode, guidedRegions) {
-          if (pagerState.currentPage == pageIndex && readingMode == PdfReadingMode.GUIDED_COLUMN && guidedRegions.isNotEmpty()) {
+        val latestAnalysis by rememberUpdatedState(pageAnalysis)
+        val latestRegions by rememberUpdatedState(guidedRegions)
+        val latestPendingBackward by rememberUpdatedState(pendingBackwardLandingPage)
+        val latestBitmap by rememberUpdatedState(bitmap)
+        val latestAutoCrop by rememberUpdatedState(autoCrop)
+
+        DisposableEffect(isCurrentPage, pageIndex, readingMode) {
+          if (isCurrentPage && readingMode == PdfReadingMode.GUIDED_COLUMN) {
             activePageRegionPrev = {
-              if (guidedRegionIndex > 0) {
-                guidedRegionIndex -= 1
+              if (pagerState.currentPage != pageIndex) {
                 true
               } else {
-                false
+                val step =
+                  PdfGuidedNavigation.stepPrev(
+                    readingMode = readingMode,
+                    hasAnalysis = latestAnalysis != null,
+                    currentRegionIndex = guidedRegionIndex,
+                    awaitingBackwardLanding = latestPendingBackward == pageIndex,
+                  )
+                guidedRegionIndex = step.nextRegionIndex
+                if (step.changedRegionOnSamePage) {
+                  latestOnScreenTurn()
+                }
+                step.consumed
               }
             }
             activePageRegionNext = {
-              if (guidedRegionIndex < guidedRegions.lastIndex) {
-                guidedRegionIndex += 1
+              if (pagerState.currentPage != pageIndex) {
                 true
               } else {
-                false
+                val step =
+                  PdfGuidedNavigation.stepNext(
+                    readingMode = readingMode,
+                    hasAnalysis = latestAnalysis != null,
+                    currentRegionIndex = guidedRegionIndex,
+                    regionCount = latestRegions.size,
+                    awaitingBackwardLanding = latestPendingBackward == pageIndex,
+                  )
+                guidedRegionIndex = step.nextRegionIndex
+                if (step.changedRegionOnSamePage) {
+                  latestOnScreenTurn()
+                }
+                step.consumed
               }
             }
-          } else if (pagerState.currentPage == pageIndex) {
+          } else if (isCurrentPage) {
             activePageRegionPrev = null
             activePageRegionNext = null
           }
@@ -603,11 +921,11 @@ fun PdfPagerReader(
           }
         }
 
-        LaunchedEffect(scale, pagerState.currentPage, pageIndex, readingMode) {
-          if (pagerState.currentPage == pageIndex) {
-            isZoomed = readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f
+        LaunchedEffect(isPageZoomed, isCurrentPage) {
+          if (isCurrentPage) {
+            isZoomed = isPageZoomed
             resetActivePageZoom =
-              if (isZoomed) {
+              if (isPageZoomed) {
                 {
                   scale = 1f
                   offset = Offset.Zero
@@ -618,15 +936,17 @@ fun PdfPagerReader(
           }
         }
 
-        LaunchedEffect(readingMode, guidedRegions, pendingBackwardLandingPage, pageIndex) {
-          if (readingMode == PdfReadingMode.GUIDED_COLUMN && guidedRegions.isNotEmpty()) {
-            if (pendingBackwardLandingPage == pageIndex) {
-              guidedRegionIndex = guidedRegions.lastIndex
-              pendingBackwardLandingPage = null
-            } else if (guidedRegionIndex > guidedRegions.lastIndex) {
-              guidedRegionIndex = 0
-            }
-          }
+        LaunchedEffect(readingMode, pageAnalysis, guidedRegions, pendingBackwardLandingPage, pageIndex) {
+          guidedRegionIndex =
+            PdfGuidedNavigation.resolveRegionIndex(
+              readingMode = readingMode,
+              pageAnalysis = pageAnalysis,
+              guidedRegions = guidedRegions,
+              currentRegionIndex = guidedRegionIndex,
+              pendingBackwardLandingPage = pendingBackwardLandingPage,
+              pageIndex = pageIndex,
+              onConsumeBackwardLanding = { pendingBackwardLandingPage = null },
+            )
         }
 
         LaunchedEffect(readingMode, guidedRegions, guidedRegionIndex, bitmap, targetWidthPx, targetHeightPx) {
@@ -646,21 +966,87 @@ fun PdfPagerReader(
           }
         }
 
-        LaunchedEffect(holder, pageIndex, targetWidthPx, targetHeightPx, renderMultiplier, autoCrop) {
-          bitmap =
+        LaunchedEffect(holder, pageIndex, targetWidthPx, targetHeightPx, renderMultiplier, autoCrop, retryNonce) {
+          renderFailed = false
+          val rendered =
             holder.renderPage(
               index = pageIndex,
               maxWidth = targetWidthPx * renderMultiplier,
               maxHeight = targetHeightPx * renderMultiplier,
               autoCrop = autoCrop,
             )
+          if (rendered != null) {
+            bitmap = rendered
+          } else if (bitmap == null) {
+            renderFailed = true
+          }
+        }
+
+        LaunchedEffect(holder, pageIndex, isDeepZoomed, targetWidthPx, targetHeightPx, autoCrop, retryNonce) {
+          if (!isDeepZoomed) {
+            viewportTile = null
+            return@LaunchedEffect
+          }
+          snapshotFlow {
+            val bmp = bitmap
+            if (bmp == null) null else ViewportTileSnapshot(scale, offset, bmp.width, bmp.height)
+          }
+            .distinctUntilChanged()
+            .debounce(180L)
+            .collectLatest { snap ->
+              if (snap == null || snap.scale <= 2.0f) {
+                viewportTile = null
+                return@collectLatest
+              }
+              val bitmapRect =
+                PdfRegionNavigator.computeVisibleViewportBitmapRect(
+                  scale = snap.scale,
+                  offsetX = snap.offset.x,
+                  offsetY = snap.offset.y,
+                  containerWidth = targetWidthPx.toFloat(),
+                  containerHeight = targetHeightPx.toFloat(),
+                  bitmapWidth = snap.bitmapWidth.toFloat(),
+                  bitmapHeight = snap.bitmapHeight.toFloat(),
+                )
+              if (bitmapRect == null) {
+                viewportTile = null
+                return@collectLatest
+              }
+              val cropRect =
+                if (autoCrop) {
+                  holder.cachedCropRect(pageIndex)?.let { PdfRect(it.left, it.top, it.right, it.bottom) }
+                } else {
+                  null
+                }
+              val pageRect =
+                PdfRegionNavigator.computeVisibleViewportPageRect(
+                  scale = snap.scale,
+                  offsetX = snap.offset.x,
+                  offsetY = snap.offset.y,
+                  containerWidth = targetWidthPx.toFloat(),
+                  containerHeight = targetHeightPx.toFloat(),
+                  bitmapWidth = snap.bitmapWidth.toFloat(),
+                  bitmapHeight = snap.bitmapHeight.toFloat(),
+                  cropRect = cropRect,
+                ) ?: return@collectLatest
+              val renderedTile =
+                holder.renderViewportTile(
+                  index = pageIndex,
+                  region = pageRect,
+                  maxWidth = targetWidthPx,
+                  maxHeight = targetHeightPx,
+                )
+              if (renderedTile != null) {
+                viewportTile = ViewportTileState(bitmap = renderedTile, bitmapRect = bitmapRect)
+              }
+            }
         }
 
         Box(
           modifier =
             Modifier.fillMaxSize()
               .clipToBounds()
-              .pointerInput(pageIndex, targetWidthPx, targetHeightPx, readingMode, pageAnalysis, bitmap, autoCrop) {
+              .pointerInput(holder, pageIndex, targetWidthPx, targetHeightPx, readingMode) {
                 detectTapGestures(
                   onDoubleTap = { tapOffset ->
                     if (readingMode == PdfReadingMode.GUIDED_COLUMN) return@detectTapGestures
@@ -668,55 +1054,48 @@ fun PdfPagerReader(
                       scale = 1f
                       offset = Offset.Zero
                     } else {
-                      val currentBmp = bitmap
-                      val tapRegion =
-                        if (currentBmp != null && !autoCrop) {
-                          val fitScale = minOf(targetWidthPx.toFloat() / currentBmp.width, targetHeightPx.toFloat() / currentBmp.height)
-                          val dispW = currentBmp.width * fitScale
-                          val dispH = currentBmp.height * fitScale
-                          val imgLeft = (targetWidthPx - dispW) / 2f
-                          val imgTop = (targetHeightPx - dispH) / 2f
-                          val normX = ((tapOffset.x - imgLeft) / dispW).coerceIn(0f, 1f)
-                          val normY = ((tapOffset.y - imgTop) / dispH).coerceIn(0f, 1f)
-                          PdfRegionNavigator.findTapTargetRect(pageAnalysis, normX, normY)
-                        } else {
-                          null
-                        }
-                      if (tapRegion != null && currentBmp != null) {
+                      val currentBmp = latestBitmap
+                      val existingAnalysis = latestAnalysis
+                      if (existingAnalysis != null || currentBmp == null) {
                         val cam =
-                          PdfRegionNavigator.computeCameraTransform(
-                            region = tapRegion,
-                            bitmapWidth = currentBmp.width.toFloat(),
-                            bitmapHeight = currentBmp.height.toFloat(),
-                            containerWidth = targetWidthPx.toFloat(),
-                            containerHeight = targetHeightPx.toFloat(),
+                          computeDoubleTapCamera(
+                            tapOffset = tapOffset,
+                            bitmap = currentBmp,
+                            pageAnalysis = existingAnalysis,
+                            cropRect = if (latestAutoCrop) holder.cachedCropRect(pageIndex) else null,
+                            targetWidthPx = targetWidthPx,
+                            targetHeightPx = targetHeightPx,
                           )
                         scale = cam.scale
                         offset = Offset(cam.offsetX, cam.offsetY)
                       } else {
-                        val targetScale = 2.2f
-                        val centerX = targetWidthPx / 2f
-                        val centerY = targetHeightPx / 2f
-                        val rawOffset =
-                          Offset(
-                            x = (centerX - tapOffset.x) * (targetScale - 1f),
-                            y = (centerY - tapOffset.y) * (targetScale - 1f),
-                          )
-                        scale = targetScale
-                        offset = clampOffset(rawOffset, targetScale, targetWidthPx, targetHeightPx)
+                        scope.launch {
+                          val analyzed = holder.getOrAnalyzePage(pageIndex)
+                          if (pagerState.currentPage == pageIndex && scale <= 1.01f) {
+                            val bmp = latestBitmap ?: currentBmp
+                            val crop = if (latestAutoCrop) holder.cachedCropRect(pageIndex) else null
+                            val cam =
+                              computeDoubleTapCamera(
+                                tapOffset = tapOffset,
+                                bitmap = bmp,
+                                pageAnalysis = analyzed,
+                                cropRect = crop,
+                                targetWidthPx = targetWidthPx,
+                                targetHeightPx = targetHeightPx,
+                              )
+                            scale = cam.scale
+                            offset = Offset(cam.offsetX, cam.offsetY)
+                          }
+                        }
                       }
                     }
                   },
                   onTap = { tapOffset ->
-                    if (readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f) {
-                      onCenterTap()
-                    } else {
-                      val width = size.width.toFloat().coerceAtLeast(1f)
-                      when {
-                        tapOffset.x < width * 0.25f -> controller.goBackward()
-                        tapOffset.x > width * 0.75f -> controller.goForward()
-                        else -> onCenterTap()
-                      }
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    when {
+                      tapOffset.x < width * 0.25f -> latestController.goBackward()
+                      tapOffset.x > width * 0.75f -> latestController.goForward()
+                      else -> latestOnCenterTap()
                     }
                   },
                 )
@@ -742,20 +1121,38 @@ fun PdfPagerReader(
                         guidedSwiped = true
                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                         if (guidedDragX < 0f) {
-                          controller.goForward()
+                          latestController.goForward()
                         } else {
-                          controller.goBackward()
+                          latestController.goBackward()
                         }
                       }
                     } else if (pointerCount > 1 || (readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f)) {
                       val zoom = event.calculateZoom()
+                      val centroid = event.calculateCentroid(useCurrent = false)
                       val rawPan = event.calculatePan()
                       val (lockedX, lockedY) = PdfRegionNavigator.applyHorizontalLock(rawPan.x, rawPan.y)
                       val pan = Offset(lockedX, lockedY)
                       val newScale = (scale * zoom).coerceIn(1f, 4.5f)
+                      val zoomFactor = if (scale > 0f) newScale / scale else 1f
+                      val center = Offset(targetWidthPx / 2f, targetHeightPx / 2f)
+                      val centroidDelta =
+                        if (centroid.x.isFinite() && centroid.y.isFinite()) (centroid - center) * (1f - zoomFactor)
+                        else Offset.Zero
+                      val rawOffset = offset * zoomFactor + centroidDelta + pan
+                      val currentBmp = latestBitmap
                       val newOffset =
-                        if (newScale <= 1.01f) Offset.Zero
-                        else clampOffset(offset + pan, newScale, targetWidthPx, targetHeightPx)
+                        if (newScale <= 1.01f) {
+                          Offset.Zero
+                        } else {
+                          clampOffset(
+                            offset = rawOffset,
+                            scale = newScale,
+                            widthPx = targetWidthPx,
+                            heightPx = targetHeightPx,
+                            bitmapWidthPx = currentBmp?.width ?: 0,
+                            bitmapHeightPx = currentBmp?.height ?: 0,
+                          )
+                        }
                       val changed = abs(newScale - scale) > 0.001f || newOffset != offset
                       scale = if (newScale <= 1.01f) 1f else newScale
                       offset = newOffset
@@ -772,7 +1169,7 @@ fun PdfPagerReader(
           if (current != null) {
             Image(
               bitmap = current,
-              contentDescription = "Trang ${pageIndex + 1}",
+              contentDescription = stringResource(R.string.cd_pdf_page, pageIndex + 1),
               contentScale = ContentScale.Fit,
               colorFilter = colorFilter,
               modifier =
@@ -783,6 +1180,55 @@ fun PdfPagerReader(
                   translationY = offset.y
                 },
             )
+            val activeTile = if (isDeepZoomed) viewportTile else null
+            if (activeTile != null) {
+              val bw = current.width.toFloat().coerceAtLeast(1f)
+              val bh = current.height.toFloat().coerceAtLeast(1f)
+              val fitScale = minOf(targetWidthPx.toFloat() / bw, targetHeightPx.toFloat() / bh)
+              val dispW = bw * fitScale
+              val dispH = bh * fitScale
+              val r = activeTile.bitmapRect
+              val tileW = (r.width * dispW).coerceAtLeast(1f)
+              val tileH = (r.height * dispH).coerceAtLeast(1f)
+              val measuredTileW = tileW.roundToInt().coerceIn(1, targetWidthPx)
+              val measuredTileH = tileH.roundToInt().coerceIn(1, targetHeightPx)
+              val tileWidthDp = with(density) { measuredTileW.toDp() }
+              val tileHeightDp = with(density) { measuredTileH.toDp() }
+              val unzoomedDx = ((r.left + r.right) * 0.5f - 0.5f) * dispW
+              val unzoomedDy = ((r.top + r.bottom) * 0.5f - 0.5f) * dispH
+              val ratioX = tileW / measuredTileW.toFloat()
+              val ratioY = tileH / measuredTileH.toFloat()
+              Image(
+                bitmap = activeTile.bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                colorFilter = colorFilter,
+                modifier =
+                  Modifier.size(width = tileWidthDp, height = tileHeightDp)
+                    .graphicsLayer {
+                      scaleX = scale * ratioX
+                      scaleY = scale * ratioY
+                      translationX = unzoomedDx * scale + offset.x
+                      translationY = unzoomedDy * scale + offset.y
+                    },
+              )
+            }
+          } else if (renderFailed) {
+            Column(
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              Text(
+                text = stringResource(R.string.pdf_page_render_error),
+                color = Color(settings.tone.text),
+                style = MaterialTheme.typography.bodyLarge,
+              )
+              OutlinedButton(onClick = { retryNonce += 1 }) {
+                Text(text = stringResource(R.string.action_retry))
+              }
+            }
+          } else {
+            CircularProgressIndicator(color = Color(settings.tone.text))
           }
           if (readingMode == PdfReadingMode.GUIDED_COLUMN && guidedRegions.size > 1) {
             val bgColor = Color(settings.tone.background)
@@ -888,7 +1334,18 @@ private fun PdfPaginatedReflowScreen(
             } else {
               Modifier.fillMaxWidth()
                 .height(imgHeightDp)
-                .clickable { onImageTap(element) }
+                .pointerInput(element, onPrevPage, onNextPage, onImageTap) {
+                  detectTapGestures(
+                    onDoubleTap = { onImageTap(element) },
+                    onTap = { tapOffset ->
+                      when (resolveReflowImageTapAction(tapOffset.x, size.width.toFloat())) {
+                        ReflowImageTapAction.PREV_PAGE -> onPrevPage()
+                        ReflowImageTapAction.NEXT_PAGE -> onNextPage()
+                        ReflowImageTapAction.OPEN_ZOOM -> onImageTap(element)
+                      }
+                    },
+                  )
+                }
             }
           Box(
             modifier = boxModifier,
@@ -897,7 +1354,7 @@ private fun PdfPaginatedReflowScreen(
             regionBitmap?.let { bmp ->
               Image(
                 bitmap = bmp,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.cd_pdf_inline_image, element.sourcePage + 1),
                 contentScale = ContentScale.Fit,
                 colorFilter = colorFilter,
                 modifier =
@@ -918,28 +1375,49 @@ private fun PdfPaginatedReflowScreen(
 
 @Composable
 private fun PdfReflowImageZoomOverlay(
-  element: PaginatedReflowElement.InlineImage,
+  target: ReflowZoomTarget,
   holder: PdfRendererHolder,
   maxRenderWidthPx: Int,
+  maxRenderHeightPx: Int,
   settings: EInkSettings,
   colorFilter: ColorFilter,
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   BackHandler(onBack = onDismiss)
-  var bitmap by remember(holder, element.sourcePage, element.bounds, maxRenderWidthPx) {
+  var bitmap by remember(holder, target, maxRenderWidthPx, maxRenderHeightPx) {
     mutableStateOf<ImageBitmap?>(null)
   }
-  LaunchedEffect(holder, element.sourcePage, element.bounds, maxRenderWidthPx) {
-    bitmap = holder.renderRegion(element.sourcePage, element.bounds, maxRenderWidthPx)
+  LaunchedEffect(holder, target, maxRenderWidthPx, maxRenderHeightPx) {
+    bitmap =
+      when (target) {
+        is ReflowZoomTarget.InlineRegion ->
+          holder.renderRegion(target.element.sourcePage, target.element.bounds, maxRenderWidthPx)
+        is ReflowZoomTarget.FallbackPage ->
+          holder.renderPage(
+            index = target.sourcePage,
+            maxWidth = maxRenderWidthPx,
+            maxHeight = maxRenderHeightPx,
+            autoCrop = target.autoCrop,
+          )
+      }
   }
 
   var scale by remember { mutableFloatStateOf(1f) }
   var offset by remember { mutableStateOf(Offset.Zero) }
   var containerSize by remember { mutableStateOf(IntSize.Zero) }
+  val latestBitmap by rememberUpdatedState(bitmap)
+  val paddingPx = with(LocalDensity.current) { 32.dp.roundToPx() }
 
   val bgColor = Color(settings.tone.background)
   val inkColor = Color(settings.tone.text)
+  val imageContentDesc =
+    when (target) {
+      is ReflowZoomTarget.InlineRegion ->
+        stringResource(R.string.cd_pdf_inline_image, target.sourcePage + 1)
+      is ReflowZoomTarget.FallbackPage ->
+        stringResource(R.string.cd_pdf_page, target.sourcePage + 1)
+    }
 
   Box(
     modifier =
@@ -967,9 +1445,19 @@ private fun PdfReflowImageZoomOverlay(
         .pointerInput(Unit) {
           detectTransformGestures { _, pan, zoom, _ ->
             val newScale = (scale * zoom).coerceIn(1f, 5f)
+            val currentBmp = latestBitmap
+            val availW = (containerSize.width - paddingPx).coerceAtLeast(1)
+            val availH = (containerSize.height - paddingPx).coerceAtLeast(1)
             val newOffset =
               if (newScale > 1f) {
-                clampOffset(offset + pan, newScale, containerSize.width, containerSize.height)
+                clampOffset(
+                  offset = offset + pan,
+                  scale = newScale,
+                  widthPx = availW,
+                  heightPx = availH,
+                  bitmapWidthPx = currentBmp?.width ?: 0,
+                  bitmapHeightPx = currentBmp?.height ?: 0,
+                )
               } else {
                 Offset.Zero
               }
@@ -985,7 +1473,7 @@ private fun PdfReflowImageZoomOverlay(
     } else {
       Image(
         bitmap = currentBitmap,
-        contentDescription = null,
+        contentDescription = imageContentDesc,
         contentScale = ContentScale.Fit,
         colorFilter = colorFilter,
         modifier =
@@ -1004,10 +1492,13 @@ private fun PdfReflowImageZoomOverlay(
       modifier =
         Modifier.align(Alignment.TopEnd)
           .padding(16.dp)
+          .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+          .heightIn(min = 48.dp)
           .background(bgColor)
           .border(1.5.dp, inkColor)
           .clickable(onClick = onDismiss)
           .padding(horizontal = 14.dp, vertical = 8.dp),
+      contentAlignment = Alignment.Center,
     ) {
       Text(
         text = stringResource(R.string.action_close),
@@ -1019,145 +1510,104 @@ private fun PdfReflowImageZoomOverlay(
   }
 }
 
-private fun clampOffset(offset: Offset, scale: Float, widthPx: Int, heightPx: Int): Offset {
-  val maxX = ((widthPx * (scale - 1f)) / 2f).coerceAtLeast(0f)
-  val maxY = ((heightPx * (scale - 1f)) / 2f).coerceAtLeast(0f)
-  return Offset(
-    x = offset.x.coerceIn(-maxX, maxX),
-    y = offset.y.coerceIn(-maxY, maxY),
-  )
+private fun computeDoubleTapCamera(
+  tapOffset: Offset,
+  bitmap: ImageBitmap?,
+  pageAnalysis: PdfPageAnalysis?,
+  cropRect: NormalizedCropRect?,
+  targetWidthPx: Int,
+  targetHeightPx: Int,
+): CameraTransform {
+  val tapRegion =
+    if (bitmap != null && pageAnalysis != null) {
+      val fitScale = minOf(targetWidthPx.toFloat() / bitmap.width, targetHeightPx.toFloat() / bitmap.height)
+      val dispW = bitmap.width * fitScale
+      val dispH = bitmap.height * fitScale
+      val imgLeft = (targetWidthPx - dispW) / 2f
+      val imgTop = (targetHeightPx - dispH) / 2f
+      val rawNormX = ((tapOffset.x - imgLeft) / dispW).coerceIn(0f, 1f)
+      val rawNormY = ((tapOffset.y - imgTop) / dispH).coerceIn(0f, 1f)
+      val normX = if (cropRect != null) (cropRect.left + rawNormX * cropRect.width).coerceIn(0f, 1f) else rawNormX
+      val normY = if (cropRect != null) (cropRect.top + rawNormY * cropRect.height).coerceIn(0f, 1f) else rawNormY
+      val pageRect = PdfRegionNavigator.findTapTargetRect(pageAnalysis, normX, normY)
+      if (pageRect != null && cropRect != null && cropRect.width > 0f && cropRect.height > 0f) {
+        PdfRegionNavigator.mapPageRectToCropSpace(
+          rect = pageRect,
+          crop = PdfRect(cropRect.left, cropRect.top, cropRect.right, cropRect.bottom),
+        )
+      } else {
+        pageRect
+      }
+    } else {
+      null
+    }
+  if (tapRegion != null && bitmap != null) {
+    return PdfRegionNavigator.computeCameraTransform(
+      region = tapRegion,
+      bitmapWidth = bitmap.width.toFloat(),
+      bitmapHeight = bitmap.height.toFloat(),
+      containerWidth = targetWidthPx.toFloat(),
+      containerHeight = targetHeightPx.toFloat(),
+    )
+  }
+  val targetScale = 2.2f
+  val centerX = targetWidthPx / 2f
+  val centerY = targetHeightPx / 2f
+  val rawOffset =
+    Offset(
+      x = (centerX - tapOffset.x) * (targetScale - 1f),
+      y = (centerY - tapOffset.y) * (targetScale - 1f),
+    )
+  val clamped =
+    clampOffset(
+      offset = rawOffset,
+      scale = targetScale,
+      widthPx = targetWidthPx,
+      heightPx = targetHeightPx,
+      bitmapWidthPx = bitmap?.width ?: 0,
+      bitmapHeightPx = bitmap?.height ?: 0,
+    )
+  return CameraTransform(targetScale, clamped.x, clamped.y)
 }
 
-private class PdfRendererHolder(
-  private val descriptor: ParcelFileDescriptor,
-  private val renderer: PdfRenderer,
-) {
-  private val mutex = Mutex()
-  private val cropCache = HashMap<Int, NormalizedCropRect>()
-  private val analysisCache = HashMap<Int, PdfPageAnalysis>()
-  private val pageBitmapCache = LruCache<String, ImageBitmap>(8)
-  val pageCount: Int = renderer.pageCount
-
-  fun seedAnalyses(pages: List<PdfPageAnalysis>) {
-    pages.forEach { analysisCache[it.pageIndex] = it }
-  }
-
-  suspend fun prefetchAdjacent(
-    centerIndex: Int,
-    maxWidth: Int,
-    maxHeight: Int,
-    autoCrop: Boolean,
-  ) {
-    for (neighbor in listOf(centerIndex - 1, centerIndex + 1)) {
-      if (neighbor in 0 until pageCount) {
-        renderPage(neighbor, maxWidth, maxHeight, autoCrop)
-      }
-    }
-  }
-
-  suspend fun renderRegion(index: Int, region: PdfRect, maxWidth: Int): ImageBitmap? =
-    withContext(Dispatchers.IO) {
-      mutex.withLock {
-        if (index !in 0 until pageCount) return@withContext null
-        runCatching {
-          renderer.openPage(index).use { page ->
-            val leftPt = page.width * region.left
-            val topPt = page.height * region.top
-            val widthPt = (page.width * region.width).coerceAtLeast(1f)
-            val heightPt = (page.height * region.height).coerceAtLeast(1f)
-            val scale = (maxWidth.toFloat() / widthPt).coerceIn(0.25f, 4f)
-            val outWidth = (widthPt * scale).toInt().coerceAtLeast(1)
-            val outHeight = (heightPt * scale).toInt().coerceAtLeast(1)
-            val transform =
-              Matrix().apply {
-                setScale(scale, scale)
-                postTranslate(-leftPt * scale, -topPt * scale)
-              }
-            val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(AndroidColor.WHITE)
-            page.render(bitmap, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            bitmap.asImageBitmap()
-          }
-        }.getOrNull()
-      }
-    }
-
-  suspend fun renderPage(
-    index: Int,
-    maxWidth: Int,
-    maxHeight: Int,
-    autoCrop: Boolean = false,
-  ): ImageBitmap? =
-    withContext(Dispatchers.IO) {
-      val cacheKey = "$index:$maxWidth:$maxHeight:$autoCrop"
-      pageBitmapCache.get(cacheKey)?.let { return@withContext it }
-      mutex.withLock {
-        pageBitmapCache.get(cacheKey)?.let { return@withContext it }
-        if (index !in 0 until pageCount) return@withContext null
-        runCatching {
-          renderer.openPage(index).use { page ->
-            val fitPageScale = minOf(maxWidth.toFloat() / page.width, maxHeight.toFloat() / page.height)
-            val crop = if (autoCrop) getOrDetectCropRect(index, page) else NormalizedCropRect.FULL
-            val rendered =
-              if (crop == NormalizedCropRect.FULL) {
-                val width = (page.width * fitPageScale).toInt().coerceAtLeast(1)
-                val height = (page.height * fitPageScale).toInt().coerceAtLeast(1)
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(AndroidColor.WHITE)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                bitmap.asImageBitmap()
-              } else {
-                val cropLeftPt = page.width * crop.left
-                val cropTopPt = page.height * crop.top
-                val cropWidthPt = (page.width * crop.width).coerceAtLeast(1f)
-                val cropHeightPt = (page.height * crop.height).coerceAtLeast(1f)
-                val cropScale =
-                  minOf(maxWidth.toFloat() / cropWidthPt, maxHeight.toFloat() / cropHeightPt)
-                    .coerceAtMost(fitPageScale * 3.5f)
-                val width = (cropWidthPt * cropScale).toInt().coerceAtLeast(1)
-                val height = (cropHeightPt * cropScale).toInt().coerceAtLeast(1)
-                val transform =
-                  Matrix().apply {
-                    setScale(cropScale, cropScale)
-                    postTranslate(-cropLeftPt * cropScale, -cropTopPt * cropScale)
-                  }
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(AndroidColor.WHITE)
-                page.render(bitmap, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                bitmap.asImageBitmap()
-              }
-            pageBitmapCache.put(cacheKey, rendered)
-            rendered
-          }
-        }.getOrNull()
-      }
-    }
-
-  private fun getOrDetectCropRect(index: Int, page: PdfRenderer.Page): NormalizedCropRect {
-    cropCache[index]?.let { return it }
-    val thumbScale = minOf(320f / page.width, 320f / page.height).coerceAtMost(1f)
-    val thumbWidth = (page.width * thumbScale).toInt().coerceAtLeast(1)
-    val thumbHeight = (page.height * thumbScale).toInt().coerceAtLeast(1)
-    val thumb = Bitmap.createBitmap(thumbWidth, thumbHeight, Bitmap.Config.ARGB_8888)
-    return try {
-      thumb.eraseColor(AndroidColor.WHITE)
-      page.render(thumb, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-      PdfMarginCropper.detectContentBounds(thumb).also { cropCache[index] = it }
-    } finally {
-      thumb.recycle()
-    }
-  }
-
-  fun close() {
-    pageBitmapCache.evictAll()
-    runCatching { renderer.close() }
-    runCatching { descriptor.close() }
-  }
+internal fun clampOffset(
+  offset: Offset,
+  scale: Float,
+  widthPx: Int,
+  heightPx: Int,
+  bitmapWidthPx: Int = 0,
+  bitmapHeightPx: Int = 0,
+): Offset {
+  val (clampedX, clampedY) =
+    PdfRegionNavigator.clampOffsetForFitContent(
+      offsetX = offset.x,
+      offsetY = offset.y,
+      scale = scale,
+      containerWidth = widthPx.toFloat(),
+      containerHeight = heightPx.toFloat(),
+      bitmapWidth = bitmapWidthPx.toFloat(),
+      bitmapHeight = bitmapHeightPx.toFloat(),
+    )
+  return Offset(x = clampedX, y = clampedY)
 }
 
-private fun openPdfHolder(file: File): PdfRendererHolder? =
-  runCatching {
-    val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-    val renderer = PdfRenderer(descriptor)
-    PdfRendererHolder(descriptor, renderer)
-  }.getOrNull()
+private suspend fun buildReflowMetas(analyses: List<PdfPageAnalysis>): List<ReflowPageMeta> {
+  val context = currentCoroutineContext()
+  return analyses.mapIndexed { idx, analysis ->
+    context.ensureActive()
+    val neighbors = listOfNotNull(analyses.getOrNull(idx - 1), analyses.getOrNull(idx + 1))
+    val result = PdfReflowEngine.buildReflowPage(analysis, neighbors)
+    val pageAspect =
+      if (analysis.pageWidthPt > 0f && analysis.pageHeightPt > 0f) {
+        analysis.pageWidthPt / analysis.pageHeightPt
+      } else {
+        1f
+      }
+    ReflowPageMeta(
+      pageIndex = analysis.pageIndex,
+      hasSpecialObjects = PdfReflowPaginator.hasSpecialObjects(analysis, result),
+      result = result,
+      pageAspectRatio = pageAspect,
+    )
+  }
+}

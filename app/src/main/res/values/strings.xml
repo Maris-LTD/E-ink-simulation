@@ -6,6 +6,7 @@
 
     <!-- Common actions -->
     <string name="action_close">Close</string>
+    <string name="action_retry">Retry</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
@@ -24,10 +25,11 @@
     <!-- Lock screen notification -->
     <string name="lockscreen_channel_name">Lock screen reading</string>
     <string name="lockscreen_reading_text">Reading · %1$d%% — Tap to resume</string>
+    <string name="lockscreen_nav_prev_symbol">‹</string>
+    <string name="lockscreen_nav_next_symbol">›</string>
 
     <!-- Wallpaper -->
     <string name="wallpaper_no_book">No book in progress</string>
-    <string name="wallpaper_streak">Streak: %1$d days</string>
     <string name="wallpaper_status_format">Battery %1$d%% · Streak %2$dd · %3$s</string>
     <string name="wallpaper_rank_format">Lv %1$d · %2$s</string>
     <string name="wallpaper_daily_goal">TODAY\'S GOAL</string>
@@ -73,7 +75,6 @@
     <string name="dict_open_external">Google Translate</string>
 
     <!-- Language settings -->
-    <string name="settings_language">Language</string>
     <string name="language_system">System</string>
     <string name="language_vi">Tiếng Việt</string>
     <string name="language_en">English</string>
@@ -85,6 +86,7 @@
     <string name="reader_menu_lookup">Define / Translate</string>
     <string name="reader_bookmark_saved">Bookmark saved</string>
     <string name="reader_bookmark_removed">Bookmark removed</string>
+    <string name="reader_highlight_saved">Highlight saved</string>
     <string name="reader_settings_button">Settings</string>
     <string name="reader_focus_on">Focus: ON</string>
     <string name="reader_focus_off">Focus</string>
@@ -100,12 +102,25 @@
     <string name="reader_book_not_found">Book not found</string>
     <string name="reader_cannot_open_book">Cannot open book</string>
     <string name="pdf_load_error">Cannot open PDF</string>
+    <string name="pdf_page_render_error">Couldn\'t render this page</string>
     <string name="highlight_note_title">Highlight Note</string>
     <string name="highlight_note_placeholder">Add a note (optional)…</string>
 
     <!-- Reader Bars -->
     <string name="cd_search_in_book">Search in book</string>
     <string name="cd_save_bookmark">Save bookmark</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_decrease_font">Decrease font size</string>
+    <string name="cd_increase_font">Increase font size</string>
+    <string name="cd_dismiss_banner">Dismiss banner</string>
+    <string name="cd_goal_decrease">Decrease daily goal by 5 minutes</string>
+    <string name="cd_goal_increase">Increase daily goal by 5 minutes</string>
+    <string name="cd_prev_snippet">Previous excerpt</string>
+    <string name="cd_next_snippet">Next excerpt</string>
+    <string name="cd_pdf_page">Page %1$d</string>
+    <string name="cd_pdf_inline_image">Illustration on page %1$d</string>
+    <string name="cd_bookmark_saved_state">Bookmarked</string>
+    <string name="cd_bookmark_not_saved_state">Not bookmarked</string>
     <string name="reader_contents_button">Contents</string>
     <string name="cd_brightness_auto">Auto brightness</string>
     <string name="cd_brightness_pct">Brightness %1$d%%</string>
@@ -137,6 +152,7 @@
     <string name="settings_reader_footer">E-Reader progress bar</string>
     <string name="settings_focus_mode">Focus Mode</string>
     <string name="settings_lockscreen_reader">Lock screen reading</string>
+    <string name="settings_volume_turn_pages">Volume buttons turn pages</string>
     <string name="settings_orientation">Orientation</string>
     <string name="orientation_auto">Auto</string>
     <string name="orientation_portrait">Portrait</string>
@@ -173,6 +189,10 @@
     <string name="lib_bookmark_deleted">Bookmark deleted</string>
     <string name="lib_highlight_deleted">Highlight deleted</string>
     <string name="lib_view_list">List</string>
+    <string name="lib_import_first_book">+ Import book</string>
+    <string name="lib_sort_recent">Sort: Recent</string>
+    <string name="lib_sort_title">Sort: Title</string>
+    <string name="lib_sort_progress">Sort: Progress</string>
     <string name="lib_view_grid_2">2 Columns</string>
     <string name="lib_view_grid_3">3 Columns</string>
     <string name="lib_view_grid_4">4 Columns</string>
@@ -186,7 +206,10 @@
     <string name="lib_bookmarks_empty">No bookmarks yet.\nTap the bookmark icon while reading to save.</string>
     <string name="lib_highlights_empty">No highlights yet.\nLong-press and select text while reading to highlight.</string>
     <string name="lib_import_error">Could not import book: %1$s</string>
+    <string name="lib_import_failed">Could not import book</string>
+    <string name="lib_error_storage_full">Device storage is full</string>
     <string name="lib_import_invalid_file">invalid file</string>
+    <string name="lib_import_duplicate">this book is already in your library</string>
 
     <!-- Google Drive Sync -->
     <string name="sync_connecting">Connecting to Google…</string>
@@ -195,60 +218,57 @@
     <string name="sync_no_token">Could not get access token from Google</string>
     <string name="sync_cancelled">Google sign-in cancelled</string>
     <string name="sync_verifying">Verifying…</string>
-    <string name="sync_auth_failed">Google authentication failed</string>
     <string name="sync_no_drive_permission">Google Drive permission not granted</string>
     <string name="sync_syncing_drive">Syncing with Drive…</string>
     <string name="sync_success">Synced successfully</string>
     <string name="sync_failed">Sync failed</string>
+    <string name="pdf_reflow_preparing">Laying out text…</string>
+    <string name="sync_remote_read_failed">Couldn\'t read your Google Drive data (%1$s). Sync stopped so nothing gets overwritten.</string>
     <string name="sync_downloading_book">Downloading book: %1$s</string>
     <string name="sync_uploading_book">Uploading: %1$s</string>
+    <plurals name="sync_partial_book_upload_failed">
+        <item quantity="one">Synced progress, but %1$d book file failed to upload</item>
+        <item quantity="other">Synced progress, but %1$d book files failed to upload</item>
+    </plurals>
+    <string name="sync_needs_reconnect">Google Drive session expired. Tap to reconnect.</string>
+    <string name="sync_reconnect_btn">Reconnect Google Drive</string>
+    <string name="sync_error_offline">No internet connection</string>
+    <string name="sync_error_timeout">Google Drive connection timed out. Please retry.</string>
+    <string name="sync_error_auth_expired">Google Drive session expired. Please reconnect.</string>
+    <string name="sync_error_quota_or_permission">Google Drive storage is full or permission was denied</string>
+    <string name="sync_error_server">Google Drive is temporarily unavailable (%1$d)</string>
+    <string name="sync_error_http">Sync error (HTTP %1$d)</string>
     <string name="sync_deleting_cloud">Deleting cloud data…</string>
-    <string name="sync_all_cloud_deleted">All Google Drive backup data deleted</string>
+    <string name="sync_all_cloud_deleted">All Google Drive backup data deleted and sync turned off on this device</string>
     <string name="sync_book_deleted_cloud">Removed "%1$s" from Google Drive</string>
+    <string name="sync_metered_confirm_title">Sync over metered network?</string>
+    <string name="sync_metered_confirm_message">You are on a mobile or metered network. Syncing book files (up to 100 MB per book) may use significant mobile data.</string>
+    <string name="sync_metered_allow_books">Sync book files too</string>
+    <string name="sync_metered_metadata_only">Progress &amp; notes only</string>
+
+    <string name="error_open_system_settings">Could not open system settings on this device</string>
+    <string name="error_open_browser">No browser app found to open translation</string>
+    <string name="error_save_data">Could not save data. Please check available storage.</string>
+    <string name="notif_rationale_title">Enable lock-screen reading?</string>
+    <string name="notif_rationale_message">Allow notifications to read excerpts and turn pages directly from your lock screen.</string>
+    <string name="notif_rationale_allow">Allow</string>
+    <string name="notif_rationale_later">Not now</string>
+    <string name="notif_permission_blocked_msg">Notifications are turned off for Inkify. Enable them in Settings to use lock-screen reading.</string>
+    <string name="notif_open_settings_action">Open Settings</string>
 
     <!-- Tutorial -->
-    <string name="tutorial_header">User Guide</string>
     <string name="tutorial_skip">Skip</string>
     <string name="tutorial_prev">‹ Prev</string>
     <string name="tutorial_next">Next ›</string>
     <string name="tutorial_start">Start Reading</string>
-    <string name="tutorial_s1_tag">STEP 1 / 4 · LIBRARY</string>
-    <string name="tutorial_s1_title">Import Books from Device &amp; Drive</string>
-    <string name="tutorial_s1_b1_t">Quick Import</string>
-    <string name="tutorial_s1_b1_d">Tap the (+) button at the bottom right to import EPUB, PDF, or CBZ files from your device.</string>
-    <string name="tutorial_s1_b2_t">Open from Google Drive</string>
-    <string name="tutorial_s1_b2_d">In the file picker, open the top-left menu ≡ → select Drive to download books for offline reading.</string>
-    <string name="tutorial_s1_b3_t">Filter &amp; Layout</string>
-    <string name="tutorial_s1_b3_d">Switch between List or 2–4 Column Grid views, filter by author, or browse Bookmarks &amp; Highlights.</string>
-    <string name="tutorial_s2_tag">STEP 2 / 4 · READING</string>
-    <string name="tutorial_s2_title">Reading Gestures &amp; Focus Mode</string>
-    <string name="tutorial_s2_b1_t">Page Turns &amp; Controls</string>
-    <string name="tutorial_s2_b1_d">Tap left/right edges (or volume keys) to turn pages; tap the center to toggle toolbars.</string>
-    <string name="tutorial_s2_b2_t">Brightness &amp; Lookup</string>
-    <string name="tutorial_s2_b2_d">Swipe vertically along the left edge to adjust brightness; long-press text to Highlight, Note, or Translate.</string>
-    <string name="tutorial_s2_b3_t">Focus Mode</string>
-    <string name="tutorial_s2_b3_d">Tap Focus on the bottom bar to hide system bars, keep screen on, and enable Do Not Disturb.</string>
-    <string name="tutorial_s3_tag">STEP 3 / 4 · E-INK SYSTEM</string>
-    <string name="tutorial_s3_title">Launcher, Lock Screen &amp; Wallpaper</string>
-    <string name="tutorial_s3_b1_t">E-Ink Launcher</string>
-    <string name="tutorial_s3_b1_d">Set the app as your default Home Launcher for a minimalist monochrome home; swipe right for the App Drawer.</string>
-    <string name="tutorial_s3_b2_t">Pinning &amp; View Modes</string>
-    <string name="tutorial_s3_b2_d">In the App Drawer, switch between List / 3–4 Grid / Text Only and long-press apps to pin to Home.</string>
-    <string name="tutorial_s3_b3_t">Lock Screen &amp; Wallpaper</string>
-    <string name="tutorial_s3_b3_d">Enable Lock Screen Reading in Reader Settings, or set the E-Ink Live Wallpaper in Stats &amp; Profile.</string>
-    <string name="tutorial_s4_tag">STEP 4 / 4 · SYNC</string>
-    <string name="tutorial_s4_title">Google Sign-In &amp; Multi-Device Sync</string>
-    <string name="tutorial_s4_b1_t">Open Stats &amp; Profile</string>
-    <string name="tutorial_s4_b1_d">Tap the Profile icon at the top right (or swipe right from the Library).</string>
-    <string name="tutorial_s4_b2_t">Google Sign-In (Free)</string>
-    <string name="tutorial_s4_b2_d">Tap Sign in with Google to back up reading progress, bookmarks, highlights, and streaks to Drive AppData.</string>
-    <string name="tutorial_s4_b3_t">Full Library Sync</string>
-    <string name="tutorial_s4_b3_d">Enable Sync book files so signing in on another device automatically restores your books and last page.</string>
 
     <!-- Reading Stats & Profile -->
     <string name="stats_title">Profile &amp; Stats</string>
     <string name="stats_rank_format">Lv %1$d · %2$s</string>
-    <string name="stats_xp_streak_format">%1$d XP · Streak: %2$d days (Best: %3$d)</string>
+    <plurals name="stats_xp_streak_plurals">
+        <item quantity="one">%1$d XP · Streak: %2$d day (Best: %3$d)</item>
+        <item quantity="other">%1$d XP · Streak: %2$d days (Best: %3$d)</item>
+    </plurals>
     <string name="stats_xp_to_next">%1$d XP to %2$s</string>
     <string name="stats_max_rank">Max rank reached</string>
     <string name="stats_daily_goal">Today\'s Goal</string>
@@ -264,9 +284,18 @@
     <string name="stats_set_wallpaper">Set E-Ink Live Wallpaper</string>
     <string name="stats_badges">Achievements</string>
     <string name="stats_chart_7d">7-Day Chart</string>
-    <string name="stats_chart_7d_sub">Avg %1$dm/day · %2$d pages/hr</string>
+    <plurals name="stats_chart_7d_sub">
+        <item quantity="one">Avg %1$dm/day · %2$d page/hr</item>
+        <item quantity="other">Avg %1$dm/day · %2$d pages/hr</item>
+    </plurals>
     <string name="stats_heatmap_12w">12-Week History</string>
-    <string name="stats_heatmap_days">%1$d active days</string>
+    <plurals name="stats_heatmap_days">
+        <item quantity="one">%1$d active day</item>
+        <item quantity="other">%1$d active days</item>
+    </plurals>
+    <string name="stats_unit_minute_short">m</string>
+    <string name="stats_unit_hour_short">h</string>
+    <string name="book_badge_label">BOOK</string>
     <string name="stats_less">Less</string>
     <string name="stats_more">More</string>
     <string name="stats_sync_header">GOOGLE DRIVE SYNC</string>
@@ -281,7 +310,7 @@
     <string name="stats_sign_in_google">Sign in with Google</string>
     <string name="stats_sync_delete_all_btn">Delete Drive data</string>
     <string name="stats_sync_delete_all_title">Delete all Google Drive data?</string>
-    <string name="stats_sync_delete_all_message">This will permanently delete all backed-up book files, reading progress, bookmarks, highlights, and stats from your Google Drive AppData folder. Books on this device will not be deleted.</string>
+    <string name="stats_sync_delete_all_message">This will permanently delete all backed-up book files, reading progress, bookmarks, highlights, and stats from your Google Drive AppData folder. Books on this device will not be deleted. This device will be signed out of sync; other devices that are still signed in may upload their data again.</string>
     <string name="stats_sync_cloud_books_header">Books backed up on Drive (%1$d)</string>
     <string name="stats_sync_delete_book_btn">Remove from Drive</string>
     <string name="stats_sync_delete_book_title">Remove book from Google Drive?</string>
@@ -322,6 +351,7 @@
     <string name="launcher_status_format">Battery %1$d%% · Streak %2$dd</string>
     <string name="launcher_pinned_apps">PINNED APPS</string>
     <string name="launcher_long_press_unpin">Long-press to unpin</string>
+    <string name="launcher_pinned_more">More (+%1$d) ›</string>
     <string name="launcher_no_pinned">No pinned apps yet — swipe to the App Drawer and long-press to pin.</string>
     <string name="launcher_library_btn">Book Library</string>
     <string name="launcher_apps_btn">Apps ›</string>
@@ -331,8 +361,6 @@
     <string name="launcher_drawer_hint">Mode: %1$s · Long-press to pin/unpin to Home</string>
     <string name="launcher_back_home">‹ Home</string>
     <string name="launcher_pinned_badge">Pinned</string>
-    <string name="lockscreen_action_prev">‹ Prev</string>
-    <string name="lockscreen_action_next">Next ›</string>
     <string name="lockscreen_snippet_counter">Excerpt %1$d/%2$d · %3$d%%</string>
 
     <!-- Action-oriented E-Ink Onboarding -->
@@ -346,7 +374,6 @@
     <string name="onboard_tone_paper">Warm Paper</string>
     <string name="onboard_tone_gray">Soft Gray</string>
     <string name="onboard_toggle_flash">E-Ink Refresh Flash</string>
-    <string name="onboard_toggle_volume">Volume-Key Page Turn</string>
 
     <string name="onboard_s2_tag">STEP 2 / 4 · LOCK SCREEN</string>
     <string name="onboard_s2_title">Read Right on the Lock Screen</string>
@@ -368,4 +395,94 @@
     <string name="onboard_btn_import">+ Import Book (EPUB / PDF)</string>
     <string name="onboard_btn_library">Go to Library</string>
     <string name="onboard_banner_setup">E-Ink setup: %1$d/2 lock screen features active — Configure ›</string>
+
+    <!-- Inkify Pro & Paywall -->
+    <string name="paywall_title">Inkify Pro</string>
+    <string name="paywall_badge_pro">PRO</string>
+    <string name="paywall_header_general">Read Deeper on E-Ink</string>
+    <string name="paywall_sub_general">Unlock full Adaptive PDF Reflow, private Google Drive sync, and Focus Mode.</string>
+    <string name="paywall_header_pdf_reflow">Unlock Full Adaptive PDF</string>
+    <string name="paywall_sub_pdf_reflow">You\'ve previewed the first 5 pages. Upgrade to reflow, mask graphics, and navigate regions across entire PDFs.</string>
+    <string name="paywall_header_drive_sync">Sync Across All Devices</string>
+    <string name="paywall_sub_drive_sync">Back up your books, reading progress, bookmarks, and highlights privately in your Google Drive.</string>
+    <string name="paywall_header_lockscreen">Read Right on Your Lock Screen</string>
+    <string name="paywall_sub_lockscreen">Turn your lock screen into a calm E-Ink paper display with live reading progress and page controls.</string>
+    <string name="paywall_header_launcher">Minimalist eInk Home Launcher</string>
+    <string name="paywall_sub_launcher">Replace distracting app grids with a calm monochrome E-Ink home screen and 1-tap book resume.</string>
+    <string name="paywall_header_focus">Distraction-Free Focus Mode</string>
+    <string name="paywall_sub_focus">Silence notifications with Do Not Disturb while reading so you stay immersed in every chapter.</string>
+
+    <string name="paywall_feat_pdf_title">Adaptive PDF Reflow &amp; Masking</string>
+    <string name="paywall_feat_pdf_desc">Reflow dense PDFs, mask illustrations, and navigate multi-column regions.</string>
+    <string name="paywall_feat_sync_title">Google Drive Sync</string>
+    <string name="paywall_feat_sync_desc">Private AppData backup for books, highlights, bookmarks, and stats.</string>
+    <string name="paywall_feat_lockscreen_title">Lock-Screen Wallpaper &amp; Nav</string>
+    <string name="paywall_feat_lockscreen_desc">Live E-Ink paper wallpaper with excerpt &amp; page turn controls.</string>
+    <string name="paywall_feat_launcher_title">eInk Home Launcher</string>
+    <string name="paywall_feat_launcher_desc">Distraction-free monochrome home screen built for E-Ink phones.</string>
+    <string name="paywall_feat_focus_title">Focus Mode (Do Not Disturb)</string>
+    <string name="paywall_feat_focus_desc">Automatically mute notifications during reading sessions.</string>
+
+    <string name="paywall_trust_ads">100% Ads-free &amp; No tracking</string>
+    <string name="paywall_trust_offline">Works 100% Offline</string>
+    <string name="paywall_trust_restore">1-tap Restore on any Android device</string>
+
+    <string name="paywall_tier_annual_title">Annual</string>
+    <string name="paywall_tier_annual_badge">BEST VALUE</string>
+    <string name="paywall_tier_annual_trial">Includes 7-day free trial</string>
+    <string name="paywall_tier_annual_fallback_price">$3.99 / year</string>
+    <string name="paywall_tier_lifetime_title">Lifetime</string>
+    <string name="paywall_tier_lifetime_badge">ONE-TIME</string>
+    <string name="paywall_tier_lifetime_desc">Pay once, own Inkify Pro forever</string>
+    <string name="paywall_tier_lifetime_fallback_price">$8.99</string>
+    <string name="paywall_tier_monthly_title">Monthly</string>
+    <string name="paywall_tier_monthly_desc">Flexible monthly access</string>
+    <string name="paywall_tier_monthly_fallback_price">$0.79 / month</string>
+
+    <string name="paywall_cta_trial">Start 7-Day Free Trial</string>
+    <string name="paywall_cta_subscribe">Continue with %1$s</string>
+    <string name="paywall_cta_lifetime">Unlock Lifetime — %1$s</string>
+    <string name="paywall_cta_loading">Loading Play Store…</string>
+    <string name="paywall_sub_disclosure">Subscriptions auto-renew unless canceled at least 24 hours before the end of the current period. Free trials convert to %1$s after 7 days. Manage or cancel anytime in Google Play → Payments &amp; subscriptions.</string>
+    <string name="paywall_lifetime_disclosure">One-time purchase via Google Play. No recurring charges.</string>
+    <string name="paywall_restore_btn">Restore Purchases</string>
+    <string name="paywall_restoring">Restoring…</string>
+    <string name="paywall_privacy_link">Privacy Policy &amp; Terms</string>
+
+    <string name="paywall_active_badge">INKIFY PRO ACTIVE</string>
+    <string name="paywall_active_lifetime">Lifetime License — All Pro features unlocked forever.</string>
+    <string name="paywall_active_subscription">Active Subscription — All Pro features unlocked.</string>
+    <string name="paywall_active_pending">Payment Pending — Access will unlock once Google Play confirms.</string>
+    <string name="paywall_tip_header">SUPPORT THE DEVELOPER (OPTIONAL)</string>
+    <string name="paywall_tip_desc">Enjoying Inkify? Buy a small coffee or book to support future E-Ink features.</string>
+    <string name="paywall_tip_coffee">Buy a Coffee</string>
+    <string name="paywall_tip_book">Buy a Book</string>
+
+    <string name="paywall_msg_purchase_success">Welcome to Inkify Pro! All features are now unlocked.</string>
+    <string name="paywall_msg_tip_success">Thank you so much for your support!</string>
+    <string name="paywall_msg_pending">Purchase is pending confirmation from Google Play.</string>
+    <string name="paywall_msg_canceled">Purchase canceled.</string>
+    <string name="paywall_msg_restored">Pro purchases restored.</string>
+    <string name="paywall_msg_no_restore">No active Pro purchases found for this Google account.</string>
+    <string name="paywall_msg_error">Billing error (%1$d): %2$s</string>
+
+    <string name="pro_card_title">Inkify Pro</string>
+    <string name="pro_card_status_active">Active · %1$s</string>
+    <string name="pro_card_plan_lifetime">Lifetime</string>
+    <string name="pro_card_plan_subscription">Subscription</string>
+    <string name="pro_card_status_pending">Payment pending…</string>
+    <string name="pro_card_upgrade_desc">Unlock full Adaptive PDF Reflow, Google Drive Sync &amp; Focus Mode.</string>
+    <string name="pro_card_cta_upgrade">Upgrade</string>
+    <string name="pro_card_cta_manage">Details</string>
+    <string name="pro_compact_free">Inkify Free · Upgrade to Pro ›</string>
+    <string name="pro_compact_active">Inkify Pro Active · Support / Details ›</string>
+
+    <string name="pdf_pro_preview_title">Adaptive PDF Preview Ended (Page %1$d)</string>
+    <string name="pdf_pro_preview_desc">You\'ve previewed the first 5 pages. Unlock Inkify Pro to read the full document with Reflow &amp; Region Nav, or switch back to Standard PDF.</string>
+    <string name="pdf_pro_preview_unlock">Unlock Inkify Pro</string>
+    <string name="pdf_pro_preview_standard">Use Standard PDF</string>
+
+    <string name="milestone_nudge_title">Nice reading habit!</string>
+    <string name="milestone_nudge_desc">Enjoying Inkify? Unlock Adaptive PDF Reflow, Drive Sync &amp; Focus Mode with Inkify Pro.</string>
+    <string name="milestone_nudge_cta">Explore Pro</string>
 </resources>

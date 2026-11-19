@@ -1,6 +1,7 @@
 package com.example.emptyapp.reader.pdf
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -71,6 +72,47 @@ class PdfReflowEngineTest {
     assertTrue(result.items[0] is ReflowItem.Paragraph)
     assertTrue(result.items[1] is ReflowItem.Image)
     assertTrue(result.items[2] is ReflowItem.Paragraph)
+  }
+
+  @Test
+  fun twoColumnPageKeepsColumnReadingOrderWithImageInSecondColumn() {
+    val colA1 = PdfTextLine("Left column first paragraph.", PdfRect(0.08f, 0.12f, 0.46f, 0.14f), 11f)
+    val colA2 = PdfTextLine("Left column second paragraph.", PdfRect(0.08f, 0.40f, 0.46f, 0.42f), 11f)
+    val colB1 = PdfTextLine("Right column first paragraph.", PdfRect(0.54f, 0.12f, 0.92f, 0.14f), 11f)
+    val colB2 = PdfTextLine("Right column second paragraph.", PdfRect(0.54f, 0.40f, 0.92f, 0.42f), 11f)
+    val rightImage = PdfImageBlock(PdfRect(0.56f, 0.22f, 0.90f, 0.35f), 0.04f)
+
+    val page =
+      PdfPageAnalysis(
+        pageIndex = 7,
+        pageWidthPt = 595f,
+        pageHeightPt = 842f,
+        charCount = 200,
+        textLines = listOf(colA1, colB1, colA2, colB2),
+        imageBlocks = listOf(rightImage),
+        totalImageAreaFraction = 0.04f,
+        vectorOpCount = 0,
+        columnCount = 2,
+      )
+
+    val result = PdfReflowEngine.buildReflowPage(page) as ReflowPageResult.Reflowed
+    val order =
+      result.items.map { item ->
+        when (item) {
+          is ReflowItem.Paragraph -> item.text
+          is ReflowItem.Image -> "IMAGE"
+        }
+      }
+    assertEquals(
+      listOf(
+        "Left column first paragraph.",
+        "Left column second paragraph.",
+        "Right column first paragraph.",
+        "IMAGE",
+        "Right column second paragraph.",
+      ),
+      order,
+    )
   }
 
   @Test
@@ -148,5 +190,40 @@ class PdfReflowEngineTest {
     assertEquals(ReflowImageKind.TABLE, (result.items[1] as ReflowItem.Image).kind)
     assertEquals(ReflowImageKind.SYMBOL_STACK, (result.items[2] as ReflowItem.Image).kind)
     assertEquals("Closing paragraph after graphics.", (result.items[3] as ReflowItem.Paragraph).text)
+  }
+
+  @Test
+  fun analyzePageSafelyReturnsEmptyAnalysisOnErrorAndFallsBackToOriginal() {
+    val fallbackAnalysis =
+      PdfPageAnalyzer.analyzePageSafely(4) {
+        throw OutOfMemoryError("Simulated PDFBox OOM on page 4")
+      }
+    assertEquals(4, fallbackAnalysis.pageIndex)
+    assertEquals(0, fallbackAnalysis.charCount)
+    assertTrue(fallbackAnalysis.textLines.isEmpty())
+    assertTrue(fallbackAnalysis.imageBlocks.isEmpty())
+
+    val reflowResult = PdfReflowEngine.buildReflowPage(fallbackAnalysis)
+    assertEquals(
+      ReflowPageResult.FallbackOriginal(ReflowFallbackReason.NO_TEXT),
+      reflowResult,
+    )
+  }
+
+  @Test(expected = kotlinx.coroutines.CancellationException::class)
+  fun analyzePageSafelyRethrowsCancellationException() {
+    PdfPageAnalyzer.analyzePageSafely(1) {
+      throw kotlinx.coroutines.CancellationException("Cancelled")
+    }
+  }
+
+  @Test
+  fun endsWithHyphenBeforeTrailingSpacesDetectsHyphenOnStringBuilder() {
+    assertTrue(StringBuilder("hyphen-").endsWithHyphenBeforeTrailingSpaces())
+    assertTrue(StringBuilder("hyphen-  \t ").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("   \n").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("non-hyphen").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("word ").endsWithHyphenBeforeTrailingSpaces())
   }
 }

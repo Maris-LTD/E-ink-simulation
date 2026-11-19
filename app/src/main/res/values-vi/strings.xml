@@ -6,6 +6,7 @@
 
     <!-- Common actions -->
     <string name="action_close">Đóng</string>
+    <string name="action_retry">Thử lại</string>
     <string name="action_cancel">Hủy</string>
     <string name="action_save">Lưu</string>
     <string name="action_delete">Xóa</string>
@@ -24,10 +25,11 @@
     <!-- Lock screen notification -->
     <string name="lockscreen_channel_name">Đọc trên màn hình khóa</string>
     <string name="lockscreen_reading_text">Đang đọc · %1$d%% — Chạm để đọc tiếp</string>
+    <string name="lockscreen_nav_prev_symbol">‹</string>
+    <string name="lockscreen_nav_next_symbol">›</string>
 
     <!-- Wallpaper -->
     <string name="wallpaper_no_book">Chưa có sách đang đọc</string>
-    <string name="wallpaper_streak">Chuỗi: %1$d ngày</string>
     <string name="wallpaper_status_format">Pin %1$d%% · Chuỗi %2$dd · %3$s</string>
     <string name="wallpaper_rank_format">Cấp %1$d · %2$s</string>
     <string name="wallpaper_daily_goal">MỤC TIÊU HÔM NAY</string>
@@ -73,7 +75,6 @@
     <string name="dict_open_external">Dịch ngoài</string>
 
     <!-- Language settings -->
-    <string name="settings_language">Ngôn ngữ</string>
     <string name="language_system">Hệ thống</string>
     <string name="language_vi">Tiếng Việt</string>
     <string name="language_en">English</string>
@@ -85,6 +86,7 @@
     <string name="reader_menu_lookup">Tra từ / Dịch</string>
     <string name="reader_bookmark_saved">Đã lưu dấu trang</string>
     <string name="reader_bookmark_removed">Đã bỏ dấu trang</string>
+    <string name="reader_highlight_saved">Đã lưu highlight</string>
     <string name="reader_settings_button">Cài đặt</string>
     <string name="reader_focus_on">Focus: BẬT</string>
     <string name="reader_focus_off">Focus</string>
@@ -100,12 +102,25 @@
     <string name="reader_book_not_found">Không tìm thấy sách</string>
     <string name="reader_cannot_open_book">Không mở được sách</string>
     <string name="pdf_load_error">Không mở được PDF</string>
+    <string name="pdf_page_render_error">Không tải được trang này</string>
     <string name="highlight_note_title">Ghi chú Highlight</string>
     <string name="highlight_note_placeholder">Nhập ghi chú (tùy chọn)...</string>
 
     <!-- Reader Bars -->
     <string name="cd_search_in_book">Tìm trong sách</string>
     <string name="cd_save_bookmark">Lưu dấu trang</string>
+    <string name="cd_back">Quay lại</string>
+    <string name="cd_decrease_font">Giảm cỡ chữ</string>
+    <string name="cd_increase_font">Tăng cỡ chữ</string>
+    <string name="cd_dismiss_banner">Đóng thông báo</string>
+    <string name="cd_goal_decrease">Giảm mục tiêu 5 phút</string>
+    <string name="cd_goal_increase">Tăng mục tiêu 5 phút</string>
+    <string name="cd_prev_snippet">Đoạn trước</string>
+    <string name="cd_next_snippet">Đoạn tiếp</string>
+    <string name="cd_pdf_page">Trang %1$d</string>
+    <string name="cd_pdf_inline_image">Hình minh họa trang %1$d</string>
+    <string name="cd_bookmark_saved_state">Đã đánh dấu</string>
+    <string name="cd_bookmark_not_saved_state">Chưa đánh dấu</string>
     <string name="reader_contents_button">Mục lục</string>
     <string name="cd_brightness_auto">Độ sáng tự động</string>
     <string name="cd_brightness_pct">Độ sáng %1$d%%</string>
@@ -137,6 +152,7 @@
     <string name="settings_reader_footer">Thanh tiến độ E-Reader</string>
     <string name="settings_focus_mode">Chế độ Tập trung (Focus)</string>
     <string name="settings_lockscreen_reader">Đọc trên màn hình khóa</string>
+    <string name="settings_volume_turn_pages">Phím âm lượng lật trang</string>
     <string name="settings_orientation">Hướng màn hình</string>
     <string name="orientation_auto">Tự động</string>
     <string name="orientation_portrait">Dọc</string>
@@ -173,6 +189,10 @@
     <string name="lib_bookmark_deleted">Đã xóa dấu trang</string>
     <string name="lib_highlight_deleted">Đã xóa highlight</string>
     <string name="lib_view_list">Danh sách</string>
+    <string name="lib_import_first_book">+ Nhập sách</string>
+    <string name="lib_sort_recent">Sắp xếp: Gần đây</string>
+    <string name="lib_sort_title">Sắp xếp: Tên sách</string>
+    <string name="lib_sort_progress">Sắp xếp: Tiến độ</string>
     <string name="lib_view_grid_2">Lưới 2</string>
     <string name="lib_view_grid_3">Lưới 3</string>
     <string name="lib_view_grid_4">Lưới 4</string>
@@ -186,7 +206,10 @@
     <string name="lib_bookmarks_empty">Chưa có dấu trang nào.\nNhấn biểu tượng dấu trang khi đọc sách để lưu.</string>
     <string name="lib_highlights_empty">Chưa có highlight nào.\nChạm giữ để bôi đen đoạn văn bản khi đọc sách.</string>
     <string name="lib_import_error">Không nhập được sách: %1$s</string>
+    <string name="lib_import_failed">Không nhập được sách</string>
+    <string name="lib_error_storage_full">Bộ nhớ thiết bị đã đầy</string>
     <string name="lib_import_invalid_file">tệp không hợp lệ</string>
+    <string name="lib_import_duplicate">sách này đã có trong thư viện</string>
 
     <!-- Google Drive Sync -->
     <string name="sync_connecting">Đang kết nối Google...</string>
@@ -195,60 +218,55 @@
     <string name="sync_no_token">Không lấy được access token từ Google</string>
     <string name="sync_cancelled">Đã hủy đăng nhập Google</string>
     <string name="sync_verifying">Đang xác thực...</string>
-    <string name="sync_auth_failed">Xác thực Google thất bại</string>
     <string name="sync_no_drive_permission">Không nhận được quyền Google Drive</string>
     <string name="sync_syncing_drive">Đang đồng bộ Drive...</string>
     <string name="sync_success">Đồng bộ thành công</string>
     <string name="sync_failed">Đồng bộ thất bại</string>
+    <string name="pdf_reflow_preparing">Đang dàn trang chữ…</string>
+    <string name="sync_remote_read_failed">Không đọc được dữ liệu trên Google Drive (%1$s). Đã dừng đồng bộ để không ghi đè dữ liệu.</string>
     <string name="sync_downloading_book">Đang tải sách: %1$s</string>
     <string name="sync_uploading_book">Đang tải lên: %1$s</string>
+    <plurals name="sync_partial_book_upload_failed">
+        <item quantity="other">Đã đồng bộ tiến độ, nhưng %1$d file sách tải lên thất bại</item>
+    </plurals>
+    <string name="sync_needs_reconnect">Phiên Google Drive đã hết hạn. Nhấn để kết nối lại.</string>
+    <string name="sync_reconnect_btn">Kết nối lại Google Drive</string>
+    <string name="sync_error_offline">Không có kết nối mạng</string>
+    <string name="sync_error_timeout">Kết nối Google Drive quá hạn, vui lòng thử lại</string>
+    <string name="sync_error_auth_expired">Phiên Google Drive đã hết hạn, hãy kết nối lại</string>
+    <string name="sync_error_quota_or_permission">Google Drive hết dung lượng hoặc bị từ chối quyền</string>
+    <string name="sync_error_server">Google Drive tạm thời bận (%1$d)</string>
+    <string name="sync_error_http">Lỗi đồng bộ (HTTP %1$d)</string>
     <string name="sync_deleting_cloud">Đang xóa dữ liệu trên Drive…</string>
-    <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive</string>
+    <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive và ngắt đồng bộ trên máy này</string>
     <string name="sync_book_deleted_cloud">Đã xóa "%1$s" khỏi Google Drive</string>
+    <string name="sync_metered_confirm_title">Đồng bộ qua mạng di động/trả phí?</string>
+    <string name="sync_metered_confirm_message">Bạn đang dùng mạng di động hoặc mạng tính phí theo dung lượng. Đồng bộ file sách (tới 100 MB/sách) có thể tốn nhiều dữ liệu di động.</string>
+    <string name="sync_metered_allow_books">Đồng bộ cả file sách</string>
+    <string name="sync_metered_metadata_only">Chỉ đồng bộ tiến độ &amp; ghi chú</string>
+
+    <string name="error_open_system_settings">Không mở được cài đặt hệ thống trên thiết bị này</string>
+    <string name="error_open_browser">Không tìm thấy trình duyệt để mở trang dịch</string>
+    <string name="error_save_data">Không thể lưu dữ liệu. Vui lòng kiểm tra dung lượng trống trên máy.</string>
+    <string name="notif_rationale_title">Bật thông báo đọc màn hình khóa?</string>
+    <string name="notif_rationale_message">Cấp quyền thông báo để hiển thị đoạn đang đọc và lật trang ngay trên màn hình khóa.</string>
+    <string name="notif_rationale_allow">Cho phép</string>
+    <string name="notif_rationale_later">Để sau</string>
+    <string name="notif_permission_blocked_msg">Thông báo của Inkify đang bị tắt. Hãy bật trong Cài đặt để dùng tính năng đọc trên màn hình khóa.</string>
+    <string name="notif_open_settings_action">Mở Cài đặt</string>
 
     <!-- Tutorial -->
-    <string name="tutorial_header">Hướng dẫn sử dụng</string>
     <string name="tutorial_skip">Bỏ qua</string>
     <string name="tutorial_prev">‹ Trước</string>
     <string name="tutorial_next">Tiếp ›</string>
     <string name="tutorial_start">Bắt đầu đọc</string>
-    <string name="tutorial_s1_tag">BƯỚC 1 / 4 · THƯ VIỆN</string>
-    <string name="tutorial_s1_title">Nhập sách từ máy &amp; Google Drive</string>
-    <string name="tutorial_s1_b1_t">Thêm sách nhanh</string>
-    <string name="tutorial_s1_b1_d">Chạm nút (+) ở góc dưới phải để nhập tệp EPUB, PDF hoặc CBZ từ bộ nhớ máy.</string>
-    <string name="tutorial_s1_b2_t">Mở từ Google Drive</string>
-    <string name="tutorial_s1_b2_d">Trong trình chọn tệp, bấm menu ≡ (góc trên trái) → chọn Drive để tải sách trực tiếp về đọc offline.</string>
-    <string name="tutorial_s1_b3_t">Lọc &amp; Sắp xếp</string>
-    <string name="tutorial_s1_b3_d">Đổi kiểu xem Danh sách / Lưới 2-3-4 cột, lọc theo tác giả hoặc tìm trong Dấu trang &amp; Highlights.</string>
-    <string name="tutorial_s2_tag">BƯỚC 2 / 4 · ĐỌC SÁCH</string>
-    <string name="tutorial_s2_title">Cử chỉ đọc &amp; Focus Mode</string>
-    <string name="tutorial_s2_b1_t">Lật trang &amp; Công cụ</string>
-    <string name="tutorial_s2_b1_d">Chạm mép trái/phải (hoặc phím âm lượng) để lật trang; chạm giữa màn hình để mở thanh công cụ.</string>
-    <string name="tutorial_s2_b2_t">Độ sáng &amp; Ghi chú</string>
-    <string name="tutorial_s2_b2_d">Vuốt dọc mép trái để chỉnh nhanh độ sáng; nhấn giữ chọn chữ để Highlight, Ghi chú hoặc Tra từ điển.</string>
-    <string name="tutorial_s2_b3_t">Focus Mode</string>
-    <string name="tutorial_s2_b3_d">Bật nút Focus trên thanh công cụ để ẩn mọi thanh hệ thống, giữ sáng màn hình và tự bật Không làm phiền (DND).</string>
-    <string name="tutorial_s3_tag">BƯỚC 3 / 4 · HỆ THỐNG E-INK</string>
-    <string name="tutorial_s3_title">Launcher, Màn hình khóa &amp; Hình nền</string>
-    <string name="tutorial_s3_b1_t">E-Ink Launcher</string>
-    <string name="tutorial_s3_b1_d">Đặt app làm Màn hình chính mặc định để dùng giao diện tối giản đen trắng; vuốt sang phải mở Ngăn ứng dụng.</string>
-    <string name="tutorial_s3_b2_t">Ghim &amp; Chế độ xem</string>
-    <string name="tutorial_s3_b2_d">Ở Ngăn ứng dụng, đổi giữa Danh sách / Lưới 3-4 / Chỉ chữ và nhấn giữ app để ghim ra Home.</string>
-    <string name="tutorial_s3_b3_t">Màn hình khóa &amp; Wallpaper</string>
-    <string name="tutorial_s3_b3_d">Bật \"Đọc trên màn hình khóa\" trong Cài đặt đọc, hoặc đặt Hình nền động E-Ink trong Hồ sơ &amp; Thống kê.</string>
-    <string name="tutorial_s4_tag">BƯỚC 4 / 4 · ĐỒNG BỘ</string>
-    <string name="tutorial_s4_title">Đăng nhập Google &amp; Đồng bộ đa máy</string>
-    <string name="tutorial_s4_b1_t">Mở Hồ sơ &amp; Thống kê</string>
-    <string name="tutorial_s4_b1_d">Chạm biểu tượng Hồ sơ ở góc trên phải (hoặc vuốt sang phải từ Thư viện).</string>
-    <string name="tutorial_s4_b2_t">Đăng nhập Google (0đ)</string>
-    <string name="tutorial_s4_b2_d">Bấm \"Đăng nhập với Google\" để tự động lưu tiến độ đọc, dấu trang, highlight và chuỗi ngày đọc lên Drive AppData.</string>
-    <string name="tutorial_s4_b3_t">Đồng bộ cả tủ sách</string>
-    <string name="tutorial_s4_b3_d">Bật \"Đồng bộ cả file sách\" để sang máy khác chỉ cần đăng nhập là tự tải lại toàn bộ sách và trang đang đọc.</string>
 
     <!-- Reading Stats & Profile -->
     <string name="stats_title">Hồ sơ &amp; Thống kê</string>
     <string name="stats_rank_format">Cấp %1$d · %2$s</string>
-    <string name="stats_xp_streak_format">%1$d XP · Chuỗi: %2$d ngày (Kỷ lục: %3$d)</string>
+    <plurals name="stats_xp_streak_plurals">
+        <item quantity="other">%1$d XP · Chuỗi: %2$d ngày (Kỷ lục: %3$d)</item>
+    </plurals>
     <string name="stats_xp_to_next">Còn %1$d XP để lên %2$s</string>
     <string name="stats_max_rank">Đã đạt cấp bậc cao nhất</string>
     <string name="stats_daily_goal">Mục tiêu hôm nay</string>
@@ -264,9 +282,16 @@
     <string name="stats_set_wallpaper">Đặt Hình nền động E-Ink</string>
     <string name="stats_badges">Huy hiệu thành tựu</string>
     <string name="stats_chart_7d">Biểu đồ 7 ngày</string>
-    <string name="stats_chart_7d_sub">TB %1$dp/ngày · %2$d trang/giờ</string>
+    <plurals name="stats_chart_7d_sub">
+        <item quantity="other">TB %1$dp/ngày · %2$d trang/giờ</item>
+    </plurals>
     <string name="stats_heatmap_12w">Lịch sử 12 tuần</string>
-    <string name="stats_heatmap_days">%1$d ngày đã đọc</string>
+    <plurals name="stats_heatmap_days">
+        <item quantity="other">%1$d ngày đã đọc</item>
+    </plurals>
+    <string name="stats_unit_minute_short">p</string>
+    <string name="stats_unit_hour_short">g</string>
+    <string name="book_badge_label">SÁCH</string>
     <string name="stats_less">Ít</string>
     <string name="stats_more">Nhiều</string>
     <string name="stats_sync_header">ĐỒNG BỘ GOOGLE DRIVE</string>
@@ -281,7 +306,7 @@
     <string name="stats_sign_in_google">Đăng nhập với Google</string>
     <string name="stats_sync_delete_all_btn">Xóa dữ liệu trên Drive</string>
     <string name="stats_sync_delete_all_title">Xóa toàn bộ dữ liệu trên Google Drive?</string>
-    <string name="stats_sync_delete_all_message">Thao tác này sẽ xóa vĩnh viễn toàn bộ file sách, tiến độ đọc, dấu trang, highlight và thống kê đã sao lưu trong thư mục Google Drive AppData của bạn. Sách đang có trên thiết bị sẽ không bị xóa.</string>
+    <string name="stats_sync_delete_all_message">Thao tác này sẽ xóa vĩnh viễn toàn bộ file sách, tiến độ đọc, dấu trang, highlight và thống kê đã sao lưu trong thư mục Google Drive AppData của bạn. Sách đang có trên thiết bị sẽ không bị xóa. Máy này sẽ được đăng xuất khỏi đồng bộ; máy khác còn đăng nhập có thể tải dữ liệu của nó lên lại.</string>
     <string name="stats_sync_cloud_books_header">Sách đã lưu trên Drive (%1$d)</string>
     <string name="stats_sync_delete_book_btn">Xóa khỏi Drive</string>
     <string name="stats_sync_delete_book_title">Xóa sách khỏi Google Drive?</string>
@@ -322,6 +347,7 @@
     <string name="launcher_status_format">Pin %1$d%% · Chuỗi %2$dd</string>
     <string name="launcher_pinned_apps">ỨNG DỤNG GHIM</string>
     <string name="launcher_long_press_unpin">Nhấn giữ để bỏ</string>
+    <string name="launcher_pinned_more">Xem thêm (+%1$d) ›</string>
     <string name="launcher_no_pinned">Chưa ghim app nào — vuốt sang Ngăn ứng dụng và nhấn giữ để ghim.</string>
     <string name="launcher_library_btn">Thư viện sách</string>
     <string name="launcher_apps_btn">Ứng dụng ›</string>
@@ -331,8 +357,6 @@
     <string name="launcher_drawer_hint">Chế độ: %1$s · Nhấn giữ để ghim/bỏ ghim ra Home</string>
     <string name="launcher_back_home">‹ Trang chính</string>
     <string name="launcher_pinned_badge">Ghim</string>
-    <string name="lockscreen_action_prev">‹ Trước</string>
-    <string name="lockscreen_action_next">Sau ›</string>
     <string name="lockscreen_snippet_counter">Đoạn %1$d/%2$d · %3$d%%</string>
 
     <!-- Action-oriented E-Ink Onboarding -->
@@ -346,7 +370,6 @@
     <string name="onboard_tone_paper">Giấy ấm</string>
     <string name="onboard_tone_gray">Xám dịu</string>
     <string name="onboard_toggle_flash">Chớp làm mới E-Ink</string>
-    <string name="onboard_toggle_volume">Lật trang bằng phím âm lượng</string>
 
     <string name="onboard_s2_tag">BƯỚC 2 / 4 · MÀN HÌNH KHÓA</string>
     <string name="onboard_s2_title">Đọc ngay trên Màn hình khóa</string>
@@ -368,4 +391,94 @@
     <string name="onboard_btn_import">+ Thêm sách (EPUB / PDF)</string>
     <string name="onboard_btn_library">Vào Thư viện</string>
     <string name="onboard_banner_setup">Thiết lập E-Ink: %1$d/2 tính năng màn hình khóa — Bật tiếp ›</string>
+
+    <!-- Inkify Pro & Paywall -->
+    <string name="paywall_title">Inkify Pro</string>
+    <string name="paywall_badge_pro">PRO</string>
+    <string name="paywall_header_general">Đọc sâu hơn trên màn hình E-Ink</string>
+    <string name="paywall_sub_general">Mở khóa toàn bộ Adaptive PDF, đồng bộ Google Drive riêng tư và Focus Mode.</string>
+    <string name="paywall_header_pdf_reflow">Mở khóa Adaptive PDF toàn phần</string>
+    <string name="paywall_sub_pdf_reflow">Bạn vừa xem thử 5 trang đầu. Nâng cấp để dàn chữ, lọc hình/bảng và đọc theo vùng cho toàn bộ tài liệu.</string>
+    <string name="paywall_header_drive_sync">Đồng bộ giữa mọi thiết bị</string>
+    <string name="paywall_sub_drive_sync">Sao lưu sách, tiến độ đọc, dấu trang và highlight riêng tư trên Google Drive của bạn.</string>
+    <string name="paywall_header_lockscreen">Đọc ngay trên Màn hình khóa</string>
+    <string name="paywall_sub_lockscreen">Biến màn hình khóa thành trang giấy E-Ink tĩnh lặng kèm tiến độ và nút lật trang.</string>
+    <string name="paywall_header_launcher">Màn hình chính eInk tối giản</string>
+    <string name="paywall_sub_launcher">Thay thế màn hình chính nhiều màu sắc bằng giao diện E-Ink đơn sắc và nút đọc tiếp 1 chạm.</string>
+    <string name="paywall_header_focus">Chế độ Tập trung (Focus Mode)</string>
+    <string name="paywall_sub_focus">Tự động bật Không làm phiền khi đọc để giữ trọn sự tập trung qua từng chương sách.</string>
+
+    <string name="paywall_feat_pdf_title">Dàn chữ PDF, Cắt lề &amp; Lọc hình</string>
+    <string name="paywall_feat_pdf_desc">Dàn lại chữ PDF, lọc bảng/hình minh họa và điều hướng theo từng cột.</string>
+    <string name="paywall_feat_sync_title">Đồng bộ Google Drive</string>
+    <string name="paywall_feat_sync_desc">Sao lưu riêng tư sách, highlight, dấu trang và thống kê trên Drive.</string>
+    <string name="paywall_feat_lockscreen_title">Hình nền khóa &amp; Điều hướng</string>
+    <string name="paywall_feat_lockscreen_desc">Hình nền giấy E-Ink kèm đoạn đang đọc và nút lật trang.</string>
+    <string name="paywall_feat_launcher_title">eInk Home Launcher</string>
+    <string name="paywall_feat_launcher_desc">Màn hình chính đơn sắc tối giản dành riêng cho máy đọc sách.</string>
+    <string name="paywall_feat_focus_title">Chế độ Tập trung (DND)</string>
+    <string name="paywall_feat_focus_desc">Tự động chặn thông báo làm phiền trong lúc đọc sách.</string>
+
+    <string name="paywall_trust_ads">100% Không quảng cáo &amp; Không theo dõi</string>
+    <string name="paywall_trust_offline">Hoạt động Offline hoàn toàn</string>
+    <string name="paywall_trust_restore">Khôi phục 1 chạm trên mọi máy Android</string>
+
+    <string name="paywall_tier_annual_title">Gói Năm</string>
+    <string name="paywall_tier_annual_badge">TIẾT KIỆM NHẤT</string>
+    <string name="paywall_tier_annual_trial">Dùng thử 7 ngày miễn phí</string>
+    <string name="paywall_tier_annual_fallback_price">79.000đ / năm</string>
+    <string name="paywall_tier_lifetime_title">Trọn đời</string>
+    <string name="paywall_tier_lifetime_badge">MUA ĐỨT</string>
+    <string name="paywall_tier_lifetime_desc">Thanh toán 1 lần, sở hữu mãi mãi</string>
+    <string name="paywall_tier_lifetime_fallback_price">199.000đ</string>
+    <string name="paywall_tier_monthly_title">Gói Tháng</string>
+    <string name="paywall_tier_monthly_desc">Gia hạn linh hoạt từng tháng</string>
+    <string name="paywall_tier_monthly_fallback_price">19.000đ / tháng</string>
+
+    <string name="paywall_cta_trial">Dùng thử 7 ngày miễn phí</string>
+    <string name="paywall_cta_subscribe">Đăng ký %1$s</string>
+    <string name="paywall_cta_lifetime">Mở khóa Trọn đời — %1$s</string>
+    <string name="paywall_cta_loading">Đang tải từ Play Store…</string>
+    <string name="paywall_sub_disclosure">Gói thuê bao tự động gia hạn trừ khi bạn hủy ít nhất 24 giờ trước khi hết chu kỳ. Sau 7 ngày dùng thử, gói sẽ tự động gia hạn với mức giá %1$s. Quản lý hoặc hủy bất cứ lúc nào tại Google Play → Thanh toán và gói thuê bao.</string>
+    <string name="paywall_lifetime_disclosure">Thanh toán một lần qua Google Play. Không tự động gia hạn.</string>
+    <string name="paywall_restore_btn">Khôi phục giao dịch</string>
+    <string name="paywall_restoring">Đang khôi phục…</string>
+    <string name="paywall_privacy_link">Chính sách bảo mật &amp; Điều khoản</string>
+
+    <string name="paywall_active_badge">ĐÃ KÍCH HOẠT INKIFY PRO</string>
+    <string name="paywall_active_lifetime">Bản quyền Trọn đời — Đã mở khóa toàn bộ tính năng Pro.</string>
+    <string name="paywall_active_subscription">Gói thuê bao đang hoạt động — Đã mở khóa toàn bộ tính năng Pro.</string>
+    <string name="paywall_active_pending">Đang chờ thanh toán — Quyền Pro sẽ mở ngay khi Google Play xác nhận.</string>
+    <string name="paywall_tip_header">ỦNG HỘ TÁC GIẢ (TÙY CHỌN)</string>
+    <string name="paywall_tip_desc">Bạn thích Inkify? Có thể tặng tác giả một ly cà phê hoặc cuốn sách nhỏ.</string>
+    <string name="paywall_tip_coffee">Tặng ly cà phê</string>
+    <string name="paywall_tip_book">Tặng cuốn sách</string>
+
+    <string name="paywall_msg_purchase_success">Chào mừng đến với Inkify Pro! Toàn bộ tính năng đã được mở khóa.</string>
+    <string name="paywall_msg_tip_success">Cảm ơn bạn rất nhiều vì đã ủng hộ!</string>
+    <string name="paywall_msg_pending">Giao dịch đang chờ Google Play xác nhận.</string>
+    <string name="paywall_msg_canceled">Đã hủy giao dịch.</string>
+    <string name="paywall_msg_restored">Đã khôi phục gói Pro thành công.</string>
+    <string name="paywall_msg_no_restore">Không tìm thấy giao dịch Pro nào trên tài khoản Google này.</string>
+    <string name="paywall_msg_error">Lỗi thanh toán (%1$d): %2$s</string>
+
+    <string name="pro_card_title">Inkify Pro</string>
+    <string name="pro_card_status_active">Đang hoạt động · %1$s</string>
+    <string name="pro_card_plan_lifetime">Trọn đời</string>
+    <string name="pro_card_plan_subscription">Thuê bao</string>
+    <string name="pro_card_status_pending">Đang chờ thanh toán…</string>
+    <string name="pro_card_upgrade_desc">Mở khóa Adaptive PDF Reflow, Đồng bộ Google Drive &amp; Focus Mode.</string>
+    <string name="pro_card_cta_upgrade">Nâng cấp</string>
+    <string name="pro_card_cta_manage">Chi tiết</string>
+    <string name="pro_compact_free">Bản miễn phí · Nâng cấp Inkify Pro ›</string>
+    <string name="pro_compact_active">Inkify Pro đang bật · Chi tiết ›</string>
+
+    <string name="pdf_pro_preview_title">Hết trang dùng thử Adaptive PDF (Trang %1$d)</string>
+    <string name="pdf_pro_preview_desc">Bạn đã xem thử 5 trang đầu tiên. Mở khóa Inkify Pro để đọc toàn bộ tài liệu bằng Reflow &amp; Đọc theo vùng, hoặc chuyển về PDF chuẩn.</string>
+    <string name="pdf_pro_preview_unlock">Mở khóa Inkify Pro</string>
+    <string name="pdf_pro_preview_standard">Dùng PDF chuẩn</string>
+
+    <string name="milestone_nudge_title">Thói quen đọc tuyệt vời!</string>
+    <string name="milestone_nudge_desc">Bạn thích Inkify? Mở khóa Adaptive PDF, Đồng bộ Drive &amp; Focus Mode với Inkify Pro.</string>
+    <string name="milestone_nudge_cta">Xem Inkify Pro</string>
 </resources>

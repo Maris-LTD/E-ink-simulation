@@ -31,6 +31,7 @@ object LockScreenReadingNotifier {
       ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
       PackageManager.PERMISSION_GRANTED
 
+  @Suppress("MissingPermission")
   fun show(
     context: Context,
     bookId: String,
@@ -42,10 +43,25 @@ object LockScreenReadingNotifier {
     snippetIndex: Int = 0,
     snippetCount: Int = 0,
     locatorJson: String? = null,
+    locatorCreatedAt: Long = 0L,
   ) {
-    if (!hasPermission(context)) return
+    val notificationManager = NotificationManagerCompat.from(context)
+    if (!notificationManager.areNotificationsEnabled()) return
+    if (
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+          PackageManager.PERMISSION_GRANTED
+    ) {
+      return
+    }
     ensureChannel(context)
-    val intent = ReaderActivity.intentFor(context, bookId, locatorJson)
+    val intent =
+      ReaderActivity.intentFor(
+        context = context,
+        bookId = bookId,
+        locatorJson = locatorJson,
+        locatorCreatedAt = locatorCreatedAt,
+      )
     val pendingIntent =
       PendingIntent.getActivity(
         context,
@@ -84,14 +100,16 @@ object LockScreenReadingNotifier {
             PendingIntent.getBroadcast(
               context,
               4101,
-              Intent(LockScreenNavReceiver.ACTION_PREV).setPackage(context.packageName),
+              Intent(context, LockScreenNavReceiver::class.java)
+                .setAction(LockScreenNavReceiver.ACTION_PREV),
               PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
           val nextIntent =
             PendingIntent.getBroadcast(
               context,
               4102,
-              Intent(LockScreenNavReceiver.ACTION_NEXT).setPackage(context.packageName),
+              Intent(context, LockScreenNavReceiver::class.java)
+                .setAction(LockScreenNavReceiver.ACTION_NEXT),
               PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
           setViewVisibility(R.id.btn_prev, View.VISIBLE)
@@ -104,6 +122,14 @@ object LockScreenReadingNotifier {
         }
       }
 
+    val deleteIntent =
+      PendingIntent.getBroadcast(
+        context,
+        4103,
+        Intent(context, LockScreenNavReceiver::class.java)
+          .setAction(LockScreenNavReceiver.ACTION_DISMISSED),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+      )
     val notification =
       NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(R.mipmap.ic_launcher)
@@ -116,10 +142,25 @@ object LockScreenReadingNotifier {
         .setSilent(true)
         .setOnlyAlertOnce(true)
         .setAutoCancel(true)
+        .setDeleteIntent(deleteIntent)
         .setContentIntent(pendingIntent)
         .build()
-    NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+    setDismissedByUser(context, false)
+    notificationManager.notify(NOTIFICATION_ID, notification)
   }
+
+  fun setDismissedByUser(context: Context, dismissed: Boolean) {
+    context.applicationContext
+      .getSharedPreferences("eink_lockscreen_notif", Context.MODE_PRIVATE)
+      .edit()
+      .putBoolean("dismissed_by_user", dismissed)
+      .apply()
+  }
+
+  fun isDismissedByUser(context: Context): Boolean =
+    context.applicationContext
+      .getSharedPreferences("eink_lockscreen_notif", Context.MODE_PRIVATE)
+      .getBoolean("dismissed_by_user", false)
 
   fun cancel(context: Context) {
     NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
@@ -150,11 +191,19 @@ object LockScreenReadingNotifier {
     if (manager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
       manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
     }
-    if (manager.getNotificationChannel(CHANNEL_ID) != null) return
+    val channelName = LocaleHelper.wrap(context).getString(R.string.lockscreen_channel_name)
+    val existing = manager.getNotificationChannel(CHANNEL_ID)
+    if (existing != null) {
+      if (existing.name != channelName) {
+        existing.name = channelName
+        manager.createNotificationChannel(existing)
+      }
+      return
+    }
     val channel =
       NotificationChannel(
         CHANNEL_ID,
-        LocaleHelper.wrap(context).getString(R.string.lockscreen_channel_name),
+        channelName,
         NotificationManager.IMPORTANCE_DEFAULT,
       ).apply {
         lockscreenVisibility = Notification.VISIBILITY_PUBLIC

@@ -44,8 +44,12 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,10 +89,13 @@ fun ReaderTopBar(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
+      val backCd = stringResource(R.string.cd_back)
       TextButton(
         onClick = onClose,
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-        modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 40.dp),
+        modifier =
+          Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+            .semantics { contentDescription = backCd },
       ) {
         EInkText("‹", style = MaterialTheme.typography.titleLarge)
       }
@@ -112,17 +119,23 @@ fun ReaderTopBar(
         }
       }
       if (showFontControls) {
+        val decreaseFontCd = stringResource(R.string.cd_decrease_font)
+        val increaseFontCd = stringResource(R.string.cd_increase_font)
         TextButton(
           onClick = onDecreaseFont,
           contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-          modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 40.dp),
+          modifier =
+            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+              .semantics { contentDescription = decreaseFontCd },
         ) {
           EInkText("A−", style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
         TextButton(
           onClick = onIncreaseFont,
           contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-          modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 40.dp),
+          modifier =
+            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+              .semantics { contentDescription = increaseFontCd },
         ) {
           EInkText("A+", style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
@@ -131,7 +144,7 @@ fun ReaderTopBar(
         val searchCd = stringResource(R.string.cd_search_in_book)
         IconButton(
           onClick = onOpenSearch,
-          modifier = Modifier.size(40.dp).semantics { contentDescription = searchCd },
+          modifier = Modifier.size(48.dp).semantics { contentDescription = searchCd },
         ) {
           val ink = MaterialTheme.colorScheme.onBackground
           Canvas(modifier = Modifier.size(19.dp)) {
@@ -150,9 +163,15 @@ fun ReaderTopBar(
         }
       }
       val bookmarkCd = stringResource(R.string.cd_save_bookmark)
+      val bookmarkStateDesc =
+        stringResource(if (isBookmarked) R.string.cd_bookmark_saved_state else R.string.cd_bookmark_not_saved_state)
       IconButton(
         onClick = onBookmark,
-        modifier = Modifier.size(40.dp).semantics { contentDescription = bookmarkCd },
+        modifier =
+          Modifier.size(48.dp).semantics {
+            contentDescription = bookmarkCd
+            stateDescription = bookmarkStateDesc
+          },
       ) {
         val ink = MaterialTheme.colorScheme.onBackground
         Canvas(modifier = Modifier.size(20.dp)) {
@@ -197,6 +216,7 @@ fun ReaderBottomBar(
   brightness: Float,
   onToneChange: (EInkTone) -> Unit,
   onBrightnessChange: (Float) -> Unit,
+  onBrightnessChangeFinished: () -> Unit,
   onSeekToProgress: (Float) -> Unit,
   focusMode: Boolean,
   onToggleFocusMode: () -> Unit,
@@ -234,6 +254,7 @@ fun ReaderBottomBar(
       brightness = brightness,
       onToneChange = onToneChange,
       onBrightnessChange = onBrightnessChange,
+      onBrightnessChangeFinished = onBrightnessChangeFinished,
     )
     if (seekEnabled) {
       Slider(
@@ -306,6 +327,7 @@ private fun ThemeAndBrightnessRow(
   brightness: Float,
   onToneChange: (EInkTone) -> Unit,
   onBrightnessChange: (Float) -> Unit,
+  onBrightnessChangeFinished: () -> Unit,
 ) {
   val isAuto = brightness < 0f
   val displayValue = if (isAuto) 0.5f else brightness.coerceIn(0.02f, 1f)
@@ -319,26 +341,37 @@ private fun ThemeAndBrightnessRow(
       horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
       EInkTone.entries.forEach { option ->
-        val selected = option == tone
+        val isSelected = option == tone
         val optionLabel = toneLabel(option)
         Box(
           modifier =
-            Modifier.size(22.dp)
-              .clip(CircleShape)
-              .background(Color(option.background))
-              .border(
-                width = if (selected) 2.5.dp else 1.dp,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                shape = CircleShape,
-              )
+            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
               .clickable { onToneChange(option) }
-              .semantics { contentDescription = optionLabel }
-        )
+              .semantics {
+                contentDescription = optionLabel
+                role = Role.RadioButton
+                selected = isSelected
+              },
+          contentAlignment = Alignment.Center,
+        ) {
+          Box(
+            modifier =
+              Modifier.size(22.dp)
+                .clip(CircleShape)
+                .background(Color(option.background))
+                .border(
+                  width = if (isSelected) 2.5.dp else 1.dp,
+                  color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                  shape = CircleShape,
+                ),
+          )
+        }
       }
     }
     Slider(
       value = displayValue,
       onValueChange = { onBrightnessChange(it.coerceIn(0.02f, 1f)) },
+      onValueChangeFinished = onBrightnessChangeFinished,
       valueRange = 0.02f..1f,
       modifier = Modifier.weight(1f),
       colors =
@@ -353,7 +386,10 @@ private fun ThemeAndBrightnessRow(
       contentDescription =
         if (isAuto) stringResource(R.string.cd_brightness_auto)
         else stringResource(R.string.cd_brightness_pct, (displayValue * 100).roundToInt()),
-      onClick = { onBrightnessChange(if (isAuto) 0.5f else -1f) },
+      onClick = {
+        onBrightnessChange(if (isAuto) 0.5f else -1f)
+        onBrightnessChangeFinished()
+      },
     )
   }
 }

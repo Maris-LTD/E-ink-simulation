@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
   override fun attachBaseContext(newBase: Context) {
@@ -26,7 +27,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-
+    (application as EmptyApplication).container.warmUpForUiAsync()
     enableEdgeToEdge()
     setContent {
       val settings by (application as EmptyApplication).container.settings.settings.collectAsStateWithLifecycle()
@@ -49,6 +50,14 @@ class MainActivity : ComponentActivity() {
           }
         }
       }
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    val container = (application as EmptyApplication).container
+    container.appScope.launch {
+      container.billing.refreshPurchases()
     }
   }
 }

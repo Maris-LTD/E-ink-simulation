@@ -2,17 +2,25 @@ package com.example.emptyapp.ui.eink
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.util.LruCache
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 
 object CoverBitmapCache {
-  private val cache = LruCache<String, ImageBitmap>(64)
+  private const val CACHE_SIZE_KB = 16 * 1024
+  private val cache =
+    object : LruCache<String, ImageBitmap>(CACHE_SIZE_KB) {
+      override fun sizeOf(key: String, value: ImageBitmap): Int =
+        ((value.width.toLong() * value.height.toLong() * 2L) / 1024L)
+          .coerceIn(1L, Int.MAX_VALUE.toLong())
+          .toInt()
+    }
+
+  fun colorFilterFor(grayscale: Boolean): ColorFilter? =
+    if (grayscale) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null
 
   fun get(path: String?): ImageBitmap? = path?.let { cache.get(it) }
 
@@ -30,7 +38,7 @@ object CoverBitmapCache {
             inSampleSize = sampleSize
             inPreferredConfig = Bitmap.Config.RGB_565
           }
-        BitmapFactory.decodeFile(path, opts)?.let(::toGrayscaleImageBitmap)
+        BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
       }.getOrNull()
     if (decoded != null) {
       cache.put(path, decoded)
@@ -41,21 +49,9 @@ object CoverBitmapCache {
   private fun computeInSampleSize(width: Int, height: Int, maxDim: Int): Int {
     if (width <= 0 || height <= 0) return 1
     var sample = 1
-    while (width / sample > maxDim * 2 || height / sample > maxDim * 2) {
+    while (width / (sample * 2) >= maxDim || height / (sample * 2) >= maxDim) {
       sample *= 2
     }
     return sample
-  }
-
-  private fun toGrayscaleImageBitmap(source: Bitmap): ImageBitmap {
-    val out = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(out)
-    val paint =
-      Paint().apply {
-        colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
-      }
-    canvas.drawBitmap(source, 0f, 0f, paint)
-    if (out !== source) source.recycle()
-    return out.asImageBitmap()
   }
 }

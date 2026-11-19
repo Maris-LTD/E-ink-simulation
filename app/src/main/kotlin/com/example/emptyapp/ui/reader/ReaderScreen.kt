@@ -1,9 +1,17 @@
 package com.example.emptyapp.ui.reader
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
@@ -28,9 +36,11 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,13 +49,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeature
+import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkPreferencesMapper
@@ -55,11 +72,17 @@ import com.example.emptyapp.reader.attachReaderInput
 import com.example.emptyapp.reader.awaitView
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
 import com.example.emptyapp.ui.eink.RefreshFlashOverlay
+import com.example.emptyapp.ui.monet.PdfProPreviewLimitCard
+import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
 import java.util.Locale
+import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.NavigatorFragment
@@ -85,25 +108,29 @@ fun ReaderScreen(
   title: String,
   toc: List<Link>,
   positions: List<Locator>,
+  isSearchable: Boolean = true,
   pendingNoteLocator: Locator?,
+  pendingNoteDraft: String = "",
+  onNoteDraftChange: (String) -> Unit = {},
   onSaveNote: (Locator, String) -> Unit,
   onDismissNote: () -> Unit,
   onClose: () -> Unit,
   onNavigatorReady: (OverflowableNavigator) -> Unit,
   hasDndPermission: () -> Boolean = { true },
   onOpenDndPermissionSettings: () -> Unit = {},
+  onOpenNotificationSettings: () -> Unit = {},
+  billing: PlayBillingManager? = null,
+  proGate: ProFeatureGate? = null,
 ) {
   val settings by viewModel.settings.collectAsStateWithLifecycle()
   val pdfConfig by viewModel.pdfConfig.collectAsStateWithLifecycle()
-  val progress by viewModel.progress.collectAsStateWithLifecycle()
-  val flashTrigger by viewModel.flashTrigger.collectAsStateWithLifecycle()
-  val pageTurnTrigger by viewModel.pageTurnTrigger.collectAsStateWithLifecycle()
-  val pagesSinceFlash by viewModel.pagesSinceFlash.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val isBookmarked by viewModel.isCurrentPageBookmarked.collectAsStateWithLifecycle()
   val dictionaryState by viewModel.dictionaryState.collectAsStateWithLifecycle()
   val searchState by viewModel.searchState.collectAsStateWithLifecycle()
+  val writeError by viewModel.writeError.collectAsStateWithLifecycle()
+  val notifBlockedCount by viewModel.notificationPermissionBlockedCount.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val density = LocalDensity.current
 
@@ -113,13 +140,28 @@ fun ReaderScreen(
   var searchOpen by remember { mutableStateOf(false) }
   var bottomBarHeightPx by remember { mutableStateOf(0) }
   var navigator by remember { mutableStateOf<NavigatorFragment?>(null) }
-  var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
-  var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
   var brightnessHudVisible by remember { mutableStateOf(false) }
   var edgeStripHeightPx by remember { mutableFloatStateOf(1f) }
+  var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
+  var currentPdfPage by remember(initialLocator, positions) { mutableIntStateOf(resolvePdfPageIndex(initialLocator, positions)) }
+  val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
   val latestBrightness by rememberUpdatedState(settings.brightness)
+  val latestOnLeftEdgeTap by rememberUpdatedState {
+    if (bookFormat == BookFormat.PDF) {
+      pdfController.goBackward()
+    } else {
+      (navigator as? OverflowableNavigator)?.goBackward(animated = settings.animations)
+    }
+  }
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
+
+  LaunchedEffect(chromeVisible, settingsOpen, contentsOpen, searchOpen) {
+    viewModel.setOverlayOpen(chromeVisible || settingsOpen || contentsOpen || searchOpen)
+  }
+  DisposableEffect(Unit) {
+    onDispose { viewModel.setOverlayOpen(false) }
+  }
 
   LaunchedEffect(brightnessHudVisible, settings.brightness) {
     if (brightnessHudVisible) {
@@ -150,20 +192,32 @@ fun ReaderScreen(
       }
       (nav as? OverflowableNavigator)?.let(onNavigatorReady)
     }
-    LaunchedEffect(nav, settings) {
+    LaunchedEffect(nav, settings.grayscale, settings.contrast, settings.tone) {
       val view = nav.awaitView()
-      view.setLayerType(View.LAYER_TYPE_HARDWARE, EInkColorFilter.paintOf(settings))
+      view.setLayerType(
+        View.LAYER_TYPE_HARDWARE,
+        EInkColorFilter.paintOf(settings, contentAlreadyDark = nav is EpubNavigatorFragment),
+      )
+    }
+    val epubPreferences = remember(settings) { EInkPreferencesMapper.toEpub(settings) }
+    LaunchedEffect(nav, epubPreferences) {
       if (nav is EpubNavigatorFragment) {
-        nav.submitPreferences(EInkPreferencesMapper.toEpub(settings))
+        nav.awaitView()
+        nav.submitPreferences(epubPreferences)
         delay(120L)
-        applyReaderStrokeStyle(nav, settings)
+        applyReaderStrokeStyle(nav, viewModel.settings.value)
       }
     }
     LaunchedEffect(nav) {
+      var lastStyledHref: String? = null
       nav.currentLocator.collect { locator ->
         viewModel.onLocatorChanged(locator)
         if (nav is EpubNavigatorFragment) {
-          applyReaderStrokeStyle(nav, viewModel.settings.value)
+          val hrefStr = locator.href.toString()
+          if (hrefStr != lastStyledHref) {
+            lastStyledHref = hrefStr
+            applyReaderStrokeStyle(nav, viewModel.settings.value)
+          }
         }
       }
     }
@@ -179,18 +233,90 @@ fun ReaderScreen(
         nav.applyDecorations(decorations, "highlights")
       }
     }
-    LaunchedEffect(nav, pageTurnTrigger, flashTrigger, settings.ghosting) {
-      activeGhost = if (settings.ghosting && pagesSinceFlash > 0) latestSnapshot else null
-      val view = nav.awaitView()
-      delay(220L)
-      if (settings.ghosting) latestSnapshot = captureGhostSnapshot(view)
+  }
+
+  val focusEnabledMsg = stringResource(com.example.emptyapp.R.string.reader_focus_enabled)
+  val focusNeedsDndMsg = stringResource(com.example.emptyapp.R.string.reader_focus_needs_dnd)
+  val grantPermissionLabel = stringResource(com.example.emptyapp.R.string.action_grant_permission)
+  val focusDisabledMsg = stringResource(com.example.emptyapp.R.string.reader_focus_disabled)
+  val reflowLockedScanMsg = stringResource(com.example.emptyapp.R.string.pdf_reflow_locked_scan)
+  val bookmarkSavedMsg = stringResource(com.example.emptyapp.R.string.reader_bookmark_saved)
+  val bookmarkRemovedMsg = stringResource(com.example.emptyapp.R.string.reader_bookmark_removed)
+  val libBookmarkDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_bookmark_deleted)
+  val libHighlightDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_highlight_deleted)
+  val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
+  val openBrowserErrorMsg = stringResource(com.example.emptyapp.R.string.error_open_browser)
+  val saveErrorMsg = stringResource(com.example.emptyapp.R.string.error_save_data)
+  val notifPermissionBlockedMsg = stringResource(com.example.emptyapp.R.string.notif_permission_blocked_msg)
+  val notifOpenSettingsLabel = stringResource(com.example.emptyapp.R.string.notif_open_settings_action)
+  LaunchedEffect(writeError) {
+    if (writeError) {
+      snackbarHostState.showSnackbar(saveErrorMsg, duration = SnackbarDuration.Short)
+    }
+  }
+  LaunchedEffect(notifBlockedCount) {
+    if (notifBlockedCount > 0) {
+      viewModel.consumeNotificationPermissionBlocked()
+      val res =
+        snackbarHostState.showSnackbar(
+          message = notifPermissionBlockedMsg,
+          actionLabel = notifOpenSettingsLabel,
+          duration = SnackbarDuration.Long,
+        )
+      if (res == SnackbarResult.ActionPerformed) {
+        onOpenNotificationSettings()
+      }
     }
   }
 
-  val ghostAlpha =
-    if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
+  fun handleToggleFocusMode(next: Boolean) {
+    if (next && proGate != null && !proGate.hasAccess(ProFeature.FOCUS_MODE)) {
+      paywallFeature = ProFeature.FOCUS_MODE
+      return
+    }
+    viewModel.updateSettings { it.copy(focusMode = next) }
+    if (next) {
+      settingsOpen = false
+      chromeVisible = false
+      scope.launch {
+        if (hasDndPermission()) {
+          snackbarHostState.showSnackbar(
+            focusEnabledMsg,
+            duration = SnackbarDuration.Short,
+          )
+        } else {
+          val res =
+            snackbarHostState.showSnackbar(
+              message = focusNeedsDndMsg,
+              actionLabel = grantPermissionLabel,
+              duration = SnackbarDuration.Long,
+            )
+          if (res == SnackbarResult.ActionPerformed) {
+            onOpenDndPermissionSettings()
+          }
+        }
+      }
+    } else {
+      scope.launch {
+        snackbarHostState.showSnackbar(
+          focusDisabledMsg,
+          duration = SnackbarDuration.Short,
+        )
+      }
+    }
+  }
+
+  fun handleToggleLockScreenReader(next: Boolean) {
+    viewModel.updateSettings { it.copy(lockScreenReader = next) }
+  }
 
   val effectivePdfMode = pdfConfig.mode ?: PdfReadingMode.SMART_ORIGINAL
+  val isAdaptivePdfBlocked =
+    bookFormat == BookFormat.PDF &&
+      effectivePdfMode != PdfReadingMode.SMART_ORIGINAL &&
+      !entitlement.isPro &&
+      proGate != null &&
+      !proGate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, currentPdfPage)
 
   Box(modifier = Modifier.fillMaxSize().background(Color(settings.tone.background))) {
     when (bookFormat) {
@@ -207,8 +333,10 @@ fun ReaderScreen(
           readingMode = effectivePdfMode,
           controller = pdfController,
           onPageChanged = { pageIndex, pageCount ->
+            currentPdfPage = pageIndex
             viewModel.onLocatorChanged(locatorForPdfPage(pageIndex, pageCount, positions))
           },
+          onScreenTurn = viewModel::onSubPageScreenTurned,
           onCenterTap = {
             chromeVisible = !chromeVisible
             settingsOpen = false
@@ -221,16 +349,35 @@ fun ReaderScreen(
           onUpdate = { fragment -> if (navigator == null) navigator = fragment },
         )
     }
-    RefreshFlashOverlay(
-      ghostBitmap = activeGhost,
-      ghostAlpha = ghostAlpha,
-      flashTrigger = flashTrigger,
+    ReaderGhostAndFlashLayer(
+      navigator = navigator,
+      bookFormat = bookFormat,
+      settings = settings,
+      flashTriggerFlow = viewModel.flashTrigger,
+      pageTurnTriggerFlow = viewModel.pageTurnTrigger,
+      pagesSinceFlashFlow = viewModel.pagesSinceFlash,
     )
+    if (isAdaptivePdfBlocked) {
+      PdfProPreviewLimitCard(
+        pageIndex = currentPdfPage,
+        backgroundColor = Color(settings.tone.background),
+        textColor = Color(settings.tone.text),
+        onCenterTap = {
+          chromeVisible = !chromeVisible
+          settingsOpen = false
+        },
+        onUnlockPro = { paywallFeature = ProFeature.ADAPTIVE_PDF_REFLOW },
+        onUseStandardPdf = {
+          viewModel.updatePdfConfig { it.copy(mode = PdfReadingMode.SMART_ORIGINAL) }
+        },
+        modifier = Modifier.fillMaxSize(),
+      )
+    }
     if (settings.paperGrain) PaperGrainOverlay()
     if (!chromeVisible && settings.readerFooter && !settings.focusMode) {
-      ReaderFooterBar(
+      ReaderFooterBarContainer(
         title = title,
-        progress = progress,
+        progressFlow = viewModel.progress,
         inkColor = Color(settings.tone.text),
         modifier = Modifier.align(Alignment.BottomCenter),
       )
@@ -251,9 +398,9 @@ fun ReaderScreen(
       val pdfModeLabel =
         if (bookFormat == BookFormat.PDF) {
           when (effectivePdfMode) {
-            PdfReadingMode.SMART_ORIGINAL -> context.getString(com.example.emptyapp.R.string.pdf_mode_original)
-            PdfReadingMode.GUIDED_COLUMN -> context.getString(com.example.emptyapp.R.string.pdf_mode_column)
-            PdfReadingMode.HYBRID_REFLOW -> context.getString(com.example.emptyapp.R.string.pdf_mode_reflow)
+            PdfReadingMode.SMART_ORIGINAL -> stringResource(com.example.emptyapp.R.string.pdf_mode_original)
+            PdfReadingMode.GUIDED_COLUMN -> stringResource(com.example.emptyapp.R.string.pdf_mode_column)
+            PdfReadingMode.HYBRID_REFLOW -> stringResource(com.example.emptyapp.R.string.pdf_mode_reflow)
           }
         } else {
           null
@@ -263,7 +410,7 @@ fun ReaderScreen(
         showFontControls =
           bookFormat == BookFormat.EPUB ||
             (bookFormat == BookFormat.PDF && effectivePdfMode == PdfReadingMode.HYBRID_REFLOW),
-        showSearch = bookFormat != BookFormat.CBZ,
+        showSearch = bookFormat != BookFormat.CBZ && isSearchable,
         isBookmarked = isBookmarked,
         pdfModeLabel = pdfModeLabel,
         onTogglePdfMode =
@@ -272,7 +419,7 @@ fun ReaderScreen(
               if (!pdfConfig.reflowAllowed) {
                 scope.launch {
                   snackbarHostState.showSnackbar(
-                    context.getString(com.example.emptyapp.R.string.pdf_reflow_locked_scan),
+                    reflowLockedScanMsg,
                     duration = SnackbarDuration.Short,
                   )
                 }
@@ -294,12 +441,12 @@ fun ReaderScreen(
         onOpenContents = { contentsOpen = true; searchOpen = false; settingsOpen = false },
         onBookmark = {
           val saved = viewModel.toggleBookmark()
-          val msgRes =
-            if (saved) com.example.emptyapp.R.string.reader_bookmark_saved
-            else com.example.emptyapp.R.string.reader_bookmark_removed
-          scope.launch {
-            snackbarHostState.currentSnackbarData?.dismiss()
-            snackbarHostState.showSnackbar(context.getString(msgRes), duration = SnackbarDuration.Short)
+          if (saved != null) {
+            val msg = if (saved) bookmarkSavedMsg else bookmarkRemovedMsg
+            scope.launch {
+              snackbarHostState.currentSnackbarData?.dismiss()
+              snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+            }
           }
         },
         onDecreaseFont = {
@@ -310,16 +457,19 @@ fun ReaderScreen(
         },
         modifier = Modifier.align(Alignment.TopCenter),
       )
+      val bottomBarProgress by viewModel.progress.collectAsStateWithLifecycle()
       ReaderBottomBar(
-        progress = progress,
+        progress = bottomBarProgress,
         seekEnabled = positions.isNotEmpty(),
         tone = settings.tone,
         brightness = settings.brightness,
         onToneChange = { tone -> viewModel.updateSettings { it.copy(tone = tone) } },
-        onBrightnessChange = { value -> viewModel.updateSettings { it.copy(brightness = value) } },
+        onBrightnessChange = viewModel::previewBrightness,
+        onBrightnessChangeFinished = viewModel::commitBrightness,
         onSeekToProgress = { fraction ->
           if (positions.isNotEmpty()) {
             val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
+            viewModel.expectJump()
             if (bookFormat == BookFormat.PDF) {
               pdfController.jumpToPage(index)
             } else {
@@ -328,39 +478,7 @@ fun ReaderScreen(
           }
         },
         focusMode = settings.focusMode,
-        onToggleFocusMode = {
-          val next = !settings.focusMode
-          viewModel.updateSettings { it.copy(focusMode = next) }
-          if (next) {
-            settingsOpen = false
-            chromeVisible = false
-            scope.launch {
-              if (hasDndPermission()) {
-                snackbarHostState.showSnackbar(
-                  context.getString(com.example.emptyapp.R.string.reader_focus_enabled),
-                  duration = SnackbarDuration.Short,
-                )
-              } else {
-                val res =
-                  snackbarHostState.showSnackbar(
-                    message = context.getString(com.example.emptyapp.R.string.reader_focus_needs_dnd),
-                    actionLabel = context.getString(com.example.emptyapp.R.string.action_grant_permission),
-                    duration = SnackbarDuration.Long,
-                  )
-                if (res == SnackbarResult.ActionPerformed) {
-                  onOpenDndPermissionSettings()
-                }
-              }
-            }
-          } else {
-            scope.launch {
-              snackbarHostState.showSnackbar(
-                context.getString(com.example.emptyapp.R.string.reader_focus_disabled),
-                duration = SnackbarDuration.Short,
-              )
-            }
-          }
-        },
+        onToggleFocusMode = { handleToggleFocusMode(!settings.focusMode) },
         onToggleSettings = { settingsOpen = !settingsOpen },
         modifier =
           Modifier.align(Alignment.BottomCenter)
@@ -379,6 +497,8 @@ fun ReaderScreen(
         pdfMode = effectivePdfMode,
         pdfReflowAllowed = pdfConfig.reflowAllowed,
         onPdfModeChange = { next -> viewModel.updatePdfConfig { it.copy(mode = next) } },
+        onToggleFocusMode = ::handleToggleFocusMode,
+        onToggleLockScreenReader = ::handleToggleLockScreenReader,
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
@@ -394,8 +514,12 @@ fun ReaderScreen(
         highlights = highlights,
         onSelectToc = { link ->
           if (bookFormat == BookFormat.PDF) {
-            resolvePdfTocPage(link, positions)?.let(pdfController::jumpToPage)
+            resolvePdfTocPage(link, positions)?.let { page ->
+              viewModel.expectJump()
+              pdfController.jumpToPage(page)
+            }
           } else {
+            viewModel.expectJump()
             navigator?.go(link, animated = false)
           }
           contentsOpen = false
@@ -403,6 +527,7 @@ fun ReaderScreen(
         },
         onSelectLocatorJson = { jsonText ->
           runCatching { Locator.fromJSON(JSONObject(jsonText)) }.getOrNull()?.let { locator ->
+            viewModel.expectJump()
             if (bookFormat == BookFormat.PDF) {
               pdfController.jumpToPage(resolvePdfPageIndex(locator, positions))
             } else {
@@ -419,8 +544,8 @@ fun ReaderScreen(
             scope.launch {
               val res =
                 snackbarHostState.showSnackbar(
-                  message = context.getString(com.example.emptyapp.R.string.lib_bookmark_deleted),
-                  actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                  message = libBookmarkDeletedMsg,
+                  actionLabel = undoActionLabel,
                   duration = SnackbarDuration.Short,
                 )
               if (res == SnackbarResult.ActionPerformed) {
@@ -436,8 +561,8 @@ fun ReaderScreen(
             scope.launch {
               val res =
                 snackbarHostState.showSnackbar(
-                  message = context.getString(com.example.emptyapp.R.string.lib_highlight_deleted),
-                  actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                  message = libHighlightDeletedMsg,
+                  actionLabel = undoActionLabel,
                   duration = SnackbarDuration.Short,
                 )
               if (res == SnackbarResult.ActionPerformed) {
@@ -455,6 +580,7 @@ fun ReaderScreen(
         onSearch = viewModel::searchInBook,
         onLoadMore = viewModel::loadMoreSearchResults,
         onSelectLocator = { locator ->
+          viewModel.expectJump()
           if (bookFormat == BookFormat.PDF) {
             pdfController.jumpToPage(resolvePdfPageIndex(locator, positions))
           } else {
@@ -469,6 +595,8 @@ fun ReaderScreen(
     pendingNoteLocator?.let { locator ->
       HighlightNoteDialog(
         quote = locator.text.highlight.orEmpty(),
+        note = pendingNoteDraft,
+        onNoteChange = onNoteDraftChange,
         onSave = { note -> onSaveNote(locator, note) },
         onDismiss = onDismissNote,
       )
@@ -484,7 +612,14 @@ fun ReaderScreen(
               Intent.ACTION_VIEW,
               Uri.parse("https://translate.google.com/?sl=auto&tl=$tl&text=$encoded"),
             )
-          runCatching { context.startActivity(intent) }
+          if (runCatching { context.startActivity(intent) }.isFailure) {
+            scope.launch {
+              snackbarHostState.showSnackbar(
+                openBrowserErrorMsg,
+                duration = SnackbarDuration.Short,
+              )
+            }
+          }
         },
         onDismiss = viewModel::dismissDictionary,
       )
@@ -494,18 +629,10 @@ fun ReaderScreen(
         modifier =
           Modifier.align(Alignment.CenterStart)
             .fillMaxHeight()
-            .width(24.dp)
+            .width(14.dp)
             .onSizeChanged { edgeStripHeightPx = it.height.coerceAtLeast(1).toFloat() }
-            .pointerInput(bookFormat, navigator, pdfController) {
-              detectTapGestures(
-                onTap = {
-                  if (bookFormat == BookFormat.PDF) {
-                    pdfController.goBackward()
-                  } else {
-                    (navigator as? OverflowableNavigator)?.goBackward(animated = false)
-                  }
-                },
-              )
+            .pointerInput(Unit) {
+              detectTapGestures(onTap = { latestOnLeftEdgeTap() })
             }
             .pointerInput(Unit) {
               var dragBrightness = 0.5f
@@ -514,11 +641,13 @@ fun ReaderScreen(
                   dragBrightness = if (latestBrightness < 0f) 0.5f else latestBrightness
                   brightnessHudVisible = true
                 },
+                onDragEnd = { viewModel.commitBrightness() },
+                onDragCancel = { viewModel.commitBrightness() },
                 onVerticalDrag = { change, dragAmount ->
                   change.consume()
                   val delta = -dragAmount / (edgeStripHeightPx * 0.65f)
                   dragBrightness = (dragBrightness + delta).coerceIn(0.02f, 1f)
-                  viewModel.updateSettings { it.copy(brightness = dragBrightness) }
+                  viewModel.previewBrightness(dragBrightness)
                   brightnessHudVisible = true
                 },
               )
@@ -547,6 +676,16 @@ fun ReaderScreen(
       hostState = snackbarHostState,
       modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 72.dp),
     )
+    paywallFeature?.let { feature ->
+      if (billing != null && proGate != null) {
+        ProPaywallSheet(
+          billing = billing,
+          proGate = proGate,
+          feature = feature,
+          onDismiss = { paywallFeature = null },
+        )
+      }
+    }
   }
 }
 
@@ -566,18 +705,162 @@ private suspend fun applyReaderStrokeStyle(nav: EpubNavigatorFragment, settings:
   nav.evaluateJavascript(js)
 }
 
-private fun captureGhostSnapshot(view: View): ImageBitmap? {
+@Composable
+private fun ReaderFooterBarContainer(
+  title: String,
+  progressFlow: StateFlow<Float>,
+  inkColor: Color,
+  modifier: Modifier = Modifier,
+) {
+  val progress by progressFlow.collectAsStateWithLifecycle()
+  ReaderFooterBar(
+    title = title,
+    progress = progress,
+    inkColor = inkColor,
+    modifier = modifier,
+  )
+}
+
+@Composable
+private fun ReaderGhostAndFlashLayer(
+  navigator: NavigatorFragment?,
+  bookFormat: BookFormat,
+  settings: EInkSettings,
+  flashTriggerFlow: StateFlow<Int>,
+  pageTurnTriggerFlow: StateFlow<Int>,
+  pagesSinceFlashFlow: StateFlow<Int>,
+) {
+  val flashTrigger by flashTriggerFlow.collectAsStateWithLifecycle()
+  val pagesSinceFlash by pagesSinceFlashFlow.collectAsStateWithLifecycle()
+  var latestSnapshot by remember { mutableStateOf<GhostSnapshotCapture?>(null) }
+  var activeGhost by remember { mutableStateOf<GhostSnapshotCapture?>(null) }
+  val bufferA = remember { arrayOfNulls<Bitmap>(1) }
+  val bufferB = remember { arrayOfNulls<Bitmap>(1) }
+  var nextBufferSlot by remember { mutableStateOf(0) }
+
+  LaunchedEffect(navigator, settings.ghosting) {
+    val nav = navigator ?: return@LaunchedEffect
+    if (!settings.ghosting) {
+      activeGhost = null
+      latestSnapshot = null
+      return@LaunchedEffect
+    }
+    val view = nav.awaitView()
+    merge(pageTurnTriggerFlow, flashTriggerFlow).collect {
+      activeGhost = if (pagesSinceFlashFlow.value > 0) latestSnapshot else null
+      delay(220L)
+      val slotIndex = nextBufferSlot
+      val slot = if (slotIndex == 0) bufferA else bufferB
+      val captured = captureGhostSnapshot(view, slot)
+      if (captured != null) {
+        nextBufferSlot = 1 - slotIndex
+        latestSnapshot = captured
+      }
+    }
+  }
+
+  val ghostAlpha =
+    if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
+  val activeGhostCapture = activeGhost
+  val applyGhostFilter =
+    activeGhostCapture != null &&
+      shouldApplyGhostOverlayFilter(
+        sdkInt = Build.VERSION.SDK_INT,
+        capturedViaPixelCopy = activeGhostCapture.capturedViaPixelCopy,
+      )
+  val ghostColorFilter =
+    remember(settings.grayscale, settings.contrast, settings.tone, bookFormat, applyGhostFilter) {
+      if (!applyGhostFilter) {
+        null
+      } else {
+        ColorFilter.colorMatrix(
+          ColorMatrix(
+            EInkColorFilter.matrixOf(settings, contentAlreadyDark = bookFormat == BookFormat.EPUB).array,
+          ),
+        )
+      }
+    }
+
+  RefreshFlashOverlay(
+    ghostBitmap = activeGhostCapture?.bitmap,
+    ghostAlpha = ghostAlpha,
+    flashTrigger = flashTrigger,
+    ghostColorFilter = ghostColorFilter,
+  )
+}
+
+private data class GhostSnapshotCapture(
+  val bitmap: ImageBitmap,
+  val capturedViaPixelCopy: Boolean,
+)
+
+internal fun shouldApplyGhostOverlayFilter(
+  sdkInt: Int,
+  capturedViaPixelCopy: Boolean,
+): Boolean = sdkInt < Build.VERSION_CODES.O || !capturedViaPixelCopy
+
+private suspend fun captureGhostSnapshot(
+  view: View,
+  reusableSlot: Array<Bitmap?>,
+): GhostSnapshotCapture? {
   if (view.width <= 0 || view.height <= 0) return null
   val scaledWidth = (view.width / 4).coerceAtLeast(1)
   val scaledHeight = (view.height / 4).coerceAtLeast(1)
+  val existing = reusableSlot[0]
+  val bitmap =
+    if (existing != null && !existing.isRecycled && existing.width == scaledWidth && existing.height == scaledHeight) {
+      existing
+    } else {
+      Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888).also { reusableSlot[0] = it }
+    }
+
+  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    val window = view.context.findActivity()?.window
+    if (window != null && view.isAttachedToWindow) {
+      val location = IntArray(2)
+      view.getLocationInWindow(location)
+      val srcRect = Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
+      if (!srcRect.isEmpty) {
+        val copied =
+          suspendCancellableCoroutine { cont ->
+            runCatching {
+              PixelCopy.request(
+                window,
+                srcRect,
+                bitmap,
+                { result -> cont.resume(result == PixelCopy.SUCCESS) },
+                Handler(Looper.getMainLooper()),
+              )
+            }.onFailure { cont.resume(false) }
+          }
+        if (copied) {
+          return GhostSnapshotCapture(
+            bitmap = bitmap.asImageBitmap(),
+            capturedViaPixelCopy = true,
+          )
+        }
+      }
+    }
+    return null
+  }
+
   return runCatching {
-    val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     canvas.scale(0.25f, 0.25f)
     view.draw(canvas)
-    bitmap.asImageBitmap()
+    GhostSnapshotCapture(
+      bitmap = bitmap.asImageBitmap(),
+      capturedViaPixelCopy = false,
+    )
   }.getOrNull()
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+  when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+  }
 
 private fun resolvePdfPageIndex(locator: Locator?, positions: List<Locator>): Int {
   locator?.locations?.position?.let { pos -> if (pos >= 1) return pos - 1 }

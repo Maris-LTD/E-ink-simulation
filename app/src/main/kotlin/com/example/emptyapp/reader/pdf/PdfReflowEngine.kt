@@ -78,13 +78,14 @@ object PdfReflowEngine {
         .sortedWith(compareBy<PdfTextLine> { it.bounds.top }.thenBy { it.bounds.left })
 
     val masks = PdfGraphicMasker.detectMasks(analysis.copy(textLines = bodyLines))
+    val isMultiColumn = analysis.columnCount >= 2
     val unmaskedLines =
       PdfGraphicMasker
         .filterMaskedLines(bodyLines, masks)
         .let { filtered ->
-          if (analysis.columnCount >= 2) {
+          if (isMultiColumn) {
             filtered.sortedWith(
-              compareBy<PdfTextLine> { columnOrderBucket(it, analysis.columnCount) }
+              compareBy<PdfTextLine> { columnOrderBucket(it.bounds, analysis.columnCount) }
                 .thenBy { it.bounds.top }
                 .thenBy { it.bounds.left },
             )
@@ -123,15 +124,31 @@ object PdfReflowEngine {
           )
         }
 
-    val items = (paragraphs + images + maskedImages).sortedBy { it.topFraction }
+    val orderedParagraphs =
+      paragraphs.map { placed ->
+        val bucket = if (isMultiColumn) columnOrderBucket(placed.firstLineBounds, analysis.columnCount) else 0
+        OrderedItem(placed.paragraph, bucket)
+      }
+    val orderedImages =
+      (images + maskedImages).map { image ->
+        val bucket = if (isMultiColumn) columnOrderBucket(image.bounds, analysis.columnCount) else 0
+        OrderedItem(image, bucket)
+      }
+    val items =
+      (orderedParagraphs + orderedImages)
+        .sortedWith(compareBy<OrderedItem> { it.columnBucket }.thenBy { it.item.topFraction })
+        .map { it.item }
     if (items.isEmpty()) {
       return ReflowPageResult.FallbackOriginal(ReflowFallbackReason.NO_TEXT)
     }
     return ReflowPageResult.Reflowed(items)
   }
 
-  private fun columnOrderBucket(line: PdfTextLine, columnCount: Int): Int {
-    val b = line.bounds
+  private class OrderedItem(val item: ReflowItem, val columnBucket: Int)
+
+  private class PlacedParagraph(val paragraph: ReflowItem.Paragraph, val firstLineBounds: PdfRect)
+
+  private fun columnOrderBucket(b: PdfRect, columnCount: Int): Int {
     if (b.left < 0.38f && b.right > 0.62f) return 0
     val cx = (b.left + b.right) * 0.5f
     return if (columnCount >= 3) {
@@ -175,7 +192,7 @@ object PdfReflowEngine {
   private fun normalizeEdgeText(raw: String): String =
     raw.trim().replace(Regex("""\d+"""), "#").lowercase()
 
-  private fun mergeLinesIntoParagraphs(lines: List<PdfTextLine>): List<ReflowItem.Paragraph> {
+  private fun mergeLinesIntoParagraphs(lines: List<PdfTextLine>): List<PlacedParagraph> {
     if (lines.isEmpty()) return emptyList()
 
     val sortedHeights = lines.map { it.bounds.height }.filter { it > 0f }.sorted()
@@ -192,9 +209,10 @@ object PdfReflowEngine {
     val rights = lines.map { it.bounds.right }.sorted()
     val baseRight = if (rights.isNotEmpty()) rights[(rights.size * 0.85f).toInt().coerceIn(0, rights.lastIndex)] else 0.9f
 
-    val paragraphs = ArrayList<ReflowItem.Paragraph>()
+    val paragraphs = ArrayList<PlacedParagraph>()
     val currentText = StringBuilder()
     var paragraphTop = lines.first().bounds.top
+    var paragraphFirstBounds = lines.first().bounds
     var fontSizeSum = 0f
     var lineCount = 0
     var prevLine: PdfTextLine? = null
@@ -205,10 +223,14 @@ object PdfReflowEngine {
         val avgFont = if (lineCount > 0) fontSizeSum / lineCount else medianFontSize
         val isHeading = avgFont >= medianFontSize * 1.18f && text.length <= 140
         paragraphs +=
-          ReflowItem.Paragraph(
-            text = text,
-            isHeading = isHeading,
-            topFraction = paragraphTop,
+          PlacedParagraph(
+            paragraph =
+              ReflowItem.Paragraph(
+                text = text,
+                isHeading = isHeading,
+                topFraction = paragraphTop,
+              ),
+            firstLineBounds = paragraphFirstBounds,
           )
       }
       currentText.clear()
@@ -223,6 +245,7 @@ object PdfReflowEngine {
       val prev = prevLine
       if (prev == null) {
         paragraphTop = line.bounds.top
+        paragraphFirstBounds = line.bounds
         currentText.append(cleaned)
         fontSizeSum += line.fontSizePt
         lineCount++
@@ -233,7 +256,8 @@ object PdfReflowEngine {
       val verticalGap = line.bounds.top - prev.bounds.bottom
       val largeVerticalGap = verticalGap > (medianHeight * 1.08f).coerceAtLeast(0.014f)
       val fontChanged = abs(line.fontSizePt - prev.fontSizePt) > 1.5f
-      val lastChar = prev.text.trimEnd().lastOrNull()
+      val lastCharIdx = prev.text.lastNonWhitespaceIndex()
+      val lastChar = if (lastCharIdx >= 0) prev.text[lastCharIdx] else null
       val prevEndedSentence = lastChar != null && lastChar in charArrayOf('.', '!', '?', ':', '…', '”', '"')
       val indentedStart = (line.bounds.left - baseLeft) > 0.008f
       val shortPrevLine = prev.bounds.right < (baseRight - 0.08f)
@@ -243,11 +267,12 @@ object PdfReflowEngine {
       if (startsNewParagraph) {
         flushParagraph()
         paragraphTop = line.bounds.top
+        paragraphFirstBounds = line.bounds
         currentText.append(cleaned)
       } else {
-        val prevStr = currentText.toString()
-        if (prevStr.endsWith("-") && cleaned.firstOrNull()?.isLowerCase() == true) {
-          currentText.deleteCharAt(currentText.length - 1)
+        if (currentText.endsWithHyphenBeforeTrailingSpaces() && cleaned.firstOrNull()?.isLowerCase() == true) {
+          val hyphenIdx = currentText.lastNonWhitespaceIndex()
+          if (hyphenIdx >= 0) currentText.setLength(hyphenIdx)
           currentText.append(cleaned)
         } else {
           if (currentText.isNotEmpty()) currentText.append(' ')
@@ -262,4 +287,17 @@ object PdfReflowEngine {
     flushParagraph()
     return paragraphs
   }
+}
+
+internal fun CharSequence.lastNonWhitespaceIndex(): Int {
+  var index = length - 1
+  while (index >= 0 && this[index].isWhitespace()) {
+    index--
+  }
+  return index
+}
+
+internal fun CharSequence.endsWithHyphenBeforeTrailingSpaces(): Boolean {
+  val idx = lastNonWhitespaceIndex()
+  return idx >= 0 && this[idx] == '-'
 }

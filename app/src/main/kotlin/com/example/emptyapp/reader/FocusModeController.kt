@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.view.WindowManager
+import android.widget.Toast
+import com.example.emptyapp.LocaleHelper
+import com.example.emptyapp.R
 
 class FocusModeController(private val activity: Activity) {
   private val notificationManager =
@@ -37,7 +40,10 @@ class FocusModeController(private val activity: Activity) {
       Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       }
-    runCatching { activity.startActivity(intent) }
+    if (runCatching { activity.startActivity(intent) }.isFailure) {
+      val msg = LocaleHelper.wrap(activity).getString(R.string.error_open_system_settings)
+      Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
+    }
   }
 
   private fun enableDndIfPermitted(): Boolean {

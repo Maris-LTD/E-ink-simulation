@@ -21,13 +21,20 @@ object CoverExtractor {
     targetFile: File,
   ): Boolean =
     withContext(Dispatchers.IO) {
-      val bitmap =
-        when (format) {
-          BookFormat.PDF -> renderPdfFirstPage(bookFile) ?: publication?.cover()
-          BookFormat.EPUB, BookFormat.CBZ -> publication?.cover()
-        } ?: return@withContext false
+      try {
+        val bitmap =
+          when (format) {
+            BookFormat.PDF -> renderPdfFirstPage(bookFile) ?: publication?.cover()
+            BookFormat.EPUB, BookFormat.CBZ -> publication?.cover()
+          } ?: return@withContext false
 
-      saveScaledJpeg(bitmap, targetFile)
+        saveScaledJpeg(bitmap, targetFile)
+      } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+        targetFile.delete()
+        false
+      }
     }
 
   private fun renderPdfFirstPage(pdfFile: File): Bitmap? =
