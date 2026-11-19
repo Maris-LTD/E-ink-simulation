@@ -3,6 +3,7 @@ package com.example.emptyapp.data.sync
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import com.example.emptyapp.LocaleHelper
 import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.AnnotationRepository
@@ -66,6 +67,7 @@ class GoogleDriveSyncManager(
   private val backgroundSyncLock = Any()
   private var backgroundSyncJob: Job? = null
   private var backgroundSyncRequested = false
+  @Volatile private var consecutiveBackgroundFailures = 0
 
   private fun loadSavedCloudBooks(): List<SyncedBookProgress> {
     val raw = prefs.getString(KEY_CLOUD_BOOKS_JSON, null) ?: return emptyList()
@@ -105,7 +107,7 @@ class GoogleDriveSyncManager(
         email = prefs.getString(KEY_EMAIL, null),
         displayName = prefs.getString(KEY_NAME, null),
         lastSyncedAt = prefs.getLong(KEY_LAST_SYNC, 0L),
-        syncBookFiles = prefs.getBoolean(KEY_SYNC_BOOKS, true),
+        syncBookFiles = prefs.getBoolean(KEY_SYNC_BOOKS, false),
         cloudBooks = loadSavedCloudBooks(),
       ),
     )
@@ -178,7 +180,11 @@ class GoogleDriveSyncManager(
       backgroundSyncJob =
         backgroundScope.launch {
           while (true) {
-            delay(BACKGROUND_SYNC_DEBOUNCE_MS)
+            val backoffMs =
+              if (consecutiveBackgroundFailures <= 0) BACKGROUND_SYNC_DEBOUNCE_MS
+              else (BACKGROUND_SYNC_DEBOUNCE_MS shl consecutiveBackgroundFailures.coerceAtMost(5))
+                .coerceAtMost(MAX_BACKGROUND_BACKOFF_MS)
+            delay(backoffMs)
             synchronized(backgroundSyncLock) { backgroundSyncRequested = false }
             runBackgroundSyncOnce()
             synchronized(backgroundSyncLock) {
@@ -194,13 +200,26 @@ class GoogleDriveSyncManager(
 
   private suspend fun runBackgroundSyncOnce() {
     if (!state.value.isSignedIn) return
-    runCatching {
-      val authResult = authorizeScopes()
-      val token = authResult.accessToken
-      if (!authResult.hasResolution() && !token.isNullOrBlank()) {
-        completeSyncWithToken(token)
-      }
+    val result =
+      runCatching {
+        val authResult = authorizeScopes()
+        val token = authResult.accessToken
+        if (!authResult.hasResolution() && !token.isNullOrBlank()) {
+          completeSyncWithToken(token, allowBookFiles = isUnmeteredNetwork())
+        } else {
+          null
+        }
+      }.getOrNull()
+    if (result is SyncActionResult.Synced) {
+      consecutiveBackgroundFailures = 0
+    } else if (result is SyncActionResult.Error) {
+      consecutiveBackgroundFailures = (consecutiveBackgroundFailures + 1).coerceAtMost(5)
     }
+  }
+
+  private fun isUnmeteredNetwork(): Boolean {
+    val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+    return !cm.isActiveNetworkMetered
   }
 
   fun signOut() {
@@ -321,12 +340,17 @@ class GoogleDriveSyncManager(
       }
     }
 
-  private suspend fun completeSyncWithToken(token: String): SyncActionResult =
+  private suspend fun completeSyncWithToken(
+    token: String,
+    allowBookFiles: Boolean = true,
+  ): SyncActionResult =
     mutex.withLock {
       withContext(Dispatchers.IO) {
         runCatching {
           state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_syncing_drive)) }
-          runCatching { fetchUserProfile(token) }
+          if (state.value.email.isNullOrBlank()) {
+            runCatching { fetchUserProfile(token) }
+          }
           state.value.email?.let(tombstones::bindToAccount)
           library.ensureContentHashes()
 
@@ -353,7 +377,7 @@ class GoogleDriveSyncManager(
             rawRemote?.let { SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds) }
 
           var failedBookUploads = 0
-          if (state.value.syncBookFiles) {
+          if (state.value.syncBookFiles && allowBookFiles) {
             if (remote != null) {
               downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes)
             }
@@ -365,9 +389,16 @@ class GoogleDriveSyncManager(
           }
 
           val mergedPayload = buildLocalPayload(remote, deletedHashes, deletedAnnotationIds)
-          val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
-          uploadSyncJson(token, syncFileId, encoded)
+          val needsUpload =
+            syncFileId == null ||
+              remote == null ||
+              mergedPayload.copy(updatedAt = 0L) != remote.copy(updatedAt = 0L)
+          if (needsUpload) {
+            val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
+            uploadSyncJson(token, syncFileId, encoded)
+          }
           saveCloudBooks(mergedPayload.books)
+          consecutiveBackgroundFailures = 0
 
           val now = System.currentTimeMillis()
           prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
@@ -800,5 +831,6 @@ class GoogleDriveSyncManager(
     const val MAX_SYNC_BOOK_BYTES = 100L * 1024L * 1024L
     const val LIST_PAGE_SIZE = 1000
     const val BACKGROUND_SYNC_DEBOUNCE_MS = 20_000L
+    const val MAX_BACKGROUND_BACKOFF_MS = 600_000L
   }
 }

@@ -4,12 +4,14 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.os.BatteryManager
 import android.os.Handler
@@ -51,6 +53,80 @@ class EInkWallpaperService : WallpaperService() {
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
     private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", Locale("vi", "VN"))
     private val monoFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+    private val baseTypeface: Typeface by lazy {
+      ResourcesCompat.getFont(this@EInkWallpaperService, R.font.rubik) ?: Typeface.SANS_SERIF
+    }
+    private val boldTypeface: Typeface by lazy { Typeface.create(baseTypeface, Typeface.BOLD) }
+    private val normalTypeface: Typeface by lazy { Typeface.create(baseTypeface, Typeface.NORMAL) }
+
+    private var lastPaintWidth = -1f
+    private var lastPaintColor = 0
+    private val statusPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.CENTER
+      }
+    }
+    private val clockPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.CENTER
+      }
+    }
+    private val datePaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = normalTypeface
+        textAlign = Paint.Align.CENTER
+      }
+    }
+    private val borderPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+      }
+    }
+    private val fillPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+      }
+    }
+    private val leftPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.LEFT
+      }
+    }
+    private val rightPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.RIGHT
+      }
+    }
+    private val imgPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = monoFilter
+      }
+    }
+    private val badgePaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.CENTER
+      }
+    }
+    private val titlePaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.LEFT
+      }
+    }
+    private val subPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = normalTypeface
+        textAlign = Paint.Align.LEFT
+      }
+    }
+    private val grainTilePaint = Paint()
+    private var grainTileColor: Int = 0
+    private var grainTileBitmap: Bitmap? = null
 
     private val drawTask =
       object : Runnable {
@@ -145,6 +221,8 @@ class EInkWallpaperService : WallpaperService() {
       engineScope.cancel()
       cachedCoverBitmap?.recycle()
       cachedCoverBitmap = null
+      grainTileBitmap?.recycle()
+      grainTileBitmap = null
       super.onDestroy()
     }
 
@@ -192,31 +270,8 @@ class EInkWallpaperService : WallpaperService() {
         else null
       val batteryPct = readBatteryPercent(applicationContext)
       val now = LocalDateTime.now()
-      val baseTypeface = ResourcesCompat.getFont(this@EInkWallpaperService, R.font.rubik) ?: Typeface.SANS_SERIF
+      ensurePaints(w, fgColor)
 
-      val statusPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          alpha = 175
-          textSize = w * 0.033f
-          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
-          textAlign = Paint.Align.CENTER
-        }
-      val clockPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          textSize = w * 0.21f
-          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
-          textAlign = Paint.Align.CENTER
-        }
-      val datePaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          alpha = 185
-          textSize = w * 0.042f
-          typeface = Typeface.create(baseTypeface, Typeface.NORMAL)
-          textAlign = Paint.Align.CENTER
-        }
       val rankText = rank?.let { localized.getString(com.example.emptyapp.R.string.wallpaper_rank_format, it.level, it.title) } ?: localized.getString(com.example.emptyapp.R.string.app_name)
       val dateLocale =
         if (com.example.emptyapp.LocaleHelper.effectiveLanguageCode(applicationContext) == "en") Locale.ENGLISH
@@ -230,19 +285,6 @@ class EInkWallpaperService : WallpaperService() {
       )
       canvas.drawText(now.format(timeFormatter), w / 2f, h * 0.29f, clockPaint)
       canvas.drawText(now.format(localizedDateFormatter), w / 2f, h * 0.34f, datePaint)
-
-      val strokeW = (w * 0.004f).coerceAtLeast(2f)
-      val borderPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          style = Paint.Style.STROKE
-          strokeWidth = strokeW
-        }
-      val fillPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          style = Paint.Style.FILL
-        }
 
       // Lock-screen reading excerpt panel pushed to the bottom to stay clear of notifications
       val lockState = container?.lockScreenReading?.state?.value
@@ -267,18 +309,6 @@ class EInkWallpaperService : WallpaperService() {
       // Daily goal bar
       val goalTop = h * 0.635f
       val goalBarH = w * 0.022f
-      val leftPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          alpha = 175
-          textSize = w * 0.032f
-          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
-          textAlign = Paint.Align.LEFT
-        }
-      val rightPaint =
-        Paint(leftPaint).apply {
-          textAlign = Paint.Align.RIGHT
-        }
       canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_daily_goal), padX, goalTop - w * 0.02f, leftPaint)
       canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_minutes_format, todayMin, goalMin), w - padX, goalTop - w * 0.02f, rightPaint)
       canvas.drawRect(padX, goalTop, w - padX, goalTop + goalBarH, borderPaint)
@@ -302,15 +332,9 @@ class EInkWallpaperService : WallpaperService() {
       val coverFile = currentBook?.let { container?.library?.coverFileOf(it) }
       val coverBmp = loadCachedCover(coverFile)
       if (coverBmp != null) {
-        val imgPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { colorFilter = monoFilter }
         val src = Rect(0, 0, coverBmp.width, coverBmp.height)
         canvas.drawBitmap(coverBmp, src, coverRect, imgPaint)
       } else {
-        val badgePaint =
-          Paint(leftPaint).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = w * 0.028f
-          }
         canvas.drawText(
           currentBook?.format?.label ?: "BOOK",
           coverRect.centerX(),
@@ -321,21 +345,6 @@ class EInkWallpaperService : WallpaperService() {
 
       val textX = coverRect.right + w * 0.04f
       val maxTextW = (w - padX - innerPad) - textX
-      val titlePaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          textSize = w * 0.044f
-          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
-          textAlign = Paint.Align.LEFT
-        }
-      val subPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          alpha = 180
-          textSize = w * 0.034f
-          typeface = Typeface.create(baseTypeface, Typeface.NORMAL)
-          textAlign = Paint.Align.LEFT
-        }
 
       canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_currently_reading), textX, cardTop + innerPad + w * 0.032f, leftPaint)
       val rawTitle = currentBook?.title ?: localized.getString(com.example.emptyapp.R.string.wallpaper_no_book)
@@ -363,34 +372,93 @@ class EInkWallpaperService : WallpaperService() {
       }
     }
 
+    private fun ensurePaints(w: Float, fgColor: Int) {
+      if (w == lastPaintWidth && fgColor == lastPaintColor) return
+      lastPaintWidth = w
+      lastPaintColor = fgColor
+      statusPaint.apply {
+        color = fgColor
+        alpha = 175
+        textSize = w * 0.033f
+      }
+      clockPaint.apply {
+        color = fgColor
+        textSize = w * 0.21f
+      }
+      datePaint.apply {
+        color = fgColor
+        alpha = 185
+        textSize = w * 0.042f
+      }
+      borderPaint.apply {
+        color = fgColor
+        strokeWidth = (w * 0.004f).coerceAtLeast(2f)
+      }
+      fillPaint.color = fgColor
+      leftPaint.apply {
+        color = fgColor
+        alpha = 175
+        textSize = w * 0.032f
+      }
+      rightPaint.apply {
+        color = fgColor
+        alpha = 175
+        textSize = w * 0.032f
+      }
+      badgePaint.apply {
+        color = fgColor
+        alpha = 175
+        textSize = w * 0.028f
+      }
+      titlePaint.apply {
+        color = fgColor
+        textSize = w * 0.044f
+      }
+      subPaint.apply {
+        color = fgColor
+        alpha = 180
+        textSize = w * 0.034f
+      }
+    }
+
     private fun drawPaperGrain(
       canvas: Canvas,
       w: Float,
       h: Float,
       fgColor: Int,
     ) {
-      val grainPaint =
-        Paint().apply {
-          color = fgColor
-          alpha = 18
-          strokeWidth = 2f
-        }
-      var seed = 0x5DEECE66DL
-      val step = (w / 28f).coerceAtLeast(24f).toInt()
-      var y = step / 2
-      while (y < h.toInt()) {
-        var x = step / 2
-        while (x < w.toInt()) {
-          seed = (seed * 0x5DEECE66DL + 0xBL) and 0xFFFFFFFFFFFFL
-          if ((seed and 3L) == 0L) {
-            val ox = ((seed shr 4) % 7).toFloat() - 3f
-            val oy = ((seed shr 8) % 7).toFloat() - 3f
-            canvas.drawPoint(x + ox, y + oy, grainPaint)
+      if (grainTileBitmap == null || grainTileColor != fgColor) {
+        grainTileBitmap?.recycle()
+        val tileSize = 256
+        val tile = Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888)
+        val tileCanvas = Canvas(tile)
+        val dotPaint =
+          Paint().apply {
+            color = fgColor
+            alpha = 18
+            strokeWidth = 2f
           }
-          x += step
+        var seed = 0x5DEECE66DL
+        val step = 28
+        var y = step / 2
+        while (y < tileSize) {
+          var x = step / 2
+          while (x < tileSize) {
+            seed = (seed * 0x5DEECE66DL + 0xBL) and 0xFFFFFFFFFFFFL
+            if ((seed and 3L) == 0L) {
+              val ox = ((seed shr 4) % 7).toFloat() - 3f
+              val oy = ((seed shr 8) % 7).toFloat() - 3f
+              tileCanvas.drawPoint(x + ox, y + oy, dotPaint)
+            }
+            x += step
+          }
+          y += step
         }
-        y += step
+        grainTileBitmap = tile
+        grainTileColor = fgColor
+        grainTilePaint.shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
       }
+      canvas.drawRect(0f, 0f, w, h, grainTilePaint)
     }
 
     private fun loadCachedCover(file: File?): Bitmap? {
@@ -403,7 +471,15 @@ class EInkWallpaperService : WallpaperService() {
       }
       if (path == cachedCoverPath && cachedCoverBitmap != null) return cachedCoverBitmap
       cachedCoverBitmap?.recycle()
-      cachedCoverBitmap = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+      cachedCoverBitmap =
+        runCatching {
+          val opts =
+            BitmapFactory.Options().apply {
+              inSampleSize = 2
+              inPreferredConfig = Bitmap.Config.RGB_565
+            }
+          BitmapFactory.decodeFile(path, opts)
+        }.getOrNull()
       cachedCoverPath = path
       return cachedCoverBitmap
     }

@@ -28,7 +28,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 17. P7 — PDF: phân tích lười, classifier dùng chung, prefetch, cache vector, region cache
 - [x] 18. P8 — Reader EPUB: ghosting PixelCopy, lock-screen IO, JS inject, bookmark parse, recomposition
 - [x] 19. P9 — Library/launcher: cover cache theo byte, remember stats, clock loop, wallpaper check, backfill cover, app list
-- [ ] 20. P10 — Wallpaper cache Paint/grain, sync WorkManager + backoff, upload sách chỉ Wi-Fi
+- [x] 20. P10 — Wallpaper cache Paint/grain, sync WorkManager + backoff, upload sách chỉ Wi-Fi
 
 ## Đợt 4 — UX
 - [ ] 21. U1 — Giữ state thư viện khi mở Thống kê
@@ -380,3 +380,16 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** chưa tách `ReadingGamification` sang trả `@StringRes` (để giữ nguyên signature cho unit test hiện có).
 
 **Bước tiếp theo:** mục 20 — P10: cache `Paint`/grain cho `EInkWallpaperService`, tối ưu sync nền (`GoogleDriveSyncManager` / `WorkManager` + chỉ upload file sách qua Wi-Fi).
+
+### 20. P10 — Tối ưu Wallpaper, Sync nền & tiết kiệm dữ liệu di động — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Wallpaper tạo lại `Paint`, `Typeface` & vẽ ~1700 điểm grain mỗi frame:** `EInkWallpaperService.kt` cache sẵn `baseTypeface`, `boldTypeface`, `normalTypeface` và toàn bộ 11 `Paint` trên `Engine` (chỉ cập nhật khi `w` hoặc `fgColor` đổi qua `ensurePaints`); thay vòng lặp vẽ grain mỗi frame bằng `grainTileBitmap` (`256×256`) + `BitmapShader` (`TileMode.REPEAT`), vẽ toàn màn hình trong 1 lệnh `drawRect` và recycle trong `onDestroy()`; downsample cover `inSampleSize = 2`, `RGB_565` trong `loadCachedCover`.
+- **Sync gọi `fetchUserProfile` mỗi lần & upload JSON dù không đổi:** `GoogleDriveSyncManager.kt` chỉ gọi `fetchUserProfile(token)` khi `email` đang trống; so sánh `mergedPayload` với `remote` (bỏ qua `updatedAt`) trước khi gọi `uploadSyncJson`.
+- **Sync nền không backoff & upload sách qua 4G mặc định:** `KEY_SYNC_BOOKS` mặc định `false` cho user mới; `runBackgroundSyncOnce()` kiểm tra `isUnmeteredNetwork()` (`!cm.isActiveNetworkMetered`) trước khi tải/đăng file sách và áp dụng exponential backoff (`20s * 2^failures`, tối đa 10 phút) khi lỗi liên tiếp.
+- **PDFBox + Pdfium:** cả hai vẫn được giữ nguyên vì `PdfPageAnalyzer` dùng PDFBox để trích xuất chữ/vector cho reflow & phân loại, còn `ReadiumEngine` dùng Pdfium cho metadata/positions.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: bật Live Wallpaper kiểm tra chữ/grain/cover; sync nền khi không đổi dữ liệu không upload lại JSON, khi dùng mạng di động không tự upload file sách.
+
+**Còn để lại:** hết Đợt 3. Sync nền hiện dùng `backgroundScope` + exponential backoff (chưa kéo thêm dependency `WorkManager` nên sẽ không chạy khi process bị OS kill hẳn).
+
+**Bước tiếp theo:** sang Đợt 4 — mục 21 (U1): giữ trạng thái Thư viện (tab, bộ lọc, tìm kiếm, vị trí cuộn, view mode) khi mở màn Thống kê hoặc xoay màn hình.
