@@ -3,6 +3,8 @@ package com.example.emptyapp.ui.eink
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
@@ -16,6 +18,9 @@ object CoverBitmapCache {
           .coerceIn(1L, Int.MAX_VALUE.toLong())
           .toInt()
     }
+
+  fun colorFilterFor(grayscale: Boolean): ColorFilter? =
+    if (grayscale) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null
 
   fun get(path: String?): ImageBitmap? = path?.let { cache.get(it) }
 

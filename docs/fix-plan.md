@@ -75,7 +75,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle
 
 ### 5E — Thư viện, Launcher, Wallpaper, Widget, l10n, a11y
-- [ ] 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm"
+- [x] 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm"
 - [ ] 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`
 - [ ] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
 - [ ] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
@@ -1147,3 +1147,24 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 52 — M19 + M20: Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm".
+
+### 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm" — 2026-11-19
+**Nguyên nhân:**
+- **M19 (REG #15):** `CoverBitmapCache` trả bitmap bìa màu nguyên bản để nơi hiển thị tự áp `ColorFilter` theo `settings.grayscale`, nhưng `CurrentBookHeroCard` trong `LauncherActivity.kt` vẽ `Image(bitmap = currentCover, ...)` mà chưa truyền `grayscale` / `colorFilter`.
+- **M20 (REG #27):** `MinimalistHomePage` dùng `Column(fillMaxSize, SpaceBetween)` không cuộn và hiển thị toàn bộ `pinnedApps` không giới hạn; khi ghim nhiều app (hoặc trên màn hình thấp / xoay ngang), nội dung phía trên đẩy thanh dock `Library` / `Apps` ở đáy ra khỏi màn hình.
+
+**Đã sửa:**
+- `ui/eink/CoverBitmapCache.kt` & `ui/library/BookCover.kt` (**M19**):
+  - Thêm helper dùng chung `CoverBitmapCache.colorFilterFor(grayscale: Boolean)` trả về `ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })` khi `grayscale == true` và `null` khi `false`; `BookCover` gọi lại helper này qua `remember(grayscale)`.
+- `LauncherActivity.kt`, `res/values/strings.xml`, `res/values-vi/strings.xml` (**M19 + M20**):
+  - Truyền `grayscale = settings.grayscale` qua `EInkHomePager` → `MinimalistHomePage` → `CurrentBookHeroCard`, áp `remember(grayscale) { CoverBitmapCache.colorFilterFor(grayscale) }` cho `Image` bìa sách.
+  - Tách thanh dock đáy thành `LauncherBottomDock` cố định ngoài vùng nội dung chính; bọc toàn bộ phần nội dung phía trên dock trong `BoxWithConstraints(Modifier.weight(1f, fill = true).fillMaxWidth())` với `Column` có `verticalScroll(rememberScrollState()).heightIn(min = maxHeight)` và `HomeSectionArrangement` (giữ giãn đều `SpaceBetween` khi đủ chỗ và khoảng cách tối thiểu `12.dp` khi cuộn trên màn hình thấp/xoay ngang).
+  - Tách hàm thuần Kotlin `slicePinnedAppsForHome(pinnedApps, maxVisible = HOME_PINNED_MAX_VISIBLE)` (giới hạn tối đa `8` app = 2 hàng trên Home) và `layoutHomeSectionPositions(...)`; khi `overflowCount > 0` hiển thị thêm nút `OutlinedButton` `"Xem thêm (+%1$d) ›"` / `"More (+%1$d) ›"` (`launcher_pinned_more`) mở App Drawer.
+- `test/.../LauncherHomeLayoutTest.kt`:
+  - Thêm 3 unit test mới (`slicePinnedAppsForHomeKeepsAllAppsUpToMaxAndCountsOverflowAboveMax`, `layoutHomeSectionPositionsUsesMinimumSpacingWhenOverflowingAndSpaceBetweenWhenExtraHeightExists`, `coverBitmapCacheColorFilterForMatchesGrayscaleFlag`).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **252/252 tests pass** qua 43 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 53 — M21 + L27: Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`.

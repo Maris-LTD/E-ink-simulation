@@ -25,6 +25,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -45,8 +47,10 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -81,6 +85,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -155,6 +160,7 @@ class LauncherActivity : ComponentActivity() {
             highlightsCount = highlights.size,
             stats = stats,
             tone = settings.tone,
+            grayscale = settings.grayscale,
             coverOf = container.library::coverFileOf,
             onToneChange = { tone -> container.settings.update { it.copy(tone = tone) } },
             onOpenLibrary = { startActivity(Intent(this, MainActivity::class.java)) },
@@ -180,6 +186,7 @@ private fun EInkHomePager(
   highlightsCount: Int,
   stats: ReadingStatsData,
   tone: EInkTone,
+  grayscale: Boolean,
   coverOf: (BookEntry) -> File?,
   onToneChange: (EInkTone) -> Unit,
   onOpenLibrary: () -> Unit,
@@ -283,6 +290,7 @@ private fun EInkHomePager(
           highlightsCount = highlightsCount,
           stats = stats,
           tone = tone,
+          grayscale = grayscale,
           pinnedApps = remember(apps, resolvedPinned) { apps.filter { it.packageName in resolvedPinned } },
           coverOf = coverOf,
           onToneChange = onToneChange,
@@ -307,12 +315,81 @@ private fun EInkHomePager(
   }
 }
 
+internal const val HOME_PINNED_MAX_VISIBLE = 8
+
+internal data class PinnedAppsHomeSlice<T>(
+  val visibleApps: List<T>,
+  val overflowCount: Int,
+)
+
+internal fun <T> slicePinnedAppsForHome(
+  pinnedApps: List<T>,
+  maxVisible: Int = HOME_PINNED_MAX_VISIBLE,
+): PinnedAppsHomeSlice<T> {
+  val cap = maxVisible.coerceAtLeast(0)
+  if (pinnedApps.size <= cap) {
+    return PinnedAppsHomeSlice(visibleApps = pinnedApps, overflowCount = 0)
+  }
+  return PinnedAppsHomeSlice(
+    visibleApps = pinnedApps.take(cap),
+    overflowCount = pinnedApps.size - cap,
+  )
+}
+
+internal fun layoutHomeSectionPositions(
+  totalSize: Int,
+  sizes: IntArray,
+  spacingPx: Int,
+  outPositions: IntArray,
+) {
+  if (sizes.isEmpty()) return
+  if (sizes.size == 1) {
+    outPositions[0] = 0
+    return
+  }
+  val contentSum = sizes.sum()
+  val minTotal = contentSum + spacingPx * (sizes.size - 1)
+  if (totalSize <= minTotal) {
+    var y = 0
+    for (i in sizes.indices) {
+      outPositions[i] = y
+      y += sizes[i] + spacingPx
+    }
+  } else {
+    val gap = (totalSize - contentSum).toFloat() / (sizes.size - 1)
+    var y = 0f
+    for (i in sizes.indices) {
+      outPositions[i] = y.toInt()
+      y += sizes[i] + gap
+    }
+  }
+}
+
+private val HomeSectionArrangement =
+  object : Arrangement.Vertical {
+    override val spacing: Dp = 12.dp
+
+    override fun Density.arrange(
+      totalSize: Int,
+      sizes: IntArray,
+      outPositions: IntArray,
+    ) {
+      layoutHomeSectionPositions(
+        totalSize = totalSize,
+        sizes = sizes,
+        spacingPx = spacing.roundToPx(),
+        outPositions = outPositions,
+      )
+    }
+  }
+
 @Composable
 private fun MinimalistHomePage(
   books: List<BookEntry>,
   highlightsCount: Int,
   stats: ReadingStatsData,
   tone: EInkTone,
+  grayscale: Boolean,
   pinnedApps: List<LaunchableApp>,
   coverOf: (BookEntry) -> File?,
   onToneChange: (EInkTone) -> Unit,
@@ -355,149 +432,173 @@ private fun MinimalistHomePage(
   val todayMin = stats.todaySeconds() / 60
   val goalMin = stats.dailyGoalMinutes.coerceAtLeast(5)
   val goalProgress = (stats.todaySeconds().toFloat() / (goalMin * 60f)).coerceIn(0f, 1f)
+  val pinnedSlice = remember(pinnedApps) { slicePinnedAppsForHome(pinnedApps) }
 
   Column(
     modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp),
-    verticalArrangement = Arrangement.SpaceBetween,
+    verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    // 1. Top status bar: Battery + Streak + Quick Tone Swatches
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      EInkText(
-        text = stringResource(R.string.launcher_status_format, batteryPct, stats.currentStreak),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.secondary,
-      )
-      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        EInkTone.entries.forEach { option ->
-          val selected = option == tone
-          Box(
-            modifier =
-              Modifier.size(18.dp)
-                .clip(CircleShape)
-                .background(Color(option.background))
-                .border(
-                  width = if (selected) 2.2.dp else 1.dp,
-                  color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                  shape = CircleShape,
-                )
-                .clickable { onToneChange(option) },
-          )
-        }
-      }
-    }
-
-    // 2. Hero Clock + Rank + Daily Goal
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      EInkText(
-        text = timeText,
-        style = MaterialTheme.typography.displayMedium.copy(fontSize = 46.sp),
-      )
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    BoxWithConstraints(modifier = Modifier.weight(1f, fill = true).fillMaxWidth()) {
+      Column(
+        modifier =
+          Modifier.fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .heightIn(min = maxHeight),
+        verticalArrangement = HomeSectionArrangement,
       ) {
-        EInkText(
-          text = dateText,
-          style = MaterialTheme.typography.bodyLarge,
-          color = MaterialTheme.colorScheme.secondary,
-        )
-        EInkText(
-          text = stringResource(R.string.stats_rank_format, rank.level, rank.title),
-          style = MaterialTheme.typography.labelMedium,
-          modifier =
-            Modifier.border(1.dp, MaterialTheme.colorScheme.outline)
-              .padding(horizontal = 8.dp, vertical = 3.dp),
-        )
-      }
-      Spacer(modifier = Modifier.height(4.dp))
-      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // 1. Top status bar: Battery + Streak + Quick Tone Swatches
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
         ) {
           EInkText(
-            text = stringResource(R.string.stats_daily_goal),
-            style = MaterialTheme.typography.labelSmall,
+            text = stringResource(R.string.launcher_status_format, batteryPct, stats.currentStreak),
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.secondary,
           )
-          EInkText(
-            text = stringResource(R.string.wallpaper_minutes_format, todayMin, goalMin),
-            style = MaterialTheme.typography.labelSmall,
-          )
-        }
-        Box(
-          modifier =
-            Modifier.fillMaxWidth()
-              .height(8.dp)
-              .border(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
-          if (goalProgress > 0f) {
-            Box(
-              modifier =
-                Modifier.fillMaxWidth(goalProgress)
-                  .fillMaxHeight()
-                  .background(MaterialTheme.colorScheme.primary),
-            )
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            EInkTone.entries.forEach { option ->
+              val selected = option == tone
+              Box(
+                modifier =
+                  Modifier.size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color(option.background))
+                    .border(
+                      width = if (selected) 2.2.dp else 1.dp,
+                      color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                      shape = CircleShape,
+                    )
+                    .clickable { onToneChange(option) },
+              )
+            }
           }
         }
-      }
-    }
 
-    // 3. Currently Reading Card with Real Book Cover
-    CurrentBookHeroCard(
-      book = currentBook,
-      coverFile = currentBook?.let(coverOf),
-      onClick = {
-        if (currentBook != null) onOpenBook(currentBook.id) else onOpenLibrary()
-      },
-    )
-
-    // 4. Pinned Apps Strip / Grid
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        EInkText(
-          text = stringResource(R.string.launcher_pinned_apps),
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.secondary,
-        )
-        EInkText(
-          text = stringResource(R.string.launcher_long_press_unpin),
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.secondary,
-        )
-      }
-      if (pinnedApps.isEmpty()) {
-        EInkText(
-          text = stringResource(R.string.launcher_no_pinned),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.secondary,
-        )
-      } else {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          pinnedApps.chunked(4).forEach { rowApps ->
+        // 2. Hero Clock + Rank + Daily Goal
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          EInkText(
+            text = timeText,
+            style = MaterialTheme.typography.displayMedium.copy(fontSize = 46.sp),
+          )
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            EInkText(
+              text = dateText,
+              style = MaterialTheme.typography.bodyLarge,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+            EInkText(
+              text = stringResource(R.string.stats_rank_format, rank.level, rank.title),
+              style = MaterialTheme.typography.labelMedium,
+              modifier =
+                Modifier.border(1.dp, MaterialTheme.colorScheme.outline)
+                  .padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+          }
+          Spacer(modifier = Modifier.height(4.dp))
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
               modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.spacedBy(10.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-              rowApps.forEach { app ->
-                PinnedAppTile(
-                  app = app,
-                  onClick = { onLaunchApp(app.packageName) },
-                  onLongClick = { onUnpinApp(app) },
-                  modifier = Modifier.weight(1f),
+              EInkText(
+                text = stringResource(R.string.stats_daily_goal),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary,
+              )
+              EInkText(
+                text = stringResource(R.string.wallpaper_minutes_format, todayMin, goalMin),
+                style = MaterialTheme.typography.labelSmall,
+              )
+            }
+            Box(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .height(8.dp)
+                  .border(1.dp, MaterialTheme.colorScheme.outline),
+            ) {
+              if (goalProgress > 0f) {
+                Box(
+                  modifier =
+                    Modifier.fillMaxWidth(goalProgress)
+                      .fillMaxHeight()
+                      .background(MaterialTheme.colorScheme.primary),
                 )
               }
-              repeat(4 - rowApps.size) {
-                Spacer(modifier = Modifier.weight(1f))
+            }
+          }
+        }
+
+        // 3. Currently Reading Card with Real Book Cover
+        CurrentBookHeroCard(
+          book = currentBook,
+          coverFile = currentBook?.let(coverOf),
+          grayscale = grayscale,
+          onClick = {
+            if (currentBook != null) onOpenBook(currentBook.id) else onOpenLibrary()
+          },
+        )
+
+        // 4. Pinned Apps Strip / Grid
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            EInkText(
+              text = stringResource(R.string.launcher_pinned_apps),
+              style = MaterialTheme.typography.labelSmall,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+            EInkText(
+              text = stringResource(R.string.launcher_long_press_unpin),
+              style = MaterialTheme.typography.labelSmall,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+          }
+          if (pinnedSlice.visibleApps.isEmpty()) {
+            EInkText(
+              text = stringResource(R.string.launcher_no_pinned),
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+          } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              pinnedSlice.visibleApps.chunked(4).forEach { rowApps ->
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                  rowApps.forEach { app ->
+                    PinnedAppTile(
+                      app = app,
+                      onClick = { onLaunchApp(app.packageName) },
+                      onLongClick = { onUnpinApp(app) },
+                      modifier = Modifier.weight(1f),
+                    )
+                  }
+                  repeat(4 - rowApps.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                  }
+                }
+              }
+              if (pinnedSlice.overflowCount > 0) {
+                OutlinedButton(
+                  onClick = onOpenDrawer,
+                  modifier = Modifier.fillMaxWidth(),
+                  contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                  EInkText(
+                    text = stringResource(R.string.launcher_pinned_more, pinnedSlice.overflowCount),
+                    style = MaterialTheme.typography.labelMedium,
+                  )
+                }
               }
             }
           }
@@ -506,16 +607,27 @@ private fun MinimalistHomePage(
     }
 
     // 5. Bottom E-Ink Dock
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-      OutlinedButton(onClick = onOpenLibrary, modifier = Modifier.weight(1f)) {
-        EInkText(stringResource(R.string.launcher_library_btn))
-      }
-      OutlinedButton(onClick = onOpenDrawer, modifier = Modifier.weight(1f)) {
-        EInkText(stringResource(R.string.launcher_apps_btn))
-      }
+    LauncherBottomDock(
+      onOpenLibrary = onOpenLibrary,
+      onOpenDrawer = onOpenDrawer,
+    )
+  }
+}
+
+@Composable
+private fun LauncherBottomDock(
+  onOpenLibrary: () -> Unit,
+  onOpenDrawer: () -> Unit,
+) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    OutlinedButton(onClick = onOpenLibrary, modifier = Modifier.weight(1f)) {
+      EInkText(stringResource(R.string.launcher_library_btn))
+    }
+    OutlinedButton(onClick = onOpenDrawer, modifier = Modifier.weight(1f)) {
+      EInkText(stringResource(R.string.launcher_apps_btn))
     }
   }
 }
@@ -524,6 +636,7 @@ private fun MinimalistHomePage(
 private fun CurrentBookHeroCard(
   book: BookEntry?,
   coverFile: File?,
+  grayscale: Boolean,
   onClick: () -> Unit,
 ) {
   val coverPath = coverFile?.absolutePath
@@ -554,10 +667,12 @@ private fun CurrentBookHeroCard(
     ) {
       val currentCover = coverBitmap
       if (currentCover != null) {
+        val coverFilter = remember(grayscale) { CoverBitmapCache.colorFilterFor(grayscale) }
         Image(
           bitmap = currentCover,
           contentDescription = book?.title,
           contentScale = ContentScale.Crop,
+          colorFilter = coverFilter,
           modifier = Modifier.fillMaxSize(),
         )
       } else {

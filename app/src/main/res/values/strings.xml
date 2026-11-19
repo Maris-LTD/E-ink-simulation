@@ -339,6 +339,7 @@
     <string name="launcher_status_format">Battery %1$d%% · Streak %2$dd</string>
     <string name="launcher_pinned_apps">PINNED APPS</string>
     <string name="launcher_long_press_unpin">Long-press to unpin</string>
+    <string name="launcher_pinned_more">More (+%1$d) ›</string>
     <string name="launcher_no_pinned">No pinned apps yet — swipe to the App Drawer and long-press to pin.</string>
     <string name="launcher_library_btn">Book Library</string>
     <string name="launcher_apps_btn">Apps ›</string>

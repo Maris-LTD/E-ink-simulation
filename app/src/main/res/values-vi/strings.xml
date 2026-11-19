@@ -338,6 +338,7 @@
     <string name="launcher_status_format">Pin %1$d%% · Chuỗi %2$dd</string>
     <string name="launcher_pinned_apps">ỨNG DỤNG GHIM</string>
     <string name="launcher_long_press_unpin">Nhấn giữ để bỏ</string>
+    <string name="launcher_pinned_more">Xem thêm (+%1$d) ›</string>
     <string name="launcher_no_pinned">Chưa ghim app nào — vuốt sang Ngăn ứng dụng và nhấn giữ để ghim.</string>
     <string name="launcher_library_btn">Thư viện sách</string>
     <string name="launcher_apps_btn">Ứng dụng ›</string>
