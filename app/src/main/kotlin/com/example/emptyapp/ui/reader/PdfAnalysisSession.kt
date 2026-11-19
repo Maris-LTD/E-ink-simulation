@@ -28,6 +28,7 @@ internal class PdfAnalysisSession(
   private val pageCount: Int,
   private val openDocument: () -> PdfAnalysisDocument?,
   ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+  private val loadCachedPage: ((pageIndex: Int) -> PdfPageAnalysis?)? = null,
 ) {
   @OptIn(ExperimentalCoroutinesApi::class)
   private val analysisDispatcher: CoroutineDispatcher = ioDispatcher.limitedParallelism(1)
@@ -64,6 +65,22 @@ internal class PdfAnalysisSession(
     return withContext(analysisDispatcher) {
       if (closed || pageIndex !in 0 until pageCount) return@withContext null
       analysisCache[pageIndex]?.let { return@withContext it }
+      val cachedFromDisk =
+        try {
+          loadCachedPage?.invoke(pageIndex)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Throwable) {
+          null
+        }
+      if (cachedFromDisk != null) {
+        if (!closed) {
+          analysisCache[pageIndex] = cachedFromDisk
+          mutableAnalysisVersion.update { it + 1 }
+          return@withContext cachedFromDisk
+        }
+        return@withContext null
+      }
       val doc = ensureDocumentLocked()
       if (closed) return@withContext null
       val analyzed =

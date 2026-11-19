@@ -573,12 +573,22 @@ class ReaderViewModel(
     viewModelScope.launch {
       val result =
         withContext(Dispatchers.IO) {
-          val cached =
+          val cache =
             context?.let {
-              com.example.emptyapp.reader.pdf.PdfDocumentCache(File(it.filesDir, "pdf_cache")).load(file)
+              com.example.emptyapp.reader.pdf.PdfDocumentCache(File(it.filesDir, "pdf_cache"))
             }
-          if (!cached.isNullOrEmpty()) {
-            PdfDocumentClassifier.classifyCached(cached)
+          val manifest = cache?.loadManifest(file)
+          val cachedSamples =
+            if (manifest != null && manifest.pageCount > 0) {
+              val sampleIndices = PdfDocumentClassifier.samplePageIndices(manifest.pageCount)
+              val loaded = cache.loadPages(file, sampleIndices)
+              val samples = sampleIndices.mapNotNull { loaded[it] }
+              if (samples.size == sampleIndices.size) samples else null
+            } else {
+              null
+            }
+          if (!cachedSamples.isNullOrEmpty()) {
+            PdfDocumentClassifier.classify(cachedSamples)
           } else {
             context?.let { com.example.emptyapp.reader.pdf.PdfPageAnalyzer.ensureInitialized(it) }
             PdfDocumentClassifier.classifyFile(file)

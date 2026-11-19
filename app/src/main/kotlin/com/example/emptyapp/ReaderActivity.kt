@@ -45,6 +45,7 @@ import com.example.emptyapp.reader.LockScreenReadingState
 import com.example.emptyapp.reader.LockScreenTextChunker
 import com.example.emptyapp.reader.OrientationLock
 import com.example.emptyapp.reader.pdf.PdfDocumentCache
+import com.example.emptyapp.reader.pdf.PdfPageAnalysis
 import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
 import com.example.emptyapp.reader.pdf.PdfReflowEngine
 import com.example.emptyapp.reader.pdf.ReflowItem
@@ -84,6 +85,7 @@ class ReaderActivity : FragmentActivity() {
   private var lastLockScreenPositionKey: String? = null
   private var overrideLocatorConsumedInState: Boolean = false
   @Volatile private var cachedChapterSnippets: Pair<String, List<String>>? = null
+  private val cachedPdfPageSnippets = PdfSnippetMemoryCache()
   private val requestNotificationPermission =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
       if (granted) {
@@ -295,24 +297,20 @@ class ReaderActivity : FragmentActivity() {
       val pageIdx =
         (locator?.locations?.position?.minus(1) ?: (progress * (totalPages - 1)).toInt())
           .coerceIn(0, totalPages - 1)
-      val cached = PdfDocumentCache(File(filesDir, "pdf_cache")).load(ready.file)
-      val analyses =
-        if (cached != null && pageIdx in cached.indices) {
-          listOfNotNull(cached.getOrNull(pageIdx), cached.getOrNull(pageIdx + 1))
-        } else {
-          PdfPageAnalyzer.ensureInitialized(applicationContext)
-          PdfPageAnalyzer.analyzePages(ready.file, listOf(pageIdx, pageIdx + 1))
-        }
-      val current = analyses.firstOrNull { it.pageIndex == pageIdx } ?: return emptyList<String>() to 0
-      val neighbors = analyses.filter { it.pageIndex != pageIdx }
-      val reflowed = PdfReflowEngine.buildReflowPage(current, neighbors) as? ReflowPageResult.Reflowed
-        ?: return emptyList<String>() to 0
-      val bodyText =
-        reflowed.items
-          .filterIsInstance<ReflowItem.Paragraph>()
-          .joinToString("\n\n") { it.text }
-      val snippets = LockScreenTextChunker.chunkText(bodyText, maxCharsPerSnippet = 260)
-      return snippets to 0
+      val appCtx = applicationContext
+      val cache = PdfDocumentCache(File(appCtx.filesDir, "pdf_cache"))
+      return extractPdfLockScreenSnippets(
+        bookId = ready.book.id,
+        file = ready.file,
+        pageIdx = pageIdx,
+        totalPages = totalPages,
+        snippetCache = cachedPdfPageSnippets,
+        documentCache = cache,
+        analyzeFallback = { pdfFile, indices ->
+          PdfPageAnalyzer.ensureInitialized(appCtx)
+          PdfPageAnalyzer.analyzePages(pdfFile, indices)
+        },
+      )
     } else {
       val targetHref = locator?.href ?: ready.publication.readingOrder.firstOrNull()?.url() ?: return emptyList<String>() to 0
       val link =
@@ -628,4 +626,57 @@ class ReaderActivity : FragmentActivity() {
           }
         }
   }
+}
+
+internal class PdfSnippetMemoryCache(private val maxEntries: Int = 16) {
+  private val lock = Any()
+  private val entries =
+    object : LinkedHashMap<Pair<String, Int>, List<String>>(maxEntries, 0.75f, true) {
+      override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, Int>, List<String>>?): Boolean =
+        size > maxEntries
+    }
+
+  fun get(bookId: String, pageIndex: Int): List<String>? =
+    synchronized(lock) { entries[bookId to pageIndex] }
+
+  fun put(bookId: String, pageIndex: Int, snippets: List<String>) {
+    synchronized(lock) { entries[bookId to pageIndex] = snippets }
+  }
+}
+
+internal fun extractPdfLockScreenSnippets(
+  bookId: String,
+  file: File,
+  pageIdx: Int,
+  totalPages: Int,
+  snippetCache: PdfSnippetMemoryCache,
+  documentCache: PdfDocumentCache,
+  analyzeFallback: (File, List<Int>) -> List<PdfPageAnalysis>,
+): Pair<List<String>, Int> {
+  snippetCache.get(bookId, pageIdx)?.let { return it to 0 }
+  val requestedIndices =
+    if (pageIdx + 1 < totalPages) listOf(pageIdx, pageIdx + 1) else listOf(pageIdx)
+  val cachedByPage = documentCache.loadPages(file, requestedIndices)
+  val current = cachedByPage[pageIdx]
+  val analyses =
+    if (current != null) {
+      requestedIndices.mapNotNull { cachedByPage[it] }
+    } else {
+      analyzeFallback(file, requestedIndices)
+    }
+  val resolvedCurrent = analyses.firstOrNull { it.pageIndex == pageIdx } ?: return emptyList<String>() to 0
+  val neighbors = analyses.filter { it.pageIndex != pageIdx }
+  val reflowed = PdfReflowEngine.buildReflowPage(resolvedCurrent, neighbors) as? ReflowPageResult.Reflowed
+  val snippets =
+    if (reflowed != null) {
+      val bodyText =
+        reflowed.items
+          .filterIsInstance<ReflowItem.Paragraph>()
+          .joinToString("\n\n") { it.text }
+      LockScreenTextChunker.chunkText(bodyText, maxCharsPerSnippet = 260)
+    } else {
+      emptyList()
+    }
+  snippetCache.put(bookId, pageIdx, snippets)
+  return snippets to 0
 }

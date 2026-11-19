@@ -9,6 +9,7 @@ import android.os.ParcelFileDescriptor
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.example.emptyapp.reader.pdf.PdfDocumentCache
 import com.example.emptyapp.reader.pdf.PdfPageAnalysis
 import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
 import com.example.emptyapp.reader.pdf.PdfRect
@@ -36,10 +37,12 @@ internal class PdfRendererHolder(
   private val mutex = Mutex()
   @Volatile private var closed = false
   private val cropCache = ConcurrentHashMap<Int, NormalizedCropRect>()
+  private val diskCache = appContext?.let { PdfDocumentCache(File(it.filesDir, "pdf_cache")) }
   private val analysisSession =
     PdfAnalysisSession(
       pageCount = renderer.pageCount,
       openDocument = ::openAnalysisDocument,
+      loadCachedPage = ::loadCachedPageFromDisk,
     )
   private val pageBitmapCache =
     object : LruCache<String, ImageBitmap>(budget.cacheKiloBytes) {
@@ -236,6 +239,12 @@ internal class PdfRendererHolder(
         runCatching { descriptor.close() }
       }
     }
+  }
+
+  private fun loadCachedPageFromDisk(pageIndex: Int): PdfPageAnalysis? {
+    val targetFile = file ?: return null
+    val cache = diskCache ?: return null
+    return cache.loadPages(targetFile, listOf(pageIndex))[pageIndex]
   }
 
   private fun openAnalysisDocument(): PdfAnalysisDocument? {

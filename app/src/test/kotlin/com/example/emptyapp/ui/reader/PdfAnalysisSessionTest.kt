@@ -156,6 +156,38 @@ class PdfAnalysisSessionTest {
     session.getOrAnalyzePage(0)
   }
 
+  @Test
+  fun loadsPageFromDiskCacheWithoutOpeningDocumentAndFallsBackOnMiss() = runTest {
+    val openCount = AtomicInteger(0)
+    val analyzedPages = mutableListOf<Int>()
+    val session =
+      PdfAnalysisSession(
+        pageCount = 4,
+        openDocument = {
+          openCount.incrementAndGet()
+          object : PdfAnalysisDocument {
+            override fun analyzePage(pageIndex: Int): PdfPageAnalysis {
+              analyzedPages += pageIndex
+              return sampleAnalysis(pageIndex)
+            }
+
+            override fun close() = Unit
+          }
+        },
+        loadCachedPage = { pageIndex -> if (pageIndex == 1) sampleAnalysis(1).copy(charCount = 777) else null },
+      )
+
+    val fromCache = session.getOrAnalyzePage(1)
+    assertEquals(777, fromCache?.charCount)
+    assertEquals(0, openCount.get())
+
+    val fromFallback = session.getOrAnalyzePage(2)
+    assertEquals(120, fromFallback?.charCount)
+    assertEquals(1, openCount.get())
+    assertEquals(listOf(2), analyzedPages)
+    session.close().join()
+  }
+
   private fun sampleAnalysis(pageIndex: Int): PdfPageAnalysis =
     PdfPageAnalyzer.emptyPageAnalysis(pageIndex).copy(charCount = 120)
 }

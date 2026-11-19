@@ -245,12 +245,12 @@ fun PdfPagerReader(
   var analyzeTotal by remember(file) { mutableIntStateOf(pageCount) }
 
   LaunchedEffect(file, holder, isReflowMode) {
-    if (allAnalyses != null) return@LaunchedEffect
+    if (!isReflowMode || allAnalyses != null) return@LaunchedEffect
     val cached = withContext(Dispatchers.IO) { cache.load(file) }
     if (cached != null && cached.size == pageCount) {
       holder.seedAnalyses(cached)
       allAnalyses = cached
-    } else if (isReflowMode) {
+    } else {
       val computed =
         withContext(Dispatchers.IO) {
           PdfPageAnalyzer.ensureInitialized(context)

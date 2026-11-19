@@ -64,7 +64,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 42. M12 + L13 — Tap-zoom khi autoCrop đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị
 - [x] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
 - [x] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
-- [ ] 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file
+- [x] 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file
 - [ ] 46. L15 — Trang fallback trong Reflow: `cd_pdf_page`, spinner/lỗi/retry, cho zoom; ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở
 
 ### 5D — Khởi động & Reader EPUB
@@ -955,3 +955,30 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 45 — M16: `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file.
+
+### 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí & cache snippet PDF màn khoá — 2026-11-19
+**Nguyên nhân:**
+- `PdfDocumentCache` lưu toàn bộ trang phân tích của cả sách vào một file JSON nguyên khối bằng `writeText`/`readText`, không qua `AtomicJsonFile`; mỗi lần `onPause` đổi trang khi bật đọc màn khoá (`ReaderActivity`), phân loại sách (`ReaderViewModel.ensurePdfClassified`), hoặc mở PDF ở chế độ gốc/cột (`PdfPagerReader`) đều decode toàn bộ ~1000 trang (~40 MB JSON) chỉ để lấy 2–5 trang hoặc thậm chí không dùng hết.
+- `PdfPageAnalyzer.extractGraphicsStats` ngừng thu thập ngay khi `vectorSegments.size >= 400` / `filledRects.size >= 100` theo thứ tự content stream → bảng biểu hoặc công thức ở nửa dưới/cuối trang mất sạch đường kẻ; `CURRENT_SCHEMA_VERSION` giữ ở `2` nên cache cũ chưa cap không bị vô hiệu hoá.
+- `ReaderActivity.extractLockScreenSnippets` chưa có cache snippet theo `(bookId, pageIndex)` cho PDF (khác với `cachedChapterSnippets` của EPUB).
+
+**Đã sửa:**
+- `reader/pdf/PdfDocumentCache.kt`:
+  - Tăng `CURRENT_SCHEMA_VERSION` từ `2` lên `4` để vô hiệu hoá mọi file cache cũ chưa chia khúc/chưa cap.
+  - Chia dữ liệu thành thư mục riêng cho từng sách (`manifest.json` + các file khúc `chunk_XXXX.json` kích thước `DEFAULT_CHUNK_SIZE = 50` trang), tất cả đều đọc/ghi an toàn qua `AtomicJsonFile` (xoá manifest trước khi ghi các khúc và ghi manifest sau cùng; khôi phục `.tmp` / cách ly `.corrupt-*`).
+  - Bổ sung `loadManifest(file)`, `loadPages(file, pageIndices)` và `loadPageRange(file, startPage, endPageInclusive)` chỉ đọc đúng các khúc chứa các trang được yêu cầu, kèm LRU cache dùng chung theo tiến trình (`manifestMemoryCache` = 16, `chunkMemoryCache` = 8) khoá theo `(cacheDir, canonicalPath, fileSize, lastModified)`.
+  - Tự dọn sạch thư mục khúc và file legacy cũ khi khác `schemaVersion` / `fileSize` / `lastModified` hoặc khi gọi `delete(file)` (đồng thời xoá khỏi LRU trong bộ nhớ).
+- `reader/pdf/PdfPageAnalyzer.kt`:
+  - Thêm `GraphicsCollectorBuffer` thu thập tới ngưỡng an toàn (`MAX_RAW_VECTOR_SEGMENTS_PER_PAGE = 4000`, `MAX_RAW_FILLED_RECTS_PER_PAGE = 1000`, nén nửa bộ đệm theo vị trí khi vượt ngưỡng) và định tuyến mọi nét vẽ trong `flushStrokedPath` qua buffer thay vì cắt cụt theo thứ tự content stream.
+  - Tách hàm thuần Kotlin `capVectorSegmentsByPosition` (cap 400) và `capFilledRectsByPosition` (cap 100) ưu tiên giữ ứng viên kẻ bảng/ô bảng và phân bổ theo 20 dải dọc của trang (water-filling stratified sampling từ trên xuống dưới), đồng thời tính biến đổi CTM bằng trường số của `Matrix` (`transformCtm`) để tránh phụ thuộc `android.graphics.PointF`.
+- `ReaderActivity.kt`, `ui/reader/ReaderViewModel.kt`, `ui/reader/PdfAnalysisSession.kt`, `ui/reader/PdfRendererHolder.kt`, `ui/reader/PdfPagerReader.kt`:
+  - Thêm `PdfSnippetMemoryCache` (`cachedPdfPageSnippets`) theo `(bookId, pageIndex)` và hàm `extractPdfLockScreenSnippets`: ưu tiên cache bộ nhớ → `PdfDocumentCache.loadPages` (chỉ đọc khúc chứa `pageIdx`/`pageIdx + 1`) → fallback `PdfPageAnalyzer.analyzePages`.
+  - `ReaderViewModel.ensurePdfClassified` đọc `loadManifest` + `loadPages(file, PdfDocumentClassifier.samplePageIndices(pageCount))` thay vì `load(file)`.
+  - `PdfPagerReader` chỉ gọi `cache.load(file)` khi `isReflowMode == true`; khi ở `SMART_ORIGINAL` / `GUIDED_COLUMN`, `PdfRendererHolder` / `PdfAnalysisSession` kiểm tra `cache.loadPages` theo từng trang trước khi mở `PDDocument`.
+- Unit test mới & mở rộng: `test/.../reader/pdf/PdfDocumentCacheTest.kt` (6 tests), `test/.../reader/pdf/PdfPageAnalyzerCapTest.kt` (6 tests), `test/.../ReaderActivityPdfSnippetTest.kt` (1 test), `test/.../ui/reader/PdfAnalysisSessionTest.kt` (+1 test).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **229/229 tests pass** qua 41 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 46 — L15: Trang fallback trong Reflow (`cd_pdf_page`, spinner/lỗi/retry, cho zoom); ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở.

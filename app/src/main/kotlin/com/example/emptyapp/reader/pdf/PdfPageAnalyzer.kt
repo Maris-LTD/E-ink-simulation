@@ -12,7 +12,9 @@ import com.tom_roush.pdfbox.pdmodel.PDPageTree
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImage
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
+import com.tom_roush.pdfbox.util.Matrix
 import java.io.File
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 
 object PdfPageAnalyzer {
@@ -31,8 +33,14 @@ object PdfPageAnalyzer {
   private const val BODY_TOP_MIN = 0.08f
   private const val BODY_BOTTOM_MAX = 0.92f
   private const val MIN_LINES_FOR_COLUMN_CHECK = 6
-  private const val MAX_VECTOR_SEGMENTS_PER_PAGE = 400
-  private const val MAX_FILLED_RECTS_PER_PAGE = 100
+  internal const val MAX_VECTOR_SEGMENTS_PER_PAGE = 400
+  internal const val MAX_FILLED_RECTS_PER_PAGE = 100
+  internal const val MAX_RAW_VECTOR_SEGMENTS_PER_PAGE = 4000
+  internal const val MAX_RAW_FILLED_RECTS_PER_PAGE = 1000
+  private const val POSITION_SAMPLING_BANDS = 20
+  private const val SEGMENT_AXIS_TOLERANCE = 0.004f
+  private const val MIN_HORIZONTAL_RULE_WIDTH = 0.08f
+  private const val MIN_VERTICAL_RULE_HEIGHT = 0.03f
   private const val DEFAULT_PAGE_WIDTH_PT = 595f
   private const val DEFAULT_PAGE_HEIGHT_PT = 842f
 
@@ -493,12 +501,57 @@ object PdfPageAnalyzer {
     }
   }
 
+  private data class NormalizedPoint(
+    val x: Float,
+    val y: Float,
+  )
+
+  private fun transformCtm(ctm: Matrix, x: Float, y: Float): NormalizedPoint =
+    NormalizedPoint(
+      x = x * ctm.scaleX + y * ctm.shearX + ctm.translateX,
+      y = x * ctm.shearY + y * ctm.scaleY + ctm.translateY,
+    )
+
   private data class GraphicsStats(
     val images: List<PdfImageBlock>,
     val vectorOpCount: Int,
     val vectorSegments: List<PdfVectorSegment>,
     val filledRects: List<PdfFilledRect>,
   )
+
+  internal class GraphicsCollectorBuffer(
+    private val maxRawVectorSegments: Int = MAX_RAW_VECTOR_SEGMENTS_PER_PAGE,
+    private val maxRawFilledRects: Int = MAX_RAW_FILLED_RECTS_PER_PAGE,
+    private val maxVectorSegments: Int = MAX_VECTOR_SEGMENTS_PER_PAGE,
+    private val maxFilledRects: Int = MAX_FILLED_RECTS_PER_PAGE,
+  ) {
+    private val rawVectorSegments = ArrayList<PdfVectorSegment>()
+    private val rawFilledRects = ArrayList<PdfFilledRect>()
+
+    fun addVectorSegment(seg: PdfVectorSegment) {
+      rawVectorSegments += seg
+      if (rawVectorSegments.size >= maxRawVectorSegments) {
+        val compacted = capVectorSegmentsByPosition(rawVectorSegments, (maxRawVectorSegments / 2).coerceAtLeast(maxVectorSegments))
+        rawVectorSegments.clear()
+        rawVectorSegments.addAll(compacted)
+      }
+    }
+
+    fun addFilledRect(rect: PdfRect) {
+      rawFilledRects += PdfFilledRect(rect)
+      if (rawFilledRects.size >= maxRawFilledRects) {
+        val compacted = capFilledRectsByPosition(rawFilledRects, (maxRawFilledRects / 2).coerceAtLeast(maxFilledRects))
+        rawFilledRects.clear()
+        rawFilledRects.addAll(compacted)
+      }
+    }
+
+    fun buildVectorSegments(): List<PdfVectorSegment> =
+      capVectorSegmentsByPosition(rawVectorSegments, maxVectorSegments)
+
+    fun buildFilledRects(): List<PdfFilledRect> =
+      capFilledRectsByPosition(rawFilledRects, maxFilledRects)
+  }
 
   private fun extractGraphicsStats(
     page: PDPage,
@@ -508,8 +561,7 @@ object PdfPageAnalyzer {
     pageHeight: Float,
   ): GraphicsStats {
     val images = ArrayList<PdfImageBlock>()
-    val vectorSegments = ArrayList<PdfVectorSegment>()
-    val filledRects = ArrayList<PdfFilledRect>()
+    val collector = GraphicsCollectorBuffer()
     var vectorOps = 0
 
     val engine =
@@ -521,11 +573,11 @@ object PdfPageAnalyzer {
         private val pendingSegments = ArrayList<PdfVectorSegment>()
         private val pendingRects = ArrayList<PdfRect>()
 
-        private fun normalizePoint(x: Float, y: Float): PointF {
-          val transformed = graphicsState.currentTransformationMatrix.transformPoint(x, y)
+        private fun normalizePoint(x: Float, y: Float): NormalizedPoint {
+          val transformed = transformCtm(graphicsState.currentTransformationMatrix, x, y)
           val nx = ((transformed.x - originX) / pageWidth).coerceIn(0f, 1f)
           val ny = (1f - ((transformed.y - originY) / pageHeight)).coerceIn(0f, 1f)
-          return PointF(nx, ny)
+          return NormalizedPoint(nx, ny)
         }
 
         private fun isNearWhiteFill(): Boolean {
@@ -540,25 +592,19 @@ object PdfPageAnalyzer {
         }
 
         private fun addVectorSegment(seg: PdfVectorSegment) {
-          if (vectorSegments.size < MAX_VECTOR_SEGMENTS_PER_PAGE) {
-            vectorSegments += seg
-          }
+          collector.addVectorSegment(seg)
         }
 
         private fun addFilledRect(rect: PdfRect) {
-          if (filledRects.size < MAX_FILLED_RECTS_PER_PAGE) {
-            filledRects += PdfFilledRect(rect)
-          }
+          collector.addFilledRect(rect)
         }
 
         private fun flushStrokedPath() {
           vectorOps++
           for (seg in pendingSegments) {
-            if (vectorSegments.size >= MAX_VECTOR_SEGMENTS_PER_PAGE) break
-            vectorSegments += seg
+            addVectorSegment(seg)
           }
           for (rect in pendingRects) {
-            if (vectorSegments.size >= MAX_VECTOR_SEGMENTS_PER_PAGE) break
             addVectorSegment(PdfVectorSegment(rect.left, rect.top, rect.right, rect.top))
             addVectorSegment(PdfVectorSegment(rect.left, rect.bottom, rect.right, rect.bottom))
             addVectorSegment(PdfVectorSegment(rect.left, rect.top, rect.left, rect.bottom))
@@ -623,10 +669,10 @@ object PdfPageAnalyzer {
           val ctm = graphicsState.currentTransformationMatrix
           val corners =
             arrayOf(
-              ctm.transformPoint(0f, 0f),
-              ctm.transformPoint(1f, 0f),
-              ctm.transformPoint(0f, 1f),
-              ctm.transformPoint(1f, 1f),
+              transformCtm(ctm, 0f, 0f),
+              transformCtm(ctm, 1f, 0f),
+              transformCtm(ctm, 0f, 1f),
+              transformCtm(ctm, 1f, 1f),
             )
           val minX = corners.minOf { it.x } - originX
           val maxX = corners.maxOf { it.x } - originX
@@ -706,8 +752,160 @@ object PdfPageAnalyzer {
     return GraphicsStats(
       images = images,
       vectorOpCount = vectorOps,
-      vectorSegments = vectorSegments,
-      filledRects = filledRects,
+      vectorSegments = collector.buildVectorSegments(),
+      filledRects = collector.buildFilledRects(),
     )
+  }
+
+  internal fun capVectorSegmentsByPosition(
+    segments: List<PdfVectorSegment>,
+    maxCount: Int = MAX_VECTOR_SEGMENTS_PER_PAGE,
+  ): List<PdfVectorSegment> {
+    if (maxCount <= 0) return emptyList()
+    if (segments.size <= maxCount) return segments
+
+    val comparator =
+      compareBy<PdfVectorSegment> { it.minY }
+        .thenBy { it.minX }
+        .thenBy { it.maxY }
+        .thenBy { it.maxX }
+
+    val rules = ArrayList<PdfVectorSegment>()
+    val others = ArrayList<PdfVectorSegment>()
+    for (seg in segments) {
+      if (isTableRuleCandidate(seg)) {
+        rules += seg
+      } else {
+        others += seg
+      }
+    }
+
+    return if (rules.size > maxCount) {
+      sampleByVerticalBands(rules, maxCount, { it.minY }, comparator)
+    } else if (rules.isEmpty()) {
+      sampleByVerticalBands(others, maxCount, { it.minY }, comparator)
+    } else {
+      val remainingBudget = maxCount - rules.size
+      val sampledOthers = sampleByVerticalBands(others, remainingBudget, { it.minY }, comparator)
+      (rules + sampledOthers).sortedWith(comparator)
+    }
+  }
+
+  internal fun capFilledRectsByPosition(
+    rects: List<PdfFilledRect>,
+    maxCount: Int = MAX_FILLED_RECTS_PER_PAGE,
+  ): List<PdfFilledRect> {
+    if (maxCount <= 0) return emptyList()
+    if (rects.size <= maxCount) return rects
+
+    val comparator =
+      compareBy<PdfFilledRect> { it.bounds.top }
+        .thenBy { it.bounds.left }
+        .thenBy { it.bounds.bottom }
+        .thenBy { it.bounds.right }
+
+    val tableRects = ArrayList<PdfFilledRect>()
+    val others = ArrayList<PdfFilledRect>()
+    for (rect in rects) {
+      if (isTableRectCandidate(rect)) {
+        tableRects += rect
+      } else {
+        others += rect
+      }
+    }
+
+    return if (tableRects.size > maxCount) {
+      sampleByVerticalBands(tableRects, maxCount, { it.bounds.top }, comparator)
+    } else if (tableRects.isEmpty()) {
+      sampleByVerticalBands(others, maxCount, { it.bounds.top }, comparator)
+    } else {
+      val remainingBudget = maxCount - tableRects.size
+      val sampledOthers = sampleByVerticalBands(others, remainingBudget, { it.bounds.top }, comparator)
+      (tableRects + sampledOthers).sortedWith(comparator)
+    }
+  }
+
+  private fun isTableRuleCandidate(seg: PdfVectorSegment): Boolean {
+    if (seg.width > 0.90f && seg.height > 0.90f) return false
+    val isHorizontal =
+      abs(seg.y1 - seg.y2) <= SEGMENT_AXIS_TOLERANCE &&
+        seg.width >= MIN_HORIZONTAL_RULE_WIDTH &&
+        seg.minY in 0.04f..0.96f
+    val isVertical =
+      abs(seg.x1 - seg.x2) <= SEGMENT_AXIS_TOLERANCE &&
+        seg.height >= MIN_VERTICAL_RULE_HEIGHT
+    return isHorizontal || isVertical
+  }
+
+  private fun isTableRectCandidate(rect: PdfFilledRect): Boolean {
+    val b = rect.bounds
+    return b.width >= 0.12f &&
+      b.height in 0.008f..0.25f &&
+      !(b.width > 0.90f && b.height > 0.90f)
+  }
+
+  private fun <T> sampleByVerticalBands(
+    items: List<T>,
+    maxCount: Int,
+    yOf: (T) -> Float,
+    comparator: Comparator<T>,
+  ): List<T> {
+    if (maxCount <= 0 || items.isEmpty()) return emptyList()
+    if (items.size <= maxCount) return items.sortedWith(comparator)
+
+    val bands = Array(POSITION_SAMPLING_BANDS) { ArrayList<T>() }
+    for (item in items) {
+      val bandIndex =
+        (yOf(item).coerceIn(0f, 1f) * POSITION_SAMPLING_BANDS)
+          .toInt()
+          .coerceIn(0, POSITION_SAMPLING_BANDS - 1)
+      bands[bandIndex] += item
+    }
+    for (band in bands) {
+      if (band.size > 1) band.sortWith(comparator)
+    }
+
+    var remaining = maxCount
+    val alloc = IntArray(POSITION_SAMPLING_BANDS)
+    while (remaining > 0) {
+      var activeCount = 0
+      for (b in 0 until POSITION_SAMPLING_BANDS) {
+        if (alloc[b] < bands[b].size) activeCount++
+      }
+      if (activeCount == 0) break
+      val share = (remaining / activeCount).coerceAtLeast(1)
+      var allocatedInPass = 0
+      for (b in 0 until POSITION_SAMPLING_BANDS) {
+        if (remaining <= 0) break
+        val capacity = bands[b].size - alloc[b]
+        if (capacity > 0) {
+          val add = minOf(share, capacity, remaining)
+          alloc[b] += add
+          remaining -= add
+          allocatedInPass += add
+        }
+      }
+      if (allocatedInPass == 0) break
+    }
+
+    val sampled = ArrayList<T>(maxCount)
+    for (b in 0 until POSITION_SAMPLING_BANDS) {
+      val band = bands[b]
+      val take = alloc[b]
+      if (take <= 0) continue
+      if (take >= band.size) {
+        sampled.addAll(band)
+      } else if (take == 1) {
+        sampled += band[band.size / 2]
+      } else {
+        val last = band.size - 1
+        val denom = take - 1
+        for (i in 0 until take) {
+          sampled += band[(i * last) / denom]
+        }
+      }
+    }
+    sampled.sortWith(comparator)
+    return sampled
   }
 }
