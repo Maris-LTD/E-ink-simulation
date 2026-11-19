@@ -63,7 +63,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder (bỏ code chết `seedAnalyses`/`analysisCache` nếu không dùng), prefetch trang kề; GUIDED chặn lật khi chưa có regions và giữ `pendingBackwardLandingPage`; smart tap-zoom ở SMART phân tích trang hiện tại; trích chữ bằng 1 lần `getText` + `startPage/endPage`
 - [x] 42. M12 + L13 — Tap-zoom khi autoCrop đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị
 - [x] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
-- [ ] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
+- [x] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
 - [ ] 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file
 - [ ] 46. L15 — Trang fallback trong Reflow: `cd_pdf_page`, spinner/lỗi/retry, cho zoom; ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở
 
@@ -927,3 +927,31 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 44 — M15 + L12 + L14: tối ưu bộ nhớ & render PDF (bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn, `derivedStateOf`/`rememberUpdatedState`, `openPdfHolder` ra khỏi main, `cropCache` → `ConcurrentHashMap`, OOM retry ×√0.5, `PdfReflowEngine` `endsWith`).
+
+### 44. M15 + L12 + L14 — Tối ưu bộ nhớ & render PDF, tile zoom > 2×, tránh recompose khi pinch, mở PDF trên IO, `ConcurrentHashMap` & retry OOM ×√0.5 — 2026-11-19
+**Nguyên nhân:**
+- **M15:** `renderMultiplier = 3` vẫn bị `PdfBitmapBudget` kẹp cùng mức ~8,4 MP với 2× nhưng tốn thêm render + entry cache và vẫn mờ ở 4,5×; `holder.prefetchAdjacent` render 2 trang kề song song với `beyondViewportPageCount = 1` ở mức 2× trong `GUIDED_COLUMN`, tranh mutex và ngốn bộ nhớ ngoài budget.
+- **L12:** `renderMultiplier` và `LaunchedEffect(scale, ...)` đọc `scale` trực tiếp trong composition khiến mỗi khung hình pinch đều recompose và khởi động lại effect; `pointerInput` cần tách hẳn khỏi `bitmap`/`pageAnalysis`/`controller`/`onCenterTap` qua `rememberUpdatedState` để không reset gesture đang double-tap.
+- **L14:** `openPdfHolder` mở `ParcelFileDescriptor` + `PdfRenderer` trên main thread trong `remember(file)`; `cropCache` dùng `HashMap` không đồng bộ giữa thread render và main thread; `renderWithMemoryRetry` thử lại đúng kích thước vừa gây OOM; `PdfReflowEngine.mergeLinesIntoParagraphs` gọi `currentText.toString()` mỗi dòng không ngắt đoạn (O(L²)).
+
+**Đã sửa:**
+- `reader/pdf/PdfRegionNavigator.kt` (**M15**):
+  - Thêm `computeVisibleViewportBitmapRect(...)` và `computeVisibleViewportPageRect(...)` tính hình chữ nhật vùng trang đang hiển thị chuẩn hoá `0..1` theo `scale`, `offset`, kích thước container/bitmap (`ContentScale.Fit`) và quy đổi về toạ độ trang gốc khi có `cropRect` (`autoCrop`).
+- `ui/reader/PdfRendererHolder.kt` (**M15 + L14**):
+  - Bỏ hàm `prefetchAdjacent`; gộp nhánh render vùng vào `renderRegionInternal` và bổ sung `renderViewportTile(index, region, maxWidth, maxHeight)` render vùng đang nhìn ở độ phân giải màn hình (không nhồi tile nhất thời vào `pageBitmapCache` làm đẩy ảnh toàn trang).
+  - Đổi `cropCache` từ `HashMap` sang `ConcurrentHashMap<Int, NormalizedCropRect>`.
+  - Tách `renderWithMemoryRetry(onEvictCache, render)` (pure Kotlin, rethrow `CancellationException`): khi gặp `OutOfMemoryError`, xoá cache và gọi lại với `OOM_RETRY_SCALE_FACTOR = 0.70710677f` (`√0.5`, giảm 50% số pixel) áp vào cả `renderPage` lẫn `renderRegionInternal`.
+- `ui/reader/PdfPagerReader.kt` (**M15 + L12 + L14**):
+  - Chuyển `openPdfHolder` sang `produceState<PdfHolderLoadState>` chạy trên `Dispatchers.IO` (luôn đóng `opened` trong `finally` kể cả khi huỷ giữa chừng, kết hợp `DisposableEffect(holder)`), hiển thị spinner khi đang mở và `pdf_load_error` nếu thất bại (có tap mở toolbar).
+  - Bỏ lời gọi `holder.prefetchAdjacent(...)`; giới hạn `renderMultiplier` tối đa `2` (chỉ `2` ở `isCurrentPage` khi `GUIDED_COLUMN || scale > 1.35f`, còn trang kề `!isCurrentPage` luôn `1×`).
+  - Dùng `derivedStateOf` cho `isCurrentPage`, `isPageZoomed`, `isDeepZoomed` (`isCurrentPage && scale > 2.0f`) và `renderMultiplier`; thay `LaunchedEffect(scale, ...)` bằng `LaunchedEffect(isPageZoomed, isCurrentPage)`; dùng `rememberUpdatedState` cho `bitmap`, `pageAnalysis`, `controller`, `onCenterTap` trong `pointerInput`.
+  - Khi `isDeepZoomed` (`scale > 2.0f`), debounce `180 ms` qua `snapshotFlow { ... }.distinctUntilChanged().debounce(180L).collectLatest` để gọi `holder.renderViewportTile(...)` và phủ tile sắc nét đồng bộ theo `graphicsLayer`, tự xoá tile ngay khi `scale <= 2.0f` hoặc đổi trang.
+- `reader/pdf/PdfReflowEngine.kt` (**L14**):
+  - Thêm `CharSequence.lastNonWhitespaceIndex()` và `CharSequence.endsWithHyphenBeforeTrailingSpaces()` duyệt ngược trực tiếp trên `StringBuilder` không cấp phát `String`; thay `currentText.toString()` và `prev.text.trimEnd()` trong `mergeLinesIntoParagraphs`.
+- `test/.../reader/pdf/PdfRegionNavigatorTest.kt`, `test/.../ui/reader/PdfBitmapBudgetTest.kt`, `test/.../reader/pdf/PdfReflowEngineTest.kt`: thêm 7 unit test mới cho `computeVisibleViewportPageRect` (không/có `autoCrop`, letterbox, input lỗi), `renderWithMemoryRetry` (OOM retry ở `√0.5`, thất bại kép, `CancellationException`) và `endsWithHyphenBeforeTrailingSpaces`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **215/215 tests pass** qua 38 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 45 — M16: `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file.

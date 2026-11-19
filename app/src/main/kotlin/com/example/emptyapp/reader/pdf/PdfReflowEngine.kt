@@ -256,7 +256,8 @@ object PdfReflowEngine {
       val verticalGap = line.bounds.top - prev.bounds.bottom
       val largeVerticalGap = verticalGap > (medianHeight * 1.08f).coerceAtLeast(0.014f)
       val fontChanged = abs(line.fontSizePt - prev.fontSizePt) > 1.5f
-      val lastChar = prev.text.trimEnd().lastOrNull()
+      val lastCharIdx = prev.text.lastNonWhitespaceIndex()
+      val lastChar = if (lastCharIdx >= 0) prev.text[lastCharIdx] else null
       val prevEndedSentence = lastChar != null && lastChar in charArrayOf('.', '!', '?', ':', '…', '”', '"')
       val indentedStart = (line.bounds.left - baseLeft) > 0.008f
       val shortPrevLine = prev.bounds.right < (baseRight - 0.08f)
@@ -269,9 +270,9 @@ object PdfReflowEngine {
         paragraphFirstBounds = line.bounds
         currentText.append(cleaned)
       } else {
-        val prevStr = currentText.toString()
-        if (prevStr.endsWith("-") && cleaned.firstOrNull()?.isLowerCase() == true) {
-          currentText.deleteCharAt(currentText.length - 1)
+        if (currentText.endsWithHyphenBeforeTrailingSpaces() && cleaned.firstOrNull()?.isLowerCase() == true) {
+          val hyphenIdx = currentText.lastNonWhitespaceIndex()
+          if (hyphenIdx >= 0) currentText.setLength(hyphenIdx)
           currentText.append(cleaned)
         } else {
           if (currentText.isNotEmpty()) currentText.append(' ')
@@ -286,4 +287,17 @@ object PdfReflowEngine {
     flushParagraph()
     return paragraphs
   }
+}
+
+internal fun CharSequence.lastNonWhitespaceIndex(): Int {
+  var index = length - 1
+  while (index >= 0 && this[index].isWhitespace()) {
+    index--
+  }
+  return index
+}
+
+internal fun CharSequence.endsWithHyphenBeforeTrailingSpaces(): Boolean {
+  val idx = lastNonWhitespaceIndex()
+  return idx >= 0 && this[idx] == '-'
 }

@@ -14,7 +14,9 @@ import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
 import com.example.emptyapp.reader.pdf.PdfRect
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.sqrt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -33,7 +35,7 @@ internal class PdfRendererHolder(
 ) {
   private val mutex = Mutex()
   @Volatile private var closed = false
-  private val cropCache = HashMap<Int, NormalizedCropRect>()
+  private val cropCache = ConcurrentHashMap<Int, NormalizedCropRect>()
   private val analysisSession =
     PdfAnalysisSession(
       pageCount = renderer.pageCount,
@@ -67,38 +69,78 @@ internal class PdfRendererHolder(
 
   fun cachedCropRect(index: Int): NormalizedCropRect? = cropCache[index]
 
-  suspend fun prefetchAdjacent(
-    centerIndex: Int,
+  suspend fun renderRegion(index: Int, region: PdfRect, maxWidth: Int): ImageBitmap? =
+    renderRegionInternal(
+      index = index,
+      region = region,
+      maxWidth = maxWidth,
+      maxHeight = null,
+      maxRequestedScale = 4f,
+      cacheKey = "reg:$index:${region.left}:${region.top}:${region.right}:${region.bottom}:$maxWidth",
+    )
+
+  suspend fun renderViewportTile(
+    index: Int,
+    region: PdfRect,
     maxWidth: Int,
     maxHeight: Int,
-    autoCrop: Boolean,
-  ) {
-    for (neighbor in listOf(centerIndex - 1, centerIndex + 1)) {
-      if (neighbor in 0 until pageCount) {
-        renderPage(neighbor, maxWidth, maxHeight, autoCrop)
-      }
-    }
-  }
+  ): ImageBitmap? =
+    renderRegionInternal(
+      index = index,
+      region = region,
+      maxWidth = maxWidth.coerceAtLeast(1),
+      maxHeight = maxHeight.coerceAtLeast(1),
+      maxRequestedScale = null,
+      cacheKey = null,
+    )
 
-  suspend fun renderRegion(index: Int, region: PdfRect, maxWidth: Int): ImageBitmap? =
+  private suspend fun renderRegionInternal(
+    index: Int,
+    region: PdfRect,
+    maxWidth: Int,
+    maxHeight: Int?,
+    maxRequestedScale: Float?,
+    cacheKey: String?,
+  ): ImageBitmap? =
     withContext(Dispatchers.IO) {
       if (closed) return@withContext null
-      val cacheKey = "reg:$index:${region.left}:${region.top}:${region.right}:${region.bottom}:$maxWidth"
-      pageBitmapCache.get(cacheKey)?.let { return@withContext it }
+      if (cacheKey != null) {
+        pageBitmapCache.get(cacheKey)?.let { return@withContext it }
+      }
       mutex.withLock {
         if (closed || index !in 0 until pageCount) return@withContext null
-        pageBitmapCache.get(cacheKey)?.let { return@withContext it }
-        renderWithMemoryRetry {
+        if (cacheKey != null) {
+          pageBitmapCache.get(cacheKey)?.let { return@withContext it }
+        }
+        renderWithMemoryRetry { retryScale ->
           renderer.openPage(index).use { page ->
             val leftPt = page.width * region.left
             val topPt = page.height * region.top
             val widthPt = (page.width * region.width).coerceAtLeast(1f)
             val heightPt = (page.height * region.height).coerceAtLeast(1f)
-            val requestedScale = (maxWidth.toFloat() / widthPt).coerceIn(0.25f, 4f)
-            val scale = requestedScale * budget.downscaleFactor(widthPt * requestedScale, heightPt * requestedScale)
+            val fitScale =
+              if (maxHeight != null) {
+                minOf(maxWidth.toFloat() / widthPt, maxHeight.toFloat() / heightPt)
+              } else {
+                maxWidth.toFloat() / widthPt
+              }
+            val requestedScale =
+              if (maxRequestedScale != null) {
+                fitScale.coerceIn(0.25f, maxRequestedScale)
+              } else {
+                fitScale.coerceAtLeast(0.25f)
+              }
+            val scale =
+              requestedScale *
+                budget.downscaleFactor(widthPt * requestedScale, heightPt * requestedScale) *
+                retryScale
             renderScaled(page, leftPt, topPt, widthPt, heightPt, scale)
           }
-        }?.also { pageBitmapCache.put(cacheKey, it) }
+        }?.also { bmp ->
+          if (cacheKey != null) {
+            pageBitmapCache.put(cacheKey, bmp)
+          }
+        }
       }
     }
 
@@ -116,7 +158,7 @@ internal class PdfRendererHolder(
         if (closed) return@withContext null
         pageBitmapCache.get(cacheKey)?.let { return@withContext it }
         if (index !in 0 until pageCount) return@withContext null
-        renderWithMemoryRetry {
+        renderWithMemoryRetry { retryScale ->
           renderer.openPage(index).use { page ->
             val fitPageScale = minOf(maxWidth.toFloat() / page.width, maxHeight.toFloat() / page.height)
             val crop = if (autoCrop) getOrDetectCropRect(index, page) else NormalizedCropRect.FULL
@@ -131,7 +173,10 @@ internal class PdfRendererHolder(
                 minOf(maxWidth.toFloat() / widthPt, maxHeight.toFloat() / heightPt)
                   .coerceAtMost(fitPageScale * 3.5f)
               }
-            val scale = requestedScale * budget.downscaleFactor(widthPt * requestedScale, heightPt * requestedScale)
+            val scale =
+              requestedScale *
+                budget.downscaleFactor(widthPt * requestedScale, heightPt * requestedScale) *
+                retryScale
             renderScaled(page, leftPt, topPt, widthPt, heightPt, scale)
           }
         }?.also { pageBitmapCache.put(cacheKey, it) }
@@ -159,15 +204,11 @@ internal class PdfRendererHolder(
     return bitmap.asImageBitmap()
   }
 
-  private inline fun renderWithMemoryRetry(render: () -> ImageBitmap): ImageBitmap? =
-    try {
-      render()
-    } catch (_: OutOfMemoryError) {
-      pageBitmapCache.evictAll()
-      runCatching { render() }.getOrNull()
-    } catch (_: Exception) {
-      null
-    }
+  private inline fun renderWithMemoryRetry(render: (retryScale: Float) -> ImageBitmap): ImageBitmap? =
+    com.example.emptyapp.ui.reader.renderWithMemoryRetry(
+      onEvictCache = { pageBitmapCache.evictAll() },
+      render = render,
+    )
 
   private fun getOrDetectCropRect(index: Int, page: PdfRenderer.Page): NormalizedCropRect {
     cropCache[index]?.let { return it }
@@ -252,6 +293,30 @@ internal data class PdfBitmapBudget(
 }
 
 private const val BYTES_PER_PIXEL = 4L
+internal const val OOM_RETRY_SCALE_FACTOR = 0.70710677f
+
+internal inline fun <T> renderWithMemoryRetry(
+  onEvictCache: () -> Unit,
+  render: (retryScale: Float) -> T,
+): T? =
+  try {
+    render(1f)
+  } catch (_: OutOfMemoryError) {
+    onEvictCache()
+    try {
+      render(OOM_RETRY_SCALE_FACTOR)
+    } catch (_: OutOfMemoryError) {
+      null
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: Exception) {
+      null
+    }
+  } catch (e: CancellationException) {
+    throw e
+  } catch (_: Exception) {
+    null
+  }
 
 internal fun openPdfHolder(file: File, context: Context? = null): PdfRendererHolder? {
   val descriptor =

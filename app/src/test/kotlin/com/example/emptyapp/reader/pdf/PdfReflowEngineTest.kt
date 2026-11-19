@@ -1,6 +1,7 @@
 package com.example.emptyapp.reader.pdf
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -214,5 +215,15 @@ class PdfReflowEngineTest {
     PdfPageAnalyzer.analyzePageSafely(1) {
       throw kotlinx.coroutines.CancellationException("Cancelled")
     }
+  }
+
+  @Test
+  fun endsWithHyphenBeforeTrailingSpacesDetectsHyphenOnStringBuilder() {
+    assertTrue(StringBuilder("hyphen-").endsWithHyphenBeforeTrailingSpaces())
+    assertTrue(StringBuilder("hyphen-  \t ").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("   \n").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("non-hyphen").endsWithHyphenBeforeTrailingSpaces())
+    assertFalse(StringBuilder("word ").endsWithHyphenBeforeTrailingSpaces())
   }
 }

@@ -2,6 +2,7 @@ package com.example.emptyapp.reader.pdf
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -167,5 +168,119 @@ class PdfRegionNavigatorTest {
       )
     assertEquals(400f, clampedX, 0.001f)
     assertEquals(-600f, clampedY, 0.001f)
+  }
+
+  @Test
+  fun computeVisibleViewportPageRectWithoutAutoCropAtDeepZoom() {
+    // Container 1000x2000, bitmap 500x1000 -> dispW=1000, dispH=2000.
+    // Centered at scale 2.5x -> scaledW=2500, scaledH=5000 -> visible 40%x40% centered at (0.5, 0.5).
+    val centered =
+      PdfRegionNavigator.computeVisibleViewportPageRect(
+        scale = 2.5f,
+        offsetX = 0f,
+        offsetY = 0f,
+        containerWidth = 1000f,
+        containerHeight = 2000f,
+        bitmapWidth = 500f,
+        bitmapHeight = 1000f,
+      )
+    assertNotNull(centered)
+    assertEquals(0.3f, centered!!.left, 0.001f)
+    assertEquals(0.3f, centered.top, 0.001f)
+    assertEquals(0.7f, centered.right, 0.001f)
+    assertEquals(0.7f, centered.bottom, 0.001f)
+
+    // Panned all the way to top-left corner: offset = (+750, +1500)
+    val topLeft =
+      PdfRegionNavigator.computeVisibleViewportPageRect(
+        scale = 2.5f,
+        offsetX = 750f,
+        offsetY = 1500f,
+        containerWidth = 1000f,
+        containerHeight = 2000f,
+        bitmapWidth = 500f,
+        bitmapHeight = 1000f,
+      )
+    assertNotNull(topLeft)
+    assertEquals(0.0f, topLeft!!.left, 0.001f)
+    assertEquals(0.0f, topLeft.top, 0.001f)
+    assertEquals(0.4f, topLeft.right, 0.001f)
+    assertEquals(0.4f, topLeft.bottom, 0.001f)
+  }
+
+  @Test
+  fun computeVisibleViewportPageRectClampsLetterboxedAxisAndMapsThroughAutoCrop() {
+    // Narrow bitmap 300x1000 in 1000x1000 container at scale 2.5x:
+    // scaledW = 750 (< 1000 container), scaledH = 2500 (> 1000 container) -> horizontal 0..1, vertical 0.3..0.7.
+    val bitmapRect =
+      PdfRegionNavigator.computeVisibleViewportBitmapRect(
+        scale = 2.5f,
+        offsetX = 0f,
+        offsetY = 0f,
+        containerWidth = 1000f,
+        containerHeight = 1000f,
+        bitmapWidth = 300f,
+        bitmapHeight = 1000f,
+      )
+    assertNotNull(bitmapRect)
+    assertEquals(0.0f, bitmapRect!!.left, 0.001f)
+    assertEquals(1.0f, bitmapRect.right, 0.001f)
+    assertEquals(0.3f, bitmapRect.top, 0.001f)
+    assertEquals(0.7f, bitmapRect.bottom, 0.001f)
+
+    val crop = PdfRect(left = 0.1f, top = 0.2f, right = 0.9f, bottom = 0.8f)
+    val pageRect =
+      PdfRegionNavigator.computeVisibleViewportPageRect(
+        scale = 2.5f,
+        offsetX = 0f,
+        offsetY = 0f,
+        containerWidth = 1000f,
+        containerHeight = 1000f,
+        bitmapWidth = 300f,
+        bitmapHeight = 1000f,
+        cropRect = crop,
+      )
+    assertNotNull(pageRect)
+    assertEquals(0.1f, pageRect!!.left, 0.001f)
+    assertEquals(0.9f, pageRect.right, 0.001f)
+    assertEquals(0.2f + 0.3f * 0.6f, pageRect.top, 0.001f)
+    assertEquals(0.2f + 0.7f * 0.6f, pageRect.bottom, 0.001f)
+  }
+
+  @Test
+  fun computeVisibleViewportPageRectReturnsNullForInvalidInputs() {
+    assertNull(
+      PdfRegionNavigator.computeVisibleViewportPageRect(
+        scale = 0f,
+        offsetX = 0f,
+        offsetY = 0f,
+        containerWidth = 1000f,
+        containerHeight = 1000f,
+        bitmapWidth = 500f,
+        bitmapHeight = 1000f,
+      ),
+    )
+    assertNull(
+      PdfRegionNavigator.computeVisibleViewportPageRect(
+        scale = Float.NaN,
+        offsetX = 0f,
+        offsetY = 0f,
+        containerWidth = 1000f,
+        containerHeight = 1000f,
+        bitmapWidth = 500f,
+        bitmapHeight = 1000f,
+      ),
+    )
+    assertNull(
+      PdfRegionNavigator.computeVisibleViewportPageRect(
+        scale = 2.5f,
+        offsetX = 0f,
+        offsetY = 0f,
+        containerWidth = 0f,
+        containerHeight = 1000f,
+        bitmapWidth = 500f,
+        bitmapHeight = 1000f,
+      ),
+    )
   }
 }

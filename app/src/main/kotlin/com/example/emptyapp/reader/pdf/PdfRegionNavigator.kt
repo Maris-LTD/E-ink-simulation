@@ -191,6 +191,85 @@ object PdfRegionNavigator {
     return offsetX.coerceIn(-maxX, maxX) to offsetY.coerceIn(-maxY, maxY)
   }
 
+  fun computeVisibleViewportBitmapRect(
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    containerWidth: Float,
+    containerHeight: Float,
+    bitmapWidth: Float,
+    bitmapHeight: Float,
+  ): PdfRect? {
+    if (
+      scale <= 0f ||
+      containerWidth <= 0f ||
+      containerHeight <= 0f ||
+      bitmapWidth <= 0f ||
+      bitmapHeight <= 0f ||
+      !scale.isFinite() ||
+      !offsetX.isFinite() ||
+      !offsetY.isFinite()
+    ) {
+      return null
+    }
+    val fitScale = minOf(containerWidth / bitmapWidth, containerHeight / bitmapHeight)
+    val scaledW = bitmapWidth * fitScale * scale
+    val scaledH = bitmapHeight * fitScale * scale
+    if (scaledW <= 0f || scaledH <= 0f) return null
+
+    val left = (0.5f + (-containerWidth / 2f - offsetX) / scaledW).coerceIn(0f, 1f)
+    val right = (0.5f + (containerWidth / 2f - offsetX) / scaledW).coerceIn(0f, 1f)
+    val top = (0.5f + (-containerHeight / 2f - offsetY) / scaledH).coerceIn(0f, 1f)
+    val bottom = (0.5f + (containerHeight / 2f - offsetY) / scaledH).coerceIn(0f, 1f)
+    if (right - left <= 1e-4f || bottom - top <= 1e-4f) return null
+
+    return PdfRect(
+      left = left,
+      top = top,
+      right = right,
+      bottom = bottom,
+    )
+  }
+
+  fun computeVisibleViewportPageRect(
+    scale: Float,
+    offsetX: Float,
+    offsetY: Float,
+    containerWidth: Float,
+    containerHeight: Float,
+    bitmapWidth: Float,
+    bitmapHeight: Float,
+    cropRect: PdfRect? = null,
+  ): PdfRect? {
+    val bitmapRect =
+      computeVisibleViewportBitmapRect(
+        scale = scale,
+        offsetX = offsetX,
+        offsetY = offsetY,
+        containerWidth = containerWidth,
+        containerHeight = containerHeight,
+        bitmapWidth = bitmapWidth,
+        bitmapHeight = bitmapHeight,
+      ) ?: return null
+
+    if (cropRect == null || cropRect.width <= 1e-4f || cropRect.height <= 1e-4f) {
+      return bitmapRect
+    }
+
+    val left = (cropRect.left + bitmapRect.left * cropRect.width).coerceIn(0f, 1f)
+    val top = (cropRect.top + bitmapRect.top * cropRect.height).coerceIn(0f, 1f)
+    val right = (cropRect.left + bitmapRect.right * cropRect.width).coerceIn(0f, 1f)
+    val bottom = (cropRect.top + bitmapRect.bottom * cropRect.height).coerceIn(0f, 1f)
+    if (right - left <= 1e-4f || bottom - top <= 1e-4f) return null
+
+    return PdfRect(
+      left = left,
+      top = top,
+      right = right,
+      bottom = bottom,
+    )
+  }
+
   private fun splitIntoColumnBoxes(lines: List<PdfTextLine>, columnCount: Int): List<PdfRect> {
     if (lines.isEmpty()) return emptyList()
     if (columnCount <= 1) {
