@@ -109,6 +109,17 @@
     <!-- Reader Bars -->
     <string name="cd_search_in_book">Tìm trong sách</string>
     <string name="cd_save_bookmark">Lưu dấu trang</string>
+    <string name="cd_back">Quay lại</string>
+    <string name="cd_decrease_font">Giảm cỡ chữ</string>
+    <string name="cd_increase_font">Tăng cỡ chữ</string>
+    <string name="cd_dismiss_banner">Đóng thông báo</string>
+    <string name="cd_goal_decrease">Giảm mục tiêu 5 phút</string>
+    <string name="cd_goal_increase">Tăng mục tiêu 5 phút</string>
+    <string name="cd_prev_snippet">Đoạn trước</string>
+    <string name="cd_next_snippet">Đoạn tiếp</string>
+    <string name="cd_pdf_page">Trang %1$d</string>
+    <string name="cd_bookmark_saved_state">Đã đánh dấu</string>
+    <string name="cd_bookmark_not_saved_state">Chưa đánh dấu</string>
     <string name="reader_contents_button">Mục lục</string>
     <string name="cd_brightness_auto">Độ sáng tự động</string>
     <string name="cd_brightness_pct">Độ sáng %1$d%%</string>

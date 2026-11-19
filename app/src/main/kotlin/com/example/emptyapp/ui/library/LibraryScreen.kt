@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -58,7 +59,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -224,19 +228,23 @@ fun LibraryScreen(
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.weight(1f),
           )
+          val dismissBannerCd = stringResource(com.example.emptyapp.R.string.cd_dismiss_banner)
           EInkText(
             text = "✕",
             style = MaterialTheme.typography.labelLarge,
             modifier =
-              Modifier.clickable {
-                setupBannerDismissed = true
-                tutorialPrefs.edit().putBoolean("setup_banner_dismissed", true).apply()
-              }.padding(start = 12.dp),
+              Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                .clickable {
+                  setupBannerDismissed = true
+                  tutorialPrefs.edit().putBoolean("setup_banner_dismissed", true).apply()
+                }
+                .semantics { contentDescription = dismissBannerCd }
+                .padding(horizontal = 12.dp, vertical = 12.dp),
           )
         }
         HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
       }
-      EInkTabRow(selected = selectedTab, onSelect = { selectedTab = it })
+      EInkTabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
       if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
         AuthorFilterRow(
           totalCount = tabBooks.size,
@@ -626,12 +634,12 @@ private fun ViewModeIcon(viewMode: LibraryViewMode) {
 }
 
 @Composable
-private fun EInkTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
+private fun EInkTabRow(selectedTab: LibraryTab, onSelect: (LibraryTab) -> Unit) {
   Column {
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
     Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
       LibraryTab.entries.forEach { tab ->
-        val active = tab == selected
+        val active = tab == selectedTab
         Box(
           modifier =
             Modifier
@@ -639,6 +647,10 @@ private fun EInkTabRow(selected: LibraryTab, onSelect: (LibraryTab) -> Unit) {
                 if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
               )
               .clickable { onSelect(tab) }
+              .semantics {
+                role = Role.Tab
+                selected = active
+              }
               .padding(horizontal = 14.dp, vertical = 12.dp),
           contentAlignment = Alignment.Center,
         ) {

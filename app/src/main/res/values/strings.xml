@@ -109,6 +109,17 @@
     <!-- Reader Bars -->
     <string name="cd_search_in_book">Search in book</string>
     <string name="cd_save_bookmark">Save bookmark</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_decrease_font">Decrease font size</string>
+    <string name="cd_increase_font">Increase font size</string>
+    <string name="cd_dismiss_banner">Dismiss banner</string>
+    <string name="cd_goal_decrease">Decrease daily goal by 5 minutes</string>
+    <string name="cd_goal_increase">Increase daily goal by 5 minutes</string>
+    <string name="cd_prev_snippet">Previous excerpt</string>
+    <string name="cd_next_snippet">Next excerpt</string>
+    <string name="cd_pdf_page">Page %1$d</string>
+    <string name="cd_bookmark_saved_state">Bookmarked</string>
+    <string name="cd_bookmark_not_saved_state">Not bookmarked</string>
     <string name="reader_contents_button">Contents</string>
     <string name="cd_brightness_auto">Auto brightness</string>
     <string name="cd_brightness_pct">Brightness %1$d%%</string>

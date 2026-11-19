@@ -36,7 +36,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 23. U4 — Thông báo lỗi sync localized, trạng thái "kết nối lại"
 - [x] 24. U5 — Quyền thông báo, notification màn khoá, focus mode, lỗi intent bị nuốt
 - [x] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
-- [ ] 26. U7 — Accessibility (contentDescription, 48dp, semantics)
+- [x] 26. U7 — Accessibility (contentDescription, 48dp, semantics)
 - [ ] 27. U8 + U9 — Launcher pins, empty state, sort, cạnh trái ẩn, phím âm lượng, đồng hồ 12h
 - [ ] 28. U10 + U11 — Chuỗi cứng, plurals, privacy policy
 
@@ -464,3 +464,18 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** chưa hỗ trợ hoàn tác (undo) khôi phục file sách sau khi đã xoá cục bộ.
 
 **Bước tiếp theo:** mục 26 — U7: Accessibility (`contentDescription`, `minimumInteractiveComponentSize()`, `Role.Tab`/`selected`/`stateDescription`, semantics cho biểu đồ/heatmap).
+
+### 26. U7 — Accessibility (`contentDescription`, touch target 48dp, `semantics`) — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Thiếu `contentDescription` & touch target < 48dp:**
+  - `ReaderBars.kt`: bổ sung `contentDescription` và nâng vùng chạm tối thiểu `48.dp` cho nút quay lại (`‹`), `A−`, `A+`, tìm kiếm, bookmark (kèm `stateDescription` `Đã đánh dấu`/`Chưa đánh dấu`) và các ô chọn tone (`Role.RadioButton`, `selected`, `48.dp` hit target).
+  - `LibraryScreen.kt`: thêm `contentDescription` (`cd_dismiss_banner`) và `48.dp` min size cho nút `✕` banner; thêm `Role.Tab` + `selected` cho `EInkTabRow`.
+  - `ReadingStatsSheet.kt`: thêm `contentDescription` + `48.dp` min size cho nút quay lại (`‹`) và nút `−5`/`+5` (`GoalStepCircleButton`); thêm `Role.Tab` + `selected` cho tab Tổng quan / Cài đặt.
+  - `notification_lockscreen_nav.xml`: nâng kích thước nút `btn_prev` / `btn_next` lên `48dp × 48dp` và thêm `android:contentDescription`.
+  - `PdfPagerReader.kt`: thay chuỗi cứng `"Trang ..."` bằng `stringResource(R.string.cd_pdf_page, pageIndex + 1)`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay với TalkBack trên thiết bị/emulator.
+
+**Còn để lại:** chưa thêm `semantics` mô tả dữ liệu chi tiết cho biểu đồ cột/heatmap và custom action lật trang cho tap zone PDF.
+
+**Bước tiếp theo:** mục 27 — U8 + U9: Launcher pins, empty state có nút Import, sort thư viện, xử lý dải 24dp cạnh trái Reader, phím âm lượng tôn trọng dialog & setting tắt/bật, đồng hồ 12h/24h.

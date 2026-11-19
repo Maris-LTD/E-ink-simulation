@@ -858,7 +858,7 @@ fun PdfPagerReader(
           if (current != null) {
             Image(
               bitmap = current,
-              contentDescription = "Trang ${pageIndex + 1}",
+              contentDescription = stringResource(R.string.cd_pdf_page, pageIndex + 1),
               contentScale = ContentScale.Fit,
               colorFilter = colorFilter,
               modifier =

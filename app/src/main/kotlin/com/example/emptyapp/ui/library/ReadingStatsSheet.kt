@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,6 +57,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import com.example.emptyapp.reader.AppLanguage
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkTone
@@ -175,7 +181,13 @@ fun ReadingStatsScreen(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      TextButton(onClick = onBack) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
+      val backCd = stringResource(R.string.cd_back)
+      TextButton(
+        onClick = onBack,
+        modifier =
+          Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+            .semantics { contentDescription = backCd },
+      ) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
       EInkText(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge)
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
@@ -187,6 +199,10 @@ fun ReadingStatsScreen(
             Modifier.weight(1f)
               .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
               .clickable { selectedTab = index }
+              .semantics {
+                role = androidx.compose.ui.semantics.Role.Tab
+                selected = active
+              }
               .padding(vertical = 11.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -327,9 +343,17 @@ fun ReadingStatsScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
           ) {
-            GoalStepCircleButton(label = "−5", onClick = { onChangeGoalMinutes(goalMinutes - 5) })
+            GoalStepCircleButton(
+              label = "−5",
+              contentDesc = stringResource(R.string.cd_goal_decrease),
+              onClick = { onChangeGoalMinutes(goalMinutes - 5) },
+            )
             EInkText(stringResource(R.string.stats_goal_chip_min, goalMinutes), style = MaterialTheme.typography.labelLarge, maxLines = 1)
-            GoalStepCircleButton(label = "+5", onClick = { onChangeGoalMinutes(goalMinutes + 5) })
+            GoalStepCircleButton(
+              label = "+5",
+              contentDesc = stringResource(R.string.cd_goal_increase),
+              onClick = { onChangeGoalMinutes(goalMinutes + 5) },
+            )
           }
         }
       }
@@ -668,14 +692,16 @@ private fun shortWeekdayLabel(isoDate: String, isEn: Boolean = false): String {
 @Composable
 private fun GoalStepCircleButton(
   label: String,
+  contentDesc: String,
   onClick: () -> Unit,
 ) {
   Box(
     modifier =
-      Modifier.size(36.dp)
+      Modifier.size(48.dp)
         .clip(CircleShape)
         .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-        .clickable(onClick = onClick),
+        .clickable(onClick = onClick)
+        .semantics { contentDescription = contentDesc },
     contentAlignment = Alignment.Center,
   ) {
     EInkText(text = label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
