@@ -263,4 +263,108 @@ class LibraryRepositoryTest {
     assertTrue(failure is CancellationException)
     assertTrue("b1" in attemptedIds)
   }
+
+  @Test
+  fun savePdfReadingModeDoesNotBumpUpdatedAtAndSkipsUnchangedWrite() = runTest {
+    val repo = createRepository()
+    val entry =
+      BookEntry(
+        id = "pdf-1",
+        title = "PDF Book",
+        author = "Author",
+        fileName = "pdf-1.pdf",
+        format = BookFormat.PDF,
+        contentHash = "hash-pdf-1",
+        progress = 0.25f,
+        lastLocatorJson = """{"href":"page-2"}""",
+        updatedAt = 12_345L,
+        pdfReadingMode = PdfReadingMode.SMART_ORIGINAL,
+      )
+    assertTrue(repo.importWithHashes { Result.success(entry) }.isSuccess)
+
+    repo.savePdfReadingMode("pdf-1", PdfReadingMode.HYBRID_REFLOW)
+
+    val afterModeChange = repo.find("pdf-1")!!
+    assertEquals(PdfReadingMode.HYBRID_REFLOW, afterModeChange.pdfReadingMode)
+    assertEquals(12_345L, afterModeChange.updatedAt)
+
+    // Make library.json unwritable to verify unchanged mode is a true no-op (no disk write).
+    val libraryFile = File(dir, "library.json")
+    assertTrue(libraryFile.delete())
+    libraryFile.mkdirs()
+    File(libraryFile, "blocker").writeText("lock")
+
+    repo.savePdfReadingMode("pdf-1", PdfReadingMode.HYBRID_REFLOW)
+    assertFalse(repo.lastWriteError.value)
+  }
+
+  @Test
+  fun saveProgressSkipsWriteAndDoesNotBumpUpdatedAtWhenLocatorAndProgressUnchanged() = runTest {
+    val repo = createRepository()
+    val locator = """{"href":"ch1.xhtml","locations":{"progression":0.5}}"""
+    val entry =
+      BookEntry(
+        id = "epub-1",
+        title = "EPUB Book",
+        author = "Author",
+        fileName = "epub-1.epub",
+        format = BookFormat.EPUB,
+        contentHash = "hash-epub-1",
+        progress = 0.5f,
+        lastLocatorJson = locator,
+        updatedAt = 50_000L,
+      )
+    assertTrue(repo.importWithHashes { Result.success(entry) }.isSuccess)
+
+    val libraryFile = File(dir, "library.json")
+    assertTrue(libraryFile.delete())
+    libraryFile.mkdirs()
+    File(libraryFile, "blocker").writeText("lock")
+
+    // Exact same locator and progress within 1e-6f must not write to disk or change updatedAt.
+    repo.saveProgress("epub-1", locator, 0.5f + 5e-7f)
+
+    assertEquals(50_000L, repo.find("epub-1")?.updatedAt)
+    assertFalse(repo.lastWriteError.value)
+
+    // Restore writable directory and change locator -> updatedAt must advance.
+    libraryFile.deleteRecursively()
+    val newLocator = """{"href":"ch2.xhtml","locations":{"progression":0.1}}"""
+    repo.saveProgress("epub-1", newLocator, 0.6f)
+
+    val updated = repo.find("epub-1")!!
+    assertEquals(newLocator, updated.lastLocatorJson)
+    assertEquals(0.6f, updated.progress, 1e-6f)
+    assertTrue(updated.updatedAt > 50_000L)
+  }
+
+  @Test
+  fun applySyncedProgressClampsFutureRemoteUpdatedAtToNow() = runTest {
+    val repo = createRepository()
+    val entry =
+      BookEntry(
+        id = "book-sync",
+        title = "Sync Book",
+        author = "Author",
+        fileName = "book-sync.epub",
+        format = BookFormat.EPUB,
+        contentHash = "hash-sync",
+        progress = 0.1f,
+        lastLocatorJson = """{"href":"ch1"}""",
+        updatedAt = 1_000L,
+      )
+    assertTrue(repo.importWithHashes { Result.success(entry) }.isSuccess)
+
+    val localNow = 2_000L
+    val farFutureRemoteTime = 9_999_999_999_999L
+    repo.applySyncedProgress(
+      progressByHash = mapOf("hash-sync" to ("""{"href":"ch5"}""" to (0.5f to farFutureRemoteTime))),
+      now = localNow,
+    )
+
+    val afterSync = repo.find("book-sync")!!
+    assertEquals("""{"href":"ch5"}""", afterSync.lastLocatorJson)
+    assertEquals(0.5f, afterSync.progress, 1e-6f)
+    assertEquals(localNow, afterSync.updatedAt)
+  }
 }

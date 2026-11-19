@@ -109,4 +109,29 @@ class SyncTombstoneMergerTest {
     assertEquals(emptyList<SyncedBookProgress>(), result.books)
     assertEquals(listOf("bm-kept"), result.bookmarks.map { it.id })
   }
+
+  @Test
+  fun mergeClampsFarFutureTombstoneAndAllowsSubsequentLocalRevive() {
+    val farFuture = now + 365L * 24L * 60L * 60L * 1000L * 5L
+    val remoteFutureDelete = listOf(SyncTombstone("book-future", changedAt = farFuture, deleted = true))
+
+    val mergedAfterSync = SyncTombstoneMerger.merge(emptyList(), remoteFutureDelete, now)
+    assertEquals(now, mergedAfterSync.single().changedAt)
+    assertEquals(setOf("book-future"), SyncTombstoneMerger.deletedKeys(mergedAfterSync))
+
+    // Slight clock skew within MAX_FUTURE_SKEW_MS is preserved:
+    val slightSkew = now + SyncTombstoneMerger.MAX_FUTURE_SKEW_MS - 1_000L
+    val mergedSlightSkew =
+      SyncTombstoneMerger.merge(emptyList(), listOf(SyncTombstone("skew", changedAt = slightSkew, deleted = true)), now)
+    assertEquals(slightSkew, mergedSlightSkew.single().changedAt)
+
+    // Later (laterNow = now + 1_000L), user re-imports the book on a normal clock;
+    // the remote payload now holds the clamped tombstone from the previous sync.
+    val laterNow = now + 1_000L
+    val revived = SyncTombstoneMerger.upsert(mergedAfterSync, listOf("book-future"), deleted = false, now = laterNow)
+    val mergedAgain = SyncTombstoneMerger.merge(revived, mergedAfterSync, now = laterNow)
+
+    assertEquals(emptySet<String>(), SyncTombstoneMerger.deletedKeys(mergedAgain))
+    assertEquals(laterNow, mergedAgain.single().changedAt)
+  }
 }

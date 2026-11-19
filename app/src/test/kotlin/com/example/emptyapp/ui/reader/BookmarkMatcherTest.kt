@@ -220,6 +220,43 @@ class BookmarkMatcherTest {
     assertFalse(BookmarkMatcher.matches(BookmarkMatchMode.REFLOWABLE_EPUB, current, noProgSameHref, 0.36f))
   }
 
+  @Test
+  fun resolveInitialLocatorChoiceRespectsConsumedFlagAndBookUpdatedAt() {
+    val locatorJson = """{"href":"ch3.xhtml"}"""
+    assertTrue(
+      ReaderViewModel.resolveInitialLocatorChoice(
+        overrideLocatorJson = locatorJson,
+        overrideLocatorCreatedAt = 1_000L,
+        overrideLocatorConsumed = false,
+        bookUpdatedAt = 900L,
+      ),
+    )
+    assertFalse(
+      ReaderViewModel.resolveInitialLocatorChoice(
+        overrideLocatorJson = locatorJson,
+        overrideLocatorCreatedAt = 1_000L,
+        overrideLocatorConsumed = true,
+        bookUpdatedAt = 900L,
+      ),
+    )
+    assertFalse(
+      ReaderViewModel.resolveInitialLocatorChoice(
+        overrideLocatorJson = locatorJson,
+        overrideLocatorCreatedAt = 800L,
+        overrideLocatorConsumed = false,
+        bookUpdatedAt = 900L,
+      ),
+    )
+    assertFalse(
+      ReaderViewModel.resolveInitialLocatorChoice(
+        overrideLocatorJson = null,
+        overrideLocatorCreatedAt = 1_000L,
+        overrideLocatorConsumed = false,
+        bookUpdatedAt = 0L,
+      ),
+    )
+  }
+
   private fun loc(
     href: String,
     position: Int?,

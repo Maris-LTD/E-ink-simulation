@@ -57,7 +57,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
 - [x] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
 - [x] 39. M9 + L2 + L8 — Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`
-- [ ] 40. L5 + L7 + L9 + L22 (`updatedAt`) — Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ
+- [x] 40. L5 + L7 + L9 + L22 (`updatedAt`) — Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ
 
 ### 5C — PDF
 - [ ] 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder (bỏ code chết `seedAnalyses`/`analysisCache` nếu không dùng), prefetch trang kề; GUIDED chặn lật khi chưa có regions và giữ `pendingBackwardLandingPage`; smart tap-zoom ở SMART phân tích trang hiện tại; trích chữ bằng 1 lần `getText` + `startPage/endPage`
@@ -822,3 +822,35 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 40 — L5 + L7 + L9 + L22 (`updatedAt`): Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ.
+
+### 40. L5 + L7 + L9 + L22 (`updatedAt`) — Chặn `changedAt`/`updatedAt` tương lai, xác nhận đồng bộ sách qua mạng trả phí, giới hạn từ điển 500 ký tự + `auto|<target>`, giữ ổn định `updatedAt` & trạng thái tiêu thụ override locator — 2026-11-19
+**Nguyên nhân:**
+- **L5:** `SyncTombstoneMerger.merge` giữ nguyên `changedAt` của tombstone nhận được mà không giới hạn mốc tương lai — một thiết bị lệch đồng hồ sang tương lai (ví dụ năm 2030) sẽ tạo tombstone "bất tử" thắng mọi thao tác khôi phục về sau. Tương tự, `LibraryRepository.applySyncedProgress` và `SyncRemotePayloadMerger` nhận trực tiếp `remoteUpdatedAt` tương lai từ máy khác khiến `book.updatedAt` trên máy này bị khoá ở mốc tương lai.
+- **L7:** Khi bật `syncBookFiles`, đồng bộ nền đã kiểm tra `isUnmeteredNetwork()`, nhưng đồng bộ thủ công (`signInAndSync`) luôn đặt `allowBookFiles = true` mà không hỏi người dùng khi đang dùng mạng di động/trả phí (`isActiveNetworkMetered`), có thể tự động tải hoặc đăng file sách tới 100 MB/cuốn qua 4G.
+- **L9:** `DictionaryService` không giới hạn độ dài văn bản gửi tới dịch vụ bên thứ ba, và fallback MyMemory cố định `langpair` theo cặp `vi|en` hoặc `en|vi` thay vì `auto|<target>`.
+- **L22 (`updatedAt`):**
+  - `LibraryRepository.savePdfReadingMode` luôn gán `updatedAt = System.currentTimeMillis()` (kể cả khi `ReaderViewModel.onCleared()` gọi lại mỗi lần đóng sách PDF), làm tăng `updatedAt` khi chỉ đổi/lưu lại chế độ đọc khiến tiến độ đọc cũ thắng bản mới hơn trên máy khác khi sync.
+  - `LibraryRepository.saveProgress` vẫn ghi đĩa và tăng `updatedAt` ngay cả khi `locatorJson` và `progress` không đổi.
+  - `ReaderActivity` chỉ gọi `intent.removeExtra(EXTRA_LOCATOR_JSON)` — không có tác dụng sau khi process bị kill và Android khôi phục lại `Intent` gốc, có thể áp lại `overrideLocatorJson` cũ đè lên vị trí vừa đọc.
+
+**Đã sửa:**
+- `data/sync/SyncTombstoneMerger.kt`, `data/sync/SyncRemotePayloadMerger.kt`, `data/book/LibraryRepository.kt` (**L5 + L22**):
+  - Thêm `SyncTombstoneMerger.MAX_FUTURE_SKEW_MS = 5 * 60_000L` và `clampTimestamp(timestamp, now)`: trong `SyncTombstoneMerger.merge`, kẹp `changedAt` vượt quá `now + MAX_FUTURE_SKEW_MS` về `now` để chặn tombstone tương lai bất tử nhưng vẫn dung nạp lệch đồng hồ nhẹ dưới 5 phút.
+  - Trong `LibraryRepository.applySyncedProgress`, `LibraryRepository.importFromSyncedFile` và `SyncRemotePayloadMerger.mergePayloads`: kẹp `remoteUpdatedAt.coerceAtMost(now)` để tiến độ từ thiết bị sai đồng hồ tương lai không khoá cứng `updatedAt` cục bộ.
+  - Trong `LibraryRepository.savePdfReadingMode(id, mode)`: bỏ qua không ghi nếu `pdfReadingMode == mode` (trừ khi đang `dirty`), và **không** cập nhật `updatedAt` khi đổi chế độ đọc PDF.
+  - Trong `LibraryRepository.saveProgress(id, locatorJson, progress)`: nếu `lastLocatorJson == locatorJson && abs(it.progress - clamped) < 1e-6f` (và không `dirty`), bỏ qua không ghi đĩa và không tăng `updatedAt`.
+- `data/sync/GoogleDriveSyncManager.kt`, `ui/library/ReadingStatsSheet.kt`, `Navigation.kt`, `res/values/strings.xml`, `res/values-vi/strings.xml` (**L7**):
+  - Thêm `shouldConfirmMeteredBookSync(): Boolean` (`state.value.syncBookFiles && isMeteredNetwork()`), bổ sung tham số `allowBookFiles: Boolean = state.value.syncBookFiles` cho `launchSignInAndSync`, `signInAndSync`, `launchHandleConsentResult`, `handleConsentResult` (lưu `pendingConsentAllowBookFiles` xuyên suốt luồng OAuth consent).
+  - Trong `ReadingStatsScreen`: khi bấm đồng bộ mà `shouldConfirmMeteredBookSync()` là `true`, hiển thị hộp thoại xác nhận (`sync_metered_confirm_title` / `sync_metered_confirm_message`) với 3 lựa chọn localized (vi/en): "Đồng bộ cả file sách" (`allowBookFiles = true`), "Chỉ đồng bộ tiến độ & ghi chú" (`allowBookFiles = false`), hoặc "Hủy".
+- `data/dictionary/DictionaryService.kt` (**L9**):
+  - Thêm `MAX_QUERY_CHARS = 500`, cắt ngắn văn bản đầu vào trong `normalizeQuery`, `normalizeWord` và `translate` tối đa 500 ký tự (`take(MAX_QUERY_CHARS)`).
+  - Cập nhật fallback MyMemory dùng `buildMyMemoryLangPair(targetLang)` = `"auto|$normalizedTarget"` (`langpair=auto|$targetLang`).
+- `ReaderActivity.kt`, `ui/reader/ReaderViewModel.kt` (**L22**):
+  - Lưu cờ `STATE_OVERRIDE_LOCATOR_CONSUMED` vào `onSaveInstanceState` của `ReaderActivity` (đọc lại từ `savedInstanceState` trước `super.onCreate(null)` để không ảnh hưởng cơ chế dựng lại Readium Fragment) kết hợp với cờ `overrideLocatorConsumed` và `resolveInitialLocatorChoice` trong `ReaderViewModel` để đảm bảo `overrideLocatorJson` chỉ được tiêu thụ đúng một lần duy nhất và không bao giờ áp lại sau khi recreate hoặc process death.
+- Unit test mới trong `SyncTombstoneMergerTest`, `LibraryRepositoryTest` (+3), `DictionaryServiceTest` (+2), `BookmarkMatcherTest` (+1).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **181/181 pass**; `lintDebug`: **0 errors**).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 41 — M10 + M11 + L11 (PDF: một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder, prefetch trang kề, GUIDED chặn lật khi chưa có regions, smart tap-zoom ở SMART, trích chữ 1 lần).

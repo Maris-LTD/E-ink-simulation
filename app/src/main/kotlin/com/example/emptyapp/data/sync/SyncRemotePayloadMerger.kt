@@ -75,7 +75,8 @@ internal object SyncRemotePayloadMerger {
       bookTombstones = SyncTombstoneMerger.merge(bookTombstones, payload.bookTombstones, now)
       annotationTombstones = SyncTombstoneMerger.merge(annotationTombstones, payload.annotationTombstones, now)
 
-      for (book in payload.books) {
+      for (rawBook in payload.books) {
+        val book = rawBook.copy(updatedAt = rawBook.updatedAt.coerceAtMost(now))
         val current = booksByHash[book.contentHash]
         if (current == null || isNewerBook(book, current)) {
           booksByHash[book.contentHash] = book

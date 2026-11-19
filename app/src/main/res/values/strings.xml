@@ -237,6 +237,10 @@
     <string name="sync_deleting_cloud">Deleting cloud data…</string>
     <string name="sync_all_cloud_deleted">All Google Drive backup data deleted and sync turned off on this device</string>
     <string name="sync_book_deleted_cloud">Removed "%1$s" from Google Drive</string>
+    <string name="sync_metered_confirm_title">Sync over metered network?</string>
+    <string name="sync_metered_confirm_message">You are on a mobile or metered network. Syncing book files (up to 100 MB per book) may use significant mobile data.</string>
+    <string name="sync_metered_allow_books">Sync book files too</string>
+    <string name="sync_metered_metadata_only">Progress &amp; notes only</string>
 
     <string name="error_open_system_settings">Could not open system settings on this device</string>
     <string name="error_open_browser">No browser app found to open translation</string>

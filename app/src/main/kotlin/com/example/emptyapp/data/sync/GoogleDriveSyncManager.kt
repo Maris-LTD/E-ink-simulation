@@ -84,6 +84,7 @@ class GoogleDriveSyncManager(
   private var backgroundSyncJob: Job? = null
   private var backgroundSyncRequested = false
   @Volatile private var consecutiveBackgroundFailures = 0
+  @Volatile private var pendingConsentAllowBookFiles: Boolean? = null
 
   private fun loadSavedCloudBooks(): List<SyncedBookProgress> {
     val raw = prefs.getString(KEY_CLOUD_BOOKS_JSON, null) ?: return emptyList()
@@ -133,9 +134,15 @@ class GoogleDriveSyncManager(
     state.update { it.copy(syncBookFiles = enabled) }
   }
 
-  fun launchSignInAndSync(onNeedConsent: (IntentSenderRequest) -> Unit = {}) {
+  fun shouldConfirmMeteredBookSync(): Boolean =
+    state.value.syncBookFiles && isMeteredNetwork()
+
+  fun launchSignInAndSync(
+    allowBookFiles: Boolean = state.value.syncBookFiles,
+    onNeedConsent: (IntentSenderRequest) -> Unit = {},
+  ) {
     backgroundScope.launch {
-      val result = signInAndSync()
+      val result = signInAndSync(allowBookFiles = allowBookFiles)
       if (result is SyncActionResult.NeedsConsent) {
         val request = IntentSenderRequest.Builder(result.pendingIntent).build()
         withContext(Dispatchers.Main.immediate) {
@@ -145,9 +152,12 @@ class GoogleDriveSyncManager(
     }
   }
 
-  fun launchHandleConsentResult(data: Intent?) {
+  fun launchHandleConsentResult(
+    data: Intent?,
+    allowBookFiles: Boolean = pendingConsentAllowBookFiles ?: state.value.syncBookFiles,
+  ) {
     backgroundScope.launch {
-      handleConsentResult(data)
+      handleConsentResult(data, allowBookFiles = allowBookFiles)
     }
   }
 
@@ -157,7 +167,10 @@ class GoogleDriveSyncManager(
     }
   }
 
-  suspend fun signInAndSync(): SyncActionResult {
+  suspend fun signInAndSync(
+    allowBookFiles: Boolean = state.value.syncBookFiles,
+  ): SyncActionResult {
+    pendingConsentAllowBookFiles = allowBookFiles
     val signInGeneration =
       if (!state.value.isSignedIn) sessionGuard.advanceGeneration() else sessionGuard.currentGeneration()
     updateStateIfActive(signInGeneration) {
@@ -199,10 +212,18 @@ class GoogleDriveSyncManager(
       return SyncActionResult.Error(msg)
     }
 
-    return completeSyncWithToken(token, expectedGeneration = signInGeneration)
+    return completeSyncWithToken(
+      token = token,
+      allowBookFiles = allowBookFiles,
+      expectedGeneration = signInGeneration,
+    )
   }
 
-  suspend fun handleConsentResult(data: Intent?): SyncActionResult {
+  suspend fun handleConsentResult(
+    data: Intent?,
+    allowBookFiles: Boolean = pendingConsentAllowBookFiles ?: state.value.syncBookFiles,
+  ): SyncActionResult {
+    pendingConsentAllowBookFiles = null
     val signInGeneration =
       if (!state.value.isSignedIn) sessionGuard.advanceGeneration() else sessionGuard.currentGeneration()
     if (data == null) {
@@ -235,7 +256,11 @@ class GoogleDriveSyncManager(
       updateStateIfActive(signInGeneration) { it.copy(syncing = false, statusMessage = msg) }
       return SyncActionResult.Error(msg)
     }
-    return completeSyncWithToken(token, expectedGeneration = signInGeneration)
+    return completeSyncWithToken(
+      token = token,
+      allowBookFiles = allowBookFiles,
+      expectedGeneration = signInGeneration,
+    )
   }
 
   fun syncInBackgroundIfSignedIn() {
@@ -330,10 +355,12 @@ class GoogleDriveSyncManager(
     }
   }
 
-  private fun isUnmeteredNetwork(): Boolean {
-    val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
-    return !cm.isActiveNetworkMetered
+  private fun isMeteredNetwork(): Boolean {
+    val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+    return cm.isActiveNetworkMetered
   }
+
+  private fun isUnmeteredNetwork(): Boolean = !isMeteredNetwork()
 
   fun signOut() {
     val signOutGeneration = sessionGuard.advanceGeneration()

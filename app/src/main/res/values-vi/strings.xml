@@ -237,6 +237,10 @@
     <string name="sync_deleting_cloud">Đang xóa dữ liệu trên Drive…</string>
     <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive và ngắt đồng bộ trên máy này</string>
     <string name="sync_book_deleted_cloud">Đã xóa "%1$s" khỏi Google Drive</string>
+    <string name="sync_metered_confirm_title">Đồng bộ qua mạng di động/trả phí?</string>
+    <string name="sync_metered_confirm_message">Bạn đang dùng mạng di động hoặc mạng tính phí theo dung lượng. Đồng bộ file sách (tới 100 MB/sách) có thể tốn nhiều dữ liệu di động.</string>
+    <string name="sync_metered_allow_books">Đồng bộ cả file sách</string>
+    <string name="sync_metered_metadata_only">Chỉ đồng bộ tiến độ &amp; ghi chú</string>
 
     <string name="error_open_system_settings">Không mở được cài đặt hệ thống trên thiết bị này</string>
     <string name="error_open_browser">Không tìm thấy trình duyệt để mở trang dịch</string>

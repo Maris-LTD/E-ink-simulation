@@ -61,10 +61,15 @@ fun MainNavigation() {
             completedBooksCount = books.count { it.progress >= 0.99f },
             highlightsCount = highlights.size,
             syncState = syncState,
-            onSignInAndSync = { container.sync.signInAndSync() },
-            onHandleSyncConsent = { data -> container.sync.handleConsentResult(data) },
-            onLaunchSignInAndSync = { onNeedConsent -> container.sync.launchSignInAndSync(onNeedConsent) },
-            onLaunchHandleSyncConsent = { data -> container.sync.launchHandleConsentResult(data) },
+            shouldConfirmMeteredBookSync = container.sync::shouldConfirmMeteredBookSync,
+            onSignInAndSync = { allowBookFiles -> container.sync.signInAndSync(allowBookFiles) },
+            onHandleSyncConsent = { data, allowBookFiles -> container.sync.handleConsentResult(data, allowBookFiles) },
+            onLaunchSignInAndSync = { allowBookFiles, onNeedConsent ->
+              container.sync.launchSignInAndSync(allowBookFiles = allowBookFiles, onNeedConsent = onNeedConsent)
+            },
+            onLaunchHandleSyncConsent = { data, allowBookFiles ->
+              container.sync.launchHandleConsentResult(data, allowBookFiles = allowBookFiles)
+            },
             onToggleSyncBookFiles = { enabled -> container.sync.setSyncBookFiles(enabled) },
             onDeleteCloudBook = { book -> container.sync.deleteBookFromCloud(book.contentHash, book.title) },
             onLaunchDeleteCloudBook = { book -> container.sync.deleteBookFromCloudAsync(book.contentHash, book.title) },

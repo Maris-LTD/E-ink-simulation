@@ -6,6 +6,7 @@ import android.net.Uri
 import com.example.emptyapp.reader.ReadiumEngine
 import com.example.emptyapp.reader.pdf.PdfReadingMode
 import java.io.File
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -168,19 +169,39 @@ class LibraryRepository internal constructor(
   }
 
   suspend fun saveProgress(id: String, locatorJson: String, progress: Float) {
+    val clamped = progress.coerceIn(0f, 1f)
+    val current = find(id)
+    if (current != null &&
+      current.lastLocatorJson == locatorJson &&
+      abs(current.progress - clamped) < PROGRESS_EPSILON &&
+      !dirty
+    ) {
+      return
+    }
     val now = System.currentTimeMillis()
     commit { list ->
       list.map {
-        if (it.id == id) it.copy(lastLocatorJson = locatorJson, progress = progress, updatedAt = now) else it
+        if (it.id == id) {
+          if (it.lastLocatorJson == locatorJson && abs(it.progress - clamped) < PROGRESS_EPSILON) {
+            it
+          } else {
+            it.copy(lastLocatorJson = locatorJson, progress = clamped, updatedAt = now)
+          }
+        } else {
+          it
+        }
       }
     }
   }
 
   suspend fun savePdfReadingMode(id: String, mode: PdfReadingMode) {
-    val now = System.currentTimeMillis()
+    val current = find(id)
+    if (current != null && current.pdfReadingMode == mode && !dirty) {
+      return
+    }
     commit { list ->
       list.map {
-        if (it.id == id) it.copy(pdfReadingMode = mode, updatedAt = now) else it
+        if (it.id == id && it.pdfReadingMode != mode) it.copy(pdfReadingMode = mode) else it
       }
     }
   }
@@ -211,6 +232,7 @@ class LibraryRepository internal constructor(
 
   suspend fun applySyncedProgress(
     progressByHash: Map<String, Pair<String?, Pair<Float, Long>>>,
+    now: Long = System.currentTimeMillis(),
   ) {
     if (progressByHash.isEmpty()) {
       if (dirty) commit { it }
@@ -220,7 +242,8 @@ class LibraryRepository internal constructor(
       list.map { book ->
         val remote = book.contentHash?.let { progressByHash[it] } ?: return@map book
         val (remoteLocator, progressAndTime) = remote
-        val (remoteProgress, remoteUpdatedAt) = progressAndTime
+        val (remoteProgress, rawRemoteUpdatedAt) = progressAndTime
+        val remoteUpdatedAt = rawRemoteUpdatedAt.coerceAtMost(now)
         val shouldApply =
           (remoteUpdatedAt > book.updatedAt && remoteLocator != null) ||
             (book.updatedAt == 0L && remoteProgress > book.progress && remoteLocator != null)
@@ -249,6 +272,7 @@ class LibraryRepository internal constructor(
   ): Boolean =
     importMutex.withLock {
       withContext(Dispatchers.IO) {
+        val clampedUpdatedAt = updatedAt.coerceAtMost(System.currentTimeMillis())
         val result =
           SyncedBookFileImporter.importSyncedBook(
             sourceFile = tempFile,
@@ -260,7 +284,7 @@ class LibraryRepository internal constructor(
             expectedContentHash = contentHash,
             progress = progress,
             lastLocatorJson = lastLocatorJson,
-            updatedAt = updatedAt,
+            updatedAt = clampedUpdatedAt,
             isDuplicateHash = { hash ->
               state.value.any { it.contentHash?.equals(hash, ignoreCase = true) == true }
             },
@@ -314,5 +338,9 @@ class LibraryRepository internal constructor(
         mutableLastWriteError.value = true
       }
     }
+  }
+
+  private companion object {
+    const val PROGRESS_EPSILON = 1e-6f
   }
 }

@@ -82,6 +82,7 @@ class ReaderActivity : FragmentActivity() {
   private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
   private val focusModeController by lazy { FocusModeController(this) }
   private var lastLockScreenPositionKey: String? = null
+  private var overrideLocatorConsumedInState: Boolean = false
   @Volatile private var cachedChapterSnippets: Pair<String, List<String>>? = null
   private val requestNotificationPermission =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -95,8 +96,13 @@ class ReaderActivity : FragmentActivity() {
   private val viewModel: ReaderViewModel by lazy {
     val container = (application as EmptyApplication).container
     val bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
-    val overrideLocator = intent.getStringExtra(EXTRA_LOCATOR_JSON)
-    val overrideLocatorCreatedAt = intent.getLongExtra(EXTRA_LOCATOR_CREATED_AT, 0L)
+    val overrideLocator =
+      if (overrideLocatorConsumedInState) null else intent.getStringExtra(EXTRA_LOCATOR_JSON)
+    val overrideLocatorCreatedAt =
+      if (overrideLocatorConsumedInState) 0L else intent.getLongExtra(EXTRA_LOCATOR_CREATED_AT, 0L)
+    if (overrideLocator != null) {
+      overrideLocatorConsumedInState = true
+    }
     intent.removeExtra(EXTRA_LOCATOR_JSON)
     intent.removeExtra(EXTRA_LOCATOR_CREATED_AT)
     androidx.lifecycle.ViewModelProvider(
@@ -121,6 +127,8 @@ class ReaderActivity : FragmentActivity() {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    overrideLocatorConsumedInState =
+      savedInstanceState?.getBoolean(STATE_OVERRIDE_LOCATOR_CONSUMED, false) == true
     super.onCreate(null)
     enableEdgeToEdge()
     hideSystemBars()
@@ -356,6 +364,14 @@ class ReaderActivity : FragmentActivity() {
     super.onStop()
   }
 
+  override fun onSaveInstanceState(outState: Bundle) {
+    super.onSaveInstanceState(outState)
+    outState.putBoolean(
+      STATE_OVERRIDE_LOCATOR_CONSUMED,
+      overrideLocatorConsumedInState || viewModel.isOverrideLocatorConsumed(),
+    )
+  }
+
   override fun onUserInteraction() {
     super.onUserInteraction()
     viewModel.notifyUserInteraction()
@@ -589,6 +605,7 @@ class ReaderActivity : FragmentActivity() {
     private const val EXTRA_BOOK_ID = "book_id"
     private const val EXTRA_LOCATOR_JSON = "locator_json"
     private const val EXTRA_LOCATOR_CREATED_AT = "locator_created_at"
+    internal const val STATE_OVERRIDE_LOCATOR_CONSUMED = "override_locator_consumed"
     private const val MENU_HIGHLIGHT = 1001
     private const val MENU_NOTE = 1002
     private const val MENU_LOOKUP = 1003

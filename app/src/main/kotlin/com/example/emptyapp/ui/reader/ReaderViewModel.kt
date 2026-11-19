@@ -103,6 +103,7 @@ class ReaderViewModel(
   private var pendingPages: Int = 0
   private var lastPositionKey: String? = null
   private var currentLocator: Locator? = null
+  @Volatile private var overrideLocatorConsumed: Boolean = false
   private val currentLocatorFlow = MutableStateFlow<Locator?>(null)
   private val bookmarkMatchModeFlow = MutableStateFlow(BookmarkMatchMode.POSITION_BASED)
   private val epubPageWindowFlow = MutableStateFlow<EpubPageWindow?>(null)
@@ -213,6 +214,16 @@ class ReaderViewModel(
   }
 
   fun currentLocatorSnapshot(): Locator? = currentLocator
+
+  fun isOverrideLocatorConsumed(): Boolean = overrideLocatorConsumed
+
+  internal fun shouldUseOverrideLocator(bookUpdatedAt: Long): Boolean =
+    resolveInitialLocatorChoice(
+      overrideLocatorJson = overrideLocatorJson,
+      overrideLocatorCreatedAt = overrideLocatorCreatedAt,
+      overrideLocatorConsumed = overrideLocatorConsumed,
+      bookUpdatedAt = bookUpdatedAt,
+    )
 
   fun onEpubPageChanged(totalPages: Int, locator: Locator) {
     epubPageWindowFlow.value =
@@ -520,9 +531,8 @@ class ReaderViewModel(
           )
         epubPageWindowFlow.value = null
         mutableProgress.value = book.progress
-        val useOverride =
-          overrideLocatorJson != null &&
-            (overrideLocatorCreatedAt <= 0L || overrideLocatorCreatedAt >= book.updatedAt)
+        val useOverride = shouldUseOverrideLocator(book.updatedAt)
+        overrideLocatorConsumed = true
         val initial =
           (if (useOverride) parseLocator(overrideLocatorJson) else null)
             ?: parseLocator(book.lastLocatorJson)
@@ -592,9 +602,19 @@ class ReaderViewModel(
     publication?.close()
   }
 
-  private companion object {
-    const val INACTIVITY_TIMEOUT_MS = 120_000L
-    const val PROGRESS_SAVE_INTERVAL_MS = 1_500L
-    const val SETTINGS_RELAYOUT_SUPPRESS_MS = 1_000L
+  companion object {
+    private const val INACTIVITY_TIMEOUT_MS = 120_000L
+    private const val PROGRESS_SAVE_INTERVAL_MS = 1_500L
+    private const val SETTINGS_RELAYOUT_SUPPRESS_MS = 1_000L
+
+    internal fun resolveInitialLocatorChoice(
+      overrideLocatorJson: String?,
+      overrideLocatorCreatedAt: Long,
+      overrideLocatorConsumed: Boolean,
+      bookUpdatedAt: Long,
+    ): Boolean =
+      !overrideLocatorConsumed &&
+        overrideLocatorJson != null &&
+        (overrideLocatorCreatedAt <= 0L || overrideLocatorCreatedAt >= bookUpdatedAt)
   }
 }

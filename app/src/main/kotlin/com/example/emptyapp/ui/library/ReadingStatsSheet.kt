@@ -118,10 +118,11 @@ fun ReadingStatsScreen(
   completedBooksCount: Int,
   highlightsCount: Int,
   syncState: SyncUiState = SyncUiState(),
-  onSignInAndSync: suspend () -> SyncActionResult = { SyncActionResult.Synced },
-  onHandleSyncConsent: suspend (Intent?) -> SyncActionResult = { SyncActionResult.Synced },
-  onLaunchSignInAndSync: ((onNeedConsent: (IntentSenderRequest) -> Unit) -> Unit)? = null,
-  onLaunchHandleSyncConsent: ((Intent?) -> Unit)? = null,
+  shouldConfirmMeteredBookSync: () -> Boolean = { false },
+  onSignInAndSync: suspend (allowBookFiles: Boolean) -> SyncActionResult = { SyncActionResult.Synced },
+  onHandleSyncConsent: suspend (Intent?, allowBookFiles: Boolean) -> SyncActionResult = { _, _ -> SyncActionResult.Synced },
+  onLaunchSignInAndSync: ((allowBookFiles: Boolean, onNeedConsent: (IntentSenderRequest) -> Unit) -> Unit)? = null,
+  onLaunchHandleSyncConsent: ((Intent?, allowBookFiles: Boolean) -> Unit)? = null,
   onToggleSyncBookFiles: (Boolean) -> Unit = {},
   onDeleteCloudBook: suspend (SyncedBookProgress) -> SyncActionResult = { SyncActionResult.Synced },
   onLaunchDeleteCloudBook: ((SyncedBookProgress) -> Unit)? = null,
@@ -145,22 +146,26 @@ fun ReadingStatsScreen(
       Toast.makeText(context, saveErrorMsg, Toast.LENGTH_SHORT).show()
     }
   }
+  var pendingConsentAllowBookFiles by remember { mutableStateOf(syncState.syncBookFiles) }
+  var showMeteredSyncConfirm by remember { mutableStateOf(false) }
   val consentLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+      val allowBookFiles = pendingConsentAllowBookFiles
       if (onLaunchHandleSyncConsent != null) {
-        onLaunchHandleSyncConsent(res.data)
+        onLaunchHandleSyncConsent(res.data, allowBookFiles)
       } else {
-        scope.launch { onHandleSyncConsent(res.data) }
+        scope.launch { onHandleSyncConsent(res.data, allowBookFiles) }
       }
     }
-  fun triggerSync() {
+  fun startSync(allowBookFiles: Boolean) {
+    pendingConsentAllowBookFiles = allowBookFiles
     if (onLaunchSignInAndSync != null) {
-      onLaunchSignInAndSync { request ->
+      onLaunchSignInAndSync(allowBookFiles) { request ->
         runCatching { consentLauncher.launch(request) }
       }
     } else {
       scope.launch {
-        val result = onSignInAndSync()
+        val result = onSignInAndSync(allowBookFiles)
         if (result is SyncActionResult.NeedsConsent) {
           runCatching {
             consentLauncher.launch(IntentSenderRequest.Builder(result.pendingIntent).build())
@@ -168,6 +173,50 @@ fun ReadingStatsScreen(
         }
       }
     }
+  }
+  fun triggerSync() {
+    if (shouldConfirmMeteredBookSync()) {
+      showMeteredSyncConfirm = true
+    } else {
+      startSync(allowBookFiles = syncState.syncBookFiles)
+    }
+  }
+  if (showMeteredSyncConfirm) {
+    AlertDialog(
+      onDismissRequest = { showMeteredSyncConfirm = false },
+      containerColor = MaterialTheme.colorScheme.background,
+      title = { EInkText(stringResource(R.string.sync_metered_confirm_title), style = MaterialTheme.typography.titleMedium) },
+      text = { EInkText(stringResource(R.string.sync_metered_confirm_message), style = MaterialTheme.typography.bodyMedium) },
+      confirmButton = {
+        Column(horizontalAlignment = Alignment.End) {
+          TextButton(
+            onClick = {
+              showMeteredSyncConfirm = false
+              startSync(allowBookFiles = true)
+            },
+          ) {
+            EInkText(stringResource(R.string.sync_metered_allow_books), style = MaterialTheme.typography.labelLarge)
+          }
+          TextButton(
+            onClick = {
+              showMeteredSyncConfirm = false
+              startSync(allowBookFiles = false)
+            },
+          ) {
+            EInkText(stringResource(R.string.sync_metered_metadata_only), style = MaterialTheme.typography.labelLarge)
+          }
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showMeteredSyncConfirm = false }) {
+          EInkText(
+            stringResource(R.string.action_cancel),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary,
+          )
+        }
+      },
+    )
   }
   val todaySeconds = stats.todaySeconds()
   val todayMinutes = todaySeconds / 60

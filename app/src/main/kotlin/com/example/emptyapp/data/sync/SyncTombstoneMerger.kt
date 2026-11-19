@@ -2,6 +2,15 @@ package com.example.emptyapp.data.sync
 
 object SyncTombstoneMerger {
   const val MAX_AGE_MS = 365L * 24L * 60L * 60L * 1000L
+  const val MAX_FUTURE_SKEW_MS = 5L * 60L * 1000L
+
+  fun clampTimestamp(timestamp: Long, now: Long): Long =
+    if (timestamp > now + MAX_FUTURE_SKEW_MS) now else timestamp
+
+  private fun SyncTombstone.clampedTo(now: Long): SyncTombstone {
+    val clamped = clampTimestamp(changedAt, now)
+    return if (clamped == changedAt) this else copy(changedAt = clamped)
+  }
 
   fun merge(
     local: List<SyncTombstone>,
@@ -9,7 +18,8 @@ object SyncTombstoneMerger {
     now: Long,
   ): List<SyncTombstone> {
     val byKey = LinkedHashMap<String, SyncTombstone>()
-    (local + remote).forEach { candidate ->
+    (local + remote).forEach { rawCandidate ->
+      val candidate = rawCandidate.clampedTo(now)
       val current = byKey[candidate.key]
       if (current == null || candidate.isNewerThan(current)) {
         byKey[candidate.key] = candidate
