@@ -58,7 +58,7 @@ class GoogleDriveSyncManager(
 ) {
   private val appContext = context.applicationContext
   private fun str(resId: Int): String = LocaleHelper.wrap(appContext).getString(resId)
-  private fun str(resId: Int, arg: String): String = LocaleHelper.wrap(appContext).getString(resId, arg)
+  private fun str(resId: Int, vararg args: Any): String = LocaleHelper.wrap(appContext).getString(resId, *args)
   private val prefs = appContext.getSharedPreferences("eink_google_sync", Context.MODE_PRIVATE)
   private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private val mutex = Mutex()
@@ -352,11 +352,12 @@ class GoogleDriveSyncManager(
           val remote =
             rawRemote?.let { SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds) }
 
+          var failedBookUploads = 0
           if (state.value.syncBookFiles) {
             if (remote != null) {
               downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes)
             }
-            uploadMissingBooks(token, appDataFiles, deletedHashes)
+            failedBookUploads = uploadMissingBooks(token, appDataFiles, deletedHashes)
           }
 
           if (remote != null) {
@@ -370,12 +371,15 @@ class GoogleDriveSyncManager(
 
           val now = System.currentTimeMillis()
           prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
+          val doneStatus =
+            if (failedBookUploads > 0) str(R.string.sync_partial_book_upload_failed, failedBookUploads)
+            else str(R.string.sync_success)
           state.update {
             it.copy(
               syncing = false,
               lastSyncedAt = now,
               cloudBooks = mergedPayload.books,
-              statusMessage = str(R.string.sync_success),
+              statusMessage = doneStatus,
             )
           }
           SyncActionResult.Synced
@@ -597,7 +601,8 @@ class GoogleDriveSyncManager(
     token: String,
     appDataFiles: Map<String, String>,
     deletedHashes: Set<String>,
-  ) {
+  ): Int {
+    var failedCount = 0
     for (book in library.books.value) {
       val hash = book.contentHash ?: continue
       if (hash in deletedHashes) continue
@@ -608,8 +613,10 @@ class GoogleDriveSyncManager(
         continue
       }
       state.update { it.copy(statusMessage = str(R.string.sync_uploading_book, book.title)) }
-      uploadBinaryFileToAppData(token, driveFileName, localFile)
+      val uploaded = runCatching { uploadBinaryFileToAppData(token, driveFileName, localFile) }.isSuccess
+      if (!uploaded) failedCount++
     }
+    return failedCount
   }
 
   private fun downloadFileTo(token: String, fileId: String, target: File): Boolean {
@@ -685,6 +692,8 @@ class GoogleDriveSyncManager(
       val conn = (url.openConnection() as HttpURLConnection).apply {
         requestMethod = "POST"
         doOutput = true
+        connectTimeout = 15_000
+        readTimeout = 30_000
         setRequestProperty("Authorization", "Bearer $token")
         setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
       }
@@ -694,22 +703,30 @@ class GoogleDriveSyncManager(
         write("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$jsonBody\r\n".toByteArray(StandardCharsets.UTF_8))
         write("--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8))
       }.toByteArray()
-      conn.outputStream.use { it.write(payload) }
-      val code = conn.responseCode
-      conn.disconnect()
-      if (code !in 200..299) error("Drive upload failed ($code)")
+      try {
+        conn.outputStream.use { it.write(payload) }
+        val code = conn.responseCode
+        if (code !in 200..299) error("Drive upload failed ($code)")
+      } finally {
+        conn.disconnect()
+      }
     } else {
       val url = URL("https://www.googleapis.com/upload/drive/v3/files/$existingFileId?uploadType=media")
       val conn = (url.openConnection() as HttpURLConnection).apply {
         requestMethod = "PATCH"
         doOutput = true
+        connectTimeout = 15_000
+        readTimeout = 30_000
         setRequestProperty("Authorization", "Bearer $token")
         setRequestProperty("Content-Type", "application/json; charset=UTF-8")
       }
-      conn.outputStream.use { it.write(jsonBody.toByteArray(StandardCharsets.UTF_8)) }
-      val code = conn.responseCode
-      conn.disconnect()
-      if (code !in 200..299) error("Drive update failed ($code)")
+      try {
+        conn.outputStream.use { it.write(jsonBody.toByteArray(StandardCharsets.UTF_8)) }
+        val code = conn.responseCode
+        if (code !in 200..299) error("Drive update failed ($code)")
+      } finally {
+        conn.disconnect()
+      }
     }
   }
 

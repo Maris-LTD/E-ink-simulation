@@ -90,6 +90,9 @@ class ReaderActivity : FragmentActivity() {
     val container = (application as EmptyApplication).container
     val bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
     val overrideLocator = intent.getStringExtra(EXTRA_LOCATOR_JSON)
+    val overrideLocatorCreatedAt = intent.getLongExtra(EXTRA_LOCATOR_CREATED_AT, 0L)
+    intent.removeExtra(EXTRA_LOCATOR_JSON)
+    intent.removeExtra(EXTRA_LOCATOR_CREATED_AT)
     androidx.lifecycle.ViewModelProvider(
       this,
       viewModelFactory {
@@ -103,6 +106,7 @@ class ReaderActivity : FragmentActivity() {
             dictionary = container.dictionary,
             statsRepository = container.stats,
             overrideLocatorJson = overrideLocator,
+            overrideLocatorCreatedAt = overrideLocatorCreatedAt,
             context = applicationContext,
           )
         }
@@ -312,7 +316,7 @@ class ReaderActivity : FragmentActivity() {
             viewModel = viewModel,
             bookFormat = current.book.format,
             bookFile = current.file,
-            initialLocator = current.initialLocator,
+            initialLocator = viewModel.currentLocatorSnapshot() ?: current.initialLocator,
             pdfController = pdfController,
             title = current.book.title,
             toc = current.toc,
@@ -334,21 +338,22 @@ class ReaderActivity : FragmentActivity() {
   }
 
   private fun installNavigatorFactory(ready: ReaderUiState.Ready): Boolean {
+    val activeLocator = viewModel.currentLocatorSnapshot() ?: ready.initialLocator
     supportFragmentManager.fragmentFactory =
       when (ready.book.format) {
-        BookFormat.EPUB, BookFormat.PDF -> epubFragmentFactory(ready)
+        BookFormat.EPUB, BookFormat.PDF -> epubFragmentFactory(ready, activeLocator)
         BookFormat.CBZ ->
           ImageNavigatorFragment.createFactory(
             publication = ready.publication,
-            initialLocator = ready.initialLocator,
+            initialLocator = activeLocator,
           )
       }
     return true
   }
 
-  private fun epubFragmentFactory(ready: ReaderUiState.Ready) =
+  private fun epubFragmentFactory(ready: ReaderUiState.Ready, initialLocator: Locator?) =
     EpubNavigatorFactory(ready.publication).createFragmentFactory(
-      initialLocator = ready.initialLocator,
+      initialLocator = initialLocator,
       initialPreferences = EInkPreferencesMapper.toEpub(viewModel.settings.value),
       configuration =
         EpubNavigatorFragment.Configuration(
@@ -475,6 +480,7 @@ class ReaderActivity : FragmentActivity() {
   companion object {
     private const val EXTRA_BOOK_ID = "book_id"
     private const val EXTRA_LOCATOR_JSON = "locator_json"
+    private const val EXTRA_LOCATOR_CREATED_AT = "locator_created_at"
     private const val MENU_HIGHLIGHT = 1001
     private const val MENU_NOTE = 1002
     private const val MENU_LOOKUP = 1003
@@ -482,6 +488,11 @@ class ReaderActivity : FragmentActivity() {
     fun intentFor(context: Context, bookId: String, locatorJson: String? = null): Intent =
       Intent(context, ReaderActivity::class.java)
         .putExtra(EXTRA_BOOK_ID, bookId)
-        .apply { if (locatorJson != null) putExtra(EXTRA_LOCATOR_JSON, locatorJson) }
+        .apply {
+          if (locatorJson != null) {
+            putExtra(EXTRA_LOCATOR_JSON, locatorJson)
+            putExtra(EXTRA_LOCATOR_CREATED_AT, System.currentTimeMillis())
+          }
+        }
   }
 }

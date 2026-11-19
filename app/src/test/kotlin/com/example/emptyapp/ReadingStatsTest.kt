@@ -89,4 +89,35 @@ class ReadingStatsTest {
       unlockedIds,
     )
   }
+
+  @Test
+  fun mergeFromRemoteUsesNewerDailyGoalTimestampEvenWhenLower(): Unit = runBlocking {
+    val tempFile = File.createTempFile("reading_stats_merge", ".json")
+    tempFile.delete()
+    var now = 2000L
+    val today = LocalDate.of(2026, 11, 14)
+    val repo = ReadingStatsRepository(tempFile, todayProvider = { today }, nowProvider = { now })
+
+    repo.setDailyGoalMinutes(15)
+    repo.mergeFromRemote(ReadingStatsData(dailyGoalMinutes = 45, dailyGoalUpdatedAt = 1000L))
+    assertEquals(15, repo.stats.value.dailyGoalMinutes)
+    assertEquals(2000L, repo.stats.value.dailyGoalUpdatedAt)
+
+    repo.mergeFromRemote(ReadingStatsData(dailyGoalMinutes = 10, dailyGoalUpdatedAt = 3000L))
+    assertEquals(10, repo.stats.value.dailyGoalMinutes)
+    assertEquals(3000L, repo.stats.value.dailyGoalUpdatedAt)
+    tempFile.delete()
+  }
+
+  @Test
+  fun mergeFromRemoteLegacyZeroTimestampsFallBackToMax(): Unit = runBlocking {
+    val tempFile = File.createTempFile("reading_stats_legacy", ".json")
+    tempFile.delete()
+    val today = LocalDate.of(2026, 11, 14)
+    val repo = ReadingStatsRepository(tempFile, todayProvider = { today }, nowProvider = { 0L })
+
+    repo.mergeFromRemote(ReadingStatsData(dailyGoalMinutes = 35, dailyGoalUpdatedAt = 0L))
+    assertEquals(35, repo.stats.value.dailyGoalMinutes)
+    tempFile.delete()
+  }
 }

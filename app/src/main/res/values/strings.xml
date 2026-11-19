@@ -204,6 +204,7 @@
     <string name="sync_remote_read_failed">Couldn\'t read your Google Drive data (%1$s). Sync stopped so nothing gets overwritten.</string>
     <string name="sync_downloading_book">Downloading book: %1$s</string>
     <string name="sync_uploading_book">Uploading: %1$s</string>
+    <string name="sync_partial_book_upload_failed">Synced progress, but %1$d book file(s) failed to upload</string>
     <string name="sync_deleting_cloud">Deleting cloud data…</string>
     <string name="sync_all_cloud_deleted">All Google Drive backup data deleted and sync turned off on this device</string>
     <string name="sync_book_deleted_cloud">Removed "%1$s" from Google Drive</string>

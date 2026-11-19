@@ -408,6 +408,12 @@ fun PdfPagerReader(
       }
 
       LaunchedEffect(reflowPagerState, reflowScreens) {
+        val targetScreen =
+          PdfReflowPaginator.findScreenIndexForPdfPage(reflowScreens, currentPdfPage)
+            .coerceIn(0, reflowScreens.lastIndex)
+        if (reflowPagerState.currentPage != targetScreen) {
+          reflowPagerState.scrollToPage(targetScreen)
+        }
         snapshotFlow { reflowPagerState.settledPage }
           .distinctUntilChanged()
           .collect { screenIdx ->

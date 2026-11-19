@@ -301,12 +301,14 @@ fun ReaderScreen(
         onOpenContents = { contentsOpen = true; searchOpen = false; settingsOpen = false },
         onBookmark = {
           val saved = viewModel.toggleBookmark()
-          val msgRes =
-            if (saved) com.example.emptyapp.R.string.reader_bookmark_saved
-            else com.example.emptyapp.R.string.reader_bookmark_removed
-          scope.launch {
-            snackbarHostState.currentSnackbarData?.dismiss()
-            snackbarHostState.showSnackbar(context.getString(msgRes), duration = SnackbarDuration.Short)
+          if (saved != null) {
+            val msgRes =
+              if (saved) com.example.emptyapp.R.string.reader_bookmark_saved
+              else com.example.emptyapp.R.string.reader_bookmark_removed
+            scope.launch {
+              snackbarHostState.currentSnackbarData?.dismiss()
+              snackbarHostState.showSnackbar(context.getString(msgRes), duration = SnackbarDuration.Short)
+            }
           }
         },
         onDecreaseFont = {

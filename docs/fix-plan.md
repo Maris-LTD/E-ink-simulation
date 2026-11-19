@@ -19,8 +19,8 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 ## Đợt 2 — Sync & dữ liệu
 - [x] 11. D3 — Giữ annotation của sách không có trên máy khi upload
 - [x] 12. D4 — Tombstone cho xoá bookmark/highlight/sách; giữ tombstone khi sign out; sửa "xoá toàn bộ cloud"
-- [ ] 13. D5 — Timeout upload JSON, lỗi upload 1 sách không chặn cả sync, merge `dailyGoalMinutes`
-- [ ] 14. D8 — Vị trí đọc: recreate activity, locator notification, reflow đổi font, bookmark toggle, settings ≠ lật trang
+- [x] 13. D5 — Timeout upload JSON, lỗi upload 1 sách không chặn cả sync, merge `dailyGoalMinutes`
+- [x] 14. D8 — Vị trí đọc: recreate activity, locator notification, reflow đổi font, bookmark toggle, settings ≠ lật trang
 - [ ] 15. D9 — Import trùng, cover xám, locale, import crash, widget sách đã xoá, PdfRenderer close race, wallpaper crash
 
 ## Đợt 3 — Hiệu năng còn lại
@@ -253,3 +253,50 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - `GoogleDriveSyncManager.kt` vẫn rất dài (~780 dòng) — nên tách phần HTTP Drive ra file riêng ở một mục dọn dẹp sau.
 
 **Bước tiếp theo:** mục 13 — D5: thêm timeout cho `uploadSyncJson`, lỗi upload một sách không làm hỏng cả lượt sync, merge `dailyGoalMinutes` của thống kê theo thời điểm sửa.
+
+### 13. D5 — Timeout upload JSON, cô lập lỗi upload sách, merge `dailyGoalMinutes` — 2026-11-19
+**Nguyên nhân:**
+- `uploadSyncJson` không đặt `connectTimeout`/`readTimeout` và không bọc `conn.disconnect()` trong `try/finally` → mạng treo dễ kẹt trong `mutex`, UI kẹt "đang đồng bộ".
+- `uploadMissingBooks` ném exception ngay khi 1 sách upload lỗi (413/quota/mạng) → chặn toàn bộ sync tiến độ, bookmark, highlight và các sách còn lại.
+- `ReadingStatsRepository.mergeFromRemote` dùng `maxOf(local.dailyGoalMinutes, remote.dailyGoalMinutes)` → hạ mục tiêu đọc hàng ngày bị sync trả lại giá trị cao cũ. (Riêng phần phân trang `listAppDataFiles` đã được xử lý từ mục 1 — D1.)
+
+**Đã sửa:**
+- `GoogleDriveSyncManager.kt`:
+  - `uploadSyncJson`: thêm `connectTimeout = 15_000`, `readTimeout = 30_000` cho cả `POST` và `PATCH`, bọc trong `try ... finally { conn.disconnect() }`.
+  - `uploadMissingBooks`: bọc `uploadBinaryFileToAppData` bằng `runCatching` theo từng sách, đếm số sách lỗi và trả về `Int` để tiếp tục các sách khác và vẫn hoàn tất sync JSON.
+  - `completeSyncWithToken`: nếu có sách upload thất bại thì hiển thị `sync_partial_book_upload_failed` (đã thêm ở `values/strings.xml` và `values-vi/strings.xml`) thay vì `sync_success`.
+- `ReadingStatsRepository.kt`:
+  - Thêm `dailyGoalUpdatedAt: Long = 0L` vào `ReadingStatsData` và `nowProvider` vào `ReadingStatsRepository`; `setDailyGoalMinutes` cập nhật `dailyGoalUpdatedAt`.
+  - `mergeFromRemote`: chọn `dailyGoalMinutes` theo `dailyGoalUpdatedAt` mới hơn (nếu cả hai cùng `0L` từ bản cũ thì fallback `maxOf`).
+- `ReadingStatsTest.kt`: thêm 2 test (`mergeFromRemoteUsesNewerDailyGoalTimestampEvenWhenLower`, `mergeFromRemoteLegacyZeroTimestampsFallBackToMax`).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`).
+
+**Còn để lại:** chưa có test unit riêng cho lớp HTTP của `GoogleDriveSyncManager` (timeout và cô lập lỗi upload từng sách kiểm tra bằng review code).
+
+**Bước tiếp theo:** mục 14 — D8: giữ vị trí đọc khi recreate activity, locator notification, reflow đổi font, bookmark toggle, settings ≠ lật trang.
+
+### 14. D8 — Vị trí đọc, reflow PDF, bookmark & thống kê lật trang — 2026-11-19
+**Nguyên nhân:**
+- `ReaderActivity` dùng `super.onCreate(null)` và `installNavigatorFactory` / `ReaderScreen` luôn lấy `ready.initialLocator` ban đầu → recreate activity (đổi dark mode hệ thống, font scale…) bị bật về vị trí lúc mới mở sách.
+- `EXTRA_LOCATOR_JSON` từ notification/bookmark luôn thắng `book.lastLocatorJson`, kể cả khi người dùng đã đọc xa hơn rồi process bị kill và Android redeliver lại `Intent`.
+- Reflow PDF (`PdfPagerReader.kt`): khi đổi font/lề tạo `reflowScreens` mới, `rememberPagerState` giữ nguyên index cũ của màn hình trước đó và `LaunchedEffect(reflowPagerState, reflowScreens)` phát `settledPage` cũ, ghi đè sai `currentPdfPage`.
+- Đổi cỡ chữ, lề, kiểu chữ… khiến Readium/reflow phát `onLocatorChanged` với `progression` dịch nhẹ → `ReaderViewModel` đếm thành `pendingPages += 1` và kích hoạt `flashController`.
+- `toggleBookmark()` trả về `Boolean` (`false` cả khi `currentLocator == null` lẫn khi xoá bookmark) → `ReaderScreen` hiện nhầm "Đã xoá dấu trang"; đồng thời `findMatchingBookmark` dùng dung sai `0.015` progression khiến 2 trang kề bị coi là một và xoá nhầm.
+
+**Đã sửa:**
+- `ReaderActivity.kt`:
+  - `ReaderScreen`, `installNavigatorFactory`, `epubFragmentFactory` ưu tiên `viewModel.currentLocatorSnapshot() ?: ready.initialLocator`.
+  - `intentFor` gắn thêm `EXTRA_LOCATOR_CREATED_AT`; `ReaderActivity` đọc xong gọi `intent.removeExtra(...)` cho cả 2 extra.
+- `ReaderViewModel.kt`:
+  - `load()`: chỉ dùng `overrideLocatorJson` nếu `overrideLocatorCreatedAt <= 0L || overrideLocatorCreatedAt >= book.updatedAt`.
+  - `updateSettings` / `updatePdfConfig`: khi đổi các thuộc tính bố cục (`font`, `fontScale`, `fontWeight`, `lineHeight`, `paragraphSpacing`, `justifyText`, `pageMargins`, `orientationLock`, `pdfAutoCrop`) hoặc config PDF, đặt `suppressPageTurnUntilMs` (1000 ms) để `onLocatorChanged` do dàn trang lại không tăng `pendingPages` hay kích hoạt flash/ghost.
+  - `toggleBookmark()`: đổi kiểu trả về thành `Boolean?` (`null` khi `currentLocator == null`); siết dung sai `findMatchingBookmark` từ `0.015` / `0.01f` / `0.005f` xuống `0.002` / `0.002f`.
+- `ReaderScreen.kt`: chỉ hiện snackbar bookmark khi `toggleBookmark()` trả về khác `null`.
+- `PdfPagerReader.kt`: trong `LaunchedEffect(reflowPagerState, reflowScreens)`, gọi `reflowPagerState.scrollToPage(findScreenIndexForPdfPage(reflowScreens, currentPdfPage))` **trước** khi `collect` `snapshotFlow { reflowPagerState.settledPage }`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`).
+
+**Còn để lại:** 5 tình huống trên (recreate activity, redeliver intent từ notification, đổi font ở PDF reflow, đổi font EPUB, toggle bookmark khi chưa có locator) cần kiểm tra tay trên thiết bị/emulator.
+
+**Bước tiếp theo:** mục 15 — D9: import trùng `contentHash`, `CoverBitmapCache` grayscale, `LocaleHelper` / `LauncherActivity` đổi ngôn ngữ, try/finally khi import lỗi, refresh widget khi xoá sách, `PdfRenderer.close()` race & leak fd, tỉ lệ ảnh reflow, snippet màn khoá khi đóng reader, bắt exception wallpaper.

@@ -83,6 +83,7 @@ class ReaderViewModel(
   private val dictionary: DictionaryService,
   private val statsRepository: ReadingStatsRepository,
   private val overrideLocatorJson: String? = null,
+  private val overrideLocatorCreatedAt: Long = 0L,
   private val context: Context? = null,
 ) : ViewModel() {
   private fun str(resId: Int, fallback: String): String =
@@ -96,6 +97,7 @@ class ReaderViewModel(
   private var pendingProgress: Pair<Locator, Float>? = null
   private var lastInteractionMs: Long = 0L
   private var lastFlushMs: Long = 0L
+  private var suppressPageTurnUntilMs: Long = 0L
   private var pendingPages: Int = 0
   private var lastPositionKey: String? = null
   private var currentLocator: Locator? = null
@@ -147,6 +149,19 @@ class ReaderViewModel(
     val before = settingsStore.settings.value
     settingsStore.update(transform)
     val after = settingsStore.settings.value
+    val layoutChanged =
+      before.font != after.font ||
+        before.fontScale != after.fontScale ||
+        before.fontWeight != after.fontWeight ||
+        before.lineHeight != after.lineHeight ||
+        before.paragraphSpacing != after.paragraphSpacing ||
+        before.justifyText != after.justifyText ||
+        before.pageMargins != after.pageMargins ||
+        before.orientationLock != after.orientationLock ||
+        before.pdfAutoCrop != after.pdfAutoCrop
+    if (layoutChanged) {
+      suppressPageTurnUntilMs = SystemClock.elapsedRealtime() + SETTINGS_RELAYOUT_SUPPRESS_MS
+    }
     if (before.copy(brightness = after.brightness) != after) {
       flashController.reset()
       mutablePagesSinceFlash.value = 0
@@ -162,6 +177,7 @@ class ReaderViewModel(
   }
 
   fun updatePdfConfig(transform: (PdfBookConfig) -> PdfBookConfig) {
+    suppressPageTurnUntilMs = SystemClock.elapsedRealtime() + SETTINGS_RELAYOUT_SUPPRESS_MS
     val updated = pdfBookConfigs?.update(bookId, transform) ?: return
     val mode = updated.mode ?: return
     viewModelScope.launch {
@@ -180,7 +196,11 @@ class ReaderViewModel(
     lastPositionKey = key
     val total = (locator.locations.totalProgression ?: 0.0).toFloat()
     mutableProgress.value = total
-    if (previous != null && previous != key) {
+    val isPageTurn =
+      previous != null &&
+        previous != key &&
+        SystemClock.elapsedRealtime() > suppressPageTurnUntilMs
+    if (isPageTurn) {
       pendingPages += 1
       val step = flashController.onPageTurnStep(settings.value)
       mutablePagesSinceFlash.value = step.pagesSinceFlash
@@ -248,8 +268,8 @@ class ReaderViewModel(
     }
   }
 
-  fun toggleBookmark(): Boolean {
-    val locator = currentLocator ?: return false
+  fun toggleBookmark(): Boolean? {
+    val locator = currentLocator ?: return null
     val existing = findMatchingBookmark(bookmarks.value, locator)
     if (existing != null) {
       viewModelScope.launch { annotations.removeBookmark(existing.id) }
@@ -280,11 +300,11 @@ class ReaderViewModel(
         val entryProg = parsed.locations.progression
         when {
           locPos != null && entryPos != null -> sameHref && locPos == entryPos
-          locProg != null && entryProg != null -> sameHref && abs(locProg - entryProg) < 0.015
-          else -> sameHref && abs(entry.progress - locTotal) < 0.01f
+          locProg != null && entryProg != null -> sameHref && abs(locProg - entryProg) < 0.002
+          else -> sameHref && abs(entry.progress - locTotal) < 0.002f
         }
       } else {
-        abs(entry.progress - locTotal) < 0.005f
+        abs(entry.progress - locTotal) < 0.002f
       }
     }
   }
@@ -404,7 +424,12 @@ class ReaderViewModel(
       .onSuccess { pub ->
         publication = pub
         mutableProgress.value = book.progress
-        val initial = parseLocator(overrideLocatorJson) ?: parseLocator(book.lastLocatorJson)
+        val useOverride =
+          overrideLocatorJson != null &&
+            (overrideLocatorCreatedAt <= 0L || overrideLocatorCreatedAt >= book.updatedAt)
+        val initial =
+          (if (useOverride) parseLocator(overrideLocatorJson) else null)
+            ?: parseLocator(book.lastLocatorJson)
         currentLocator = initial
         currentLocatorFlow.value = initial
         val positions = runCatching { pub.positions() }.getOrDefault(emptyList())
@@ -462,5 +487,6 @@ class ReaderViewModel(
   private companion object {
     const val INACTIVITY_TIMEOUT_MS = 120_000L
     const val PROGRESS_SAVE_INTERVAL_MS = 1_500L
+    const val SETTINGS_RELAYOUT_SUPPRESS_MS = 1_000L
   }
 }

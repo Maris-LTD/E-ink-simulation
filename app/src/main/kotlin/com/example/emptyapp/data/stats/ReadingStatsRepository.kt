@@ -23,6 +23,7 @@ data class DailyReadingStat(
 @Serializable
 data class ReadingStatsData(
   val dailyGoalMinutes: Int = 20,
+  val dailyGoalUpdatedAt: Long = 0L,
   val currentStreak: Int = 0,
   val longestStreak: Int = 0,
   val totalSeconds: Long = 0L,
@@ -36,6 +37,7 @@ data class ReadingStatsData(
 class ReadingStatsRepository(
   private val statsFile: File,
   private val todayProvider: () -> LocalDate = { LocalDate.now() },
+  private val nowProvider: () -> Long = { System.currentTimeMillis() },
 ) {
   constructor(context: Context) : this(File(context.filesDir, "reading_stats.json"))
 
@@ -82,8 +84,13 @@ class ReadingStatsRepository(
   suspend fun setDailyGoalMinutes(minutes: Int) {
     val clamped = minutes.coerceIn(5, 180)
     val today = todayProvider()
+    val updatedAt = nowProvider()
     mutex.withLock {
-      val next = recompute(state.value.copy(dailyGoalMinutes = clamped), today = today)
+      val next =
+        recompute(
+          state.value.copy(dailyGoalMinutes = clamped, dailyGoalUpdatedAt = updatedAt),
+          today = today,
+        )
       state.value = next
       write(next)
     }
@@ -108,10 +115,20 @@ class ReadingStatsRepository(
       val mergedDaily = byDate.values.sortedBy { it.date }
       val totalSec = maxOf(local.totalSeconds, remote.totalSeconds, mergedDaily.sumOf { it.secondsRead.toLong() })
       val totalPages = maxOf(local.totalPagesTurned, remote.totalPagesTurned, mergedDaily.sumOf { it.pagesTurned })
+      val (mergedGoal, mergedGoalUpdatedAt) =
+        when {
+          remote.dailyGoalUpdatedAt > local.dailyGoalUpdatedAt ->
+            remote.dailyGoalMinutes.coerceIn(5, 180) to remote.dailyGoalUpdatedAt
+          local.dailyGoalUpdatedAt > remote.dailyGoalUpdatedAt ->
+            local.dailyGoalMinutes.coerceIn(5, 180) to local.dailyGoalUpdatedAt
+          else ->
+            maxOf(local.dailyGoalMinutes, remote.dailyGoalMinutes).coerceIn(5, 180) to local.dailyGoalUpdatedAt
+        }
       val next =
         recompute(
           local.copy(
-            dailyGoalMinutes = maxOf(local.dailyGoalMinutes, remote.dailyGoalMinutes),
+            dailyGoalMinutes = mergedGoal,
+            dailyGoalUpdatedAt = mergedGoalUpdatedAt,
             longestStreak = maxOf(local.longestStreak, remote.longestStreak),
             totalSeconds = totalSec,
             totalPagesTurned = totalPages,

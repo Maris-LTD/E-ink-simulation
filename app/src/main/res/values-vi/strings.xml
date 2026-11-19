@@ -204,6 +204,7 @@
     <string name="sync_remote_read_failed">Không đọc được dữ liệu trên Google Drive (%1$s). Đã dừng đồng bộ để không ghi đè dữ liệu.</string>
     <string name="sync_downloading_book">Đang tải sách: %1$s</string>
     <string name="sync_uploading_book">Đang tải lên: %1$s</string>
+    <string name="sync_partial_book_upload_failed">Đã đồng bộ tiến độ, nhưng %1$d file sách tải lên thất bại</string>
     <string name="sync_deleting_cloud">Đang xóa dữ liệu trên Drive…</string>
     <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive và ngắt đồng bộ trên máy này</string>
     <string name="sync_book_deleted_cloud">Đã xóa "%1$s" khỏi Google Drive</string>
