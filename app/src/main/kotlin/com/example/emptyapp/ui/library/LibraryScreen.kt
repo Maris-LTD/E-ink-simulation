@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -60,6 +61,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -214,7 +216,12 @@ fun LibraryScreen(
     contentWindowInsets = WindowInsets(0),
     snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
-    Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+    Column(
+      modifier =
+        Modifier.padding(padding)
+          .fillMaxSize()
+          .then(if (tutorialOpen) Modifier.clearAndSetSemantics {} else Modifier),
+    ) {
       LibraryHeader(
         onOpenTutorial = {
           tutorialInitialPage = 0
@@ -282,7 +289,7 @@ fun LibraryScreen(
           authors = authors,
           selectedAuthor = selectedAuthor,
           sortMode = sortMode,
-          onCycleSort = { sortMode = sortMode.next() },
+          onSelectSort = { sortMode = it },
           onSelect = { selectedAuthor = it },
         )
         HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
@@ -481,30 +488,42 @@ private fun LibraryHeader(
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     EInkText(stringResource(com.example.emptyapp.R.string.app_name), style = MaterialTheme.typography.headlineLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
       val tutorialCd = stringResource(com.example.emptyapp.R.string.cd_tutorial)
       Box(
         modifier =
-          Modifier.size(36.dp)
-            .clip(CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+          Modifier.size(48.dp)
             .clickable(onClick = onOpenTutorial)
             .semantics { contentDescription = tutorialCd },
         contentAlignment = Alignment.Center,
       ) {
-        EInkText("?", style = MaterialTheme.typography.titleMedium)
+        Box(
+          modifier =
+            Modifier.size(36.dp)
+              .clip(CircleShape)
+              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+          contentAlignment = Alignment.Center,
+        ) {
+          EInkText("?", style = MaterialTheme.typography.titleMedium)
+        }
       }
       val statsCd = stringResource(com.example.emptyapp.R.string.cd_reading_stats)
       Box(
         modifier =
-          Modifier.size(36.dp)
-            .clip(CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+          Modifier.size(48.dp)
             .clickable(onClick = onOpenStats)
             .semantics { contentDescription = statsCd },
         contentAlignment = Alignment.Center,
       ) {
-        ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+        Box(
+          modifier =
+            Modifier.size(36.dp)
+              .clip(CircleShape)
+              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+          contentAlignment = Alignment.Center,
+        ) {
+          ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+        }
       }
     }
   }
@@ -547,7 +566,7 @@ private fun LibraryBottomBar(
         IconButton(
           onClick = onCycleViewMode,
           modifier =
-            Modifier.size(40.dp).semantics { contentDescription = viewModeCd },
+            Modifier.size(48.dp).semantics { contentDescription = viewModeCd },
         ) {
           ViewModeIcon(viewMode = viewMode)
         }
@@ -561,24 +580,30 @@ private fun LibraryBottomBar(
       val addBookCd = stringResource(com.example.emptyapp.R.string.cd_add_book)
       Box(
         modifier =
-          Modifier.size(40.dp)
-            .clip(CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+          Modifier.size(48.dp)
             .clickable(enabled = importEnabled, onClick = onAddBook)
             .semantics { contentDescription = addBookCd },
         contentAlignment = Alignment.Center,
       ) {
-        if (importing) {
-          CircularProgressIndicator(
-            modifier = Modifier.size(18.dp),
-            strokeWidth = 2.dp,
-            color = MaterialTheme.colorScheme.onBackground,
-          )
-        } else {
-          EInkText(
-            text = "+",
-            style = MaterialTheme.typography.titleLarge,
-          )
+        Box(
+          modifier =
+            Modifier.size(40.dp)
+              .clip(CircleShape)
+              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+          contentAlignment = Alignment.Center,
+        ) {
+          if (importing) {
+            CircularProgressIndicator(
+              modifier = Modifier.size(18.dp),
+              strokeWidth = 2.dp,
+              color = MaterialTheme.colorScheme.onBackground,
+            )
+          } else {
+            EInkText(
+              text = "+",
+              style = MaterialTheme.typography.titleLarge,
+            )
+          }
         }
       }
     }
@@ -596,11 +621,11 @@ private fun GoogleStyleSearchBar(
   Row(
     modifier =
       modifier
-        .height(40.dp)
+        .height(48.dp)
         .clip(RoundedCornerShape(50))
         .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
         .background(MaterialTheme.colorScheme.background)
-        .padding(horizontal = 14.dp),
+        .padding(start = 14.dp, end = if (query.isNotEmpty()) 4.dp else 14.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -638,7 +663,7 @@ private fun GoogleStyleSearchBar(
       val clearCd = stringResource(com.example.emptyapp.R.string.cd_clear_search)
       Box(
         modifier =
-          Modifier.size(24.dp)
+          Modifier.size(48.dp)
             .clip(CircleShape)
             .clickable { onQueryChange("") }
             .semantics { contentDescription = clearCd },
@@ -721,7 +746,7 @@ private fun AuthorFilterRow(
   authors: List<String>,
   selectedAuthor: String?,
   sortMode: LibrarySort,
-  onCycleSort: () -> Unit,
+  onSelectSort: (LibrarySort) -> Unit,
   onSelect: (String?) -> Unit,
 ) {
   Row(
@@ -731,11 +756,13 @@ private fun AuthorFilterRow(
         .padding(horizontal = 16.dp, vertical = 12.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    FilterPill(
-      label = stringResource(sortMode.labelRes),
-      active = false,
-      onClick = onCycleSort,
-    )
+    LibrarySort.entries.forEach { option ->
+      FilterPill(
+        label = stringResource(option.labelRes),
+        active = sortMode == option,
+        onClick = { onSelectSort(option) },
+      )
+    }
     FilterPill(
       label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
       active = selectedAuthor == null,
@@ -758,7 +785,7 @@ private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
       Modifier.clip(RoundedCornerShape(50))
         .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
         .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
-        .clickable(onClick = onClick)
+        .selectable(selected = active, role = Role.RadioButton, onClick = onClick)
         .padding(horizontal = 14.dp, vertical = 6.dp)
   ) {
     EInkText(

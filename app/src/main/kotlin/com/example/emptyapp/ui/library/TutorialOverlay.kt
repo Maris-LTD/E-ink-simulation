@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,8 +48,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -115,10 +120,13 @@ fun TutorialOverlay(
       modifier
         .fillMaxSize()
         .background(MaterialTheme.colorScheme.background)
-        .clickable(
-          interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-          indication = null,
-        ) {}
+        .pointerInput(Unit) {
+          awaitPointerEventScope {
+            while (true) {
+              awaitPointerEvent().changes.forEach { it.consume() }
+            }
+          }
+        }
         .padding(16.dp),
   ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -406,7 +414,7 @@ private fun ToneChip(
       modifier
         .border(1.5.dp, MaterialTheme.colorScheme.outline)
         .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-        .clickable(onClick = onClick)
+        .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
         .padding(vertical = 10.dp, horizontal = 6.dp),
     contentAlignment = Alignment.Center,
   ) {
@@ -428,13 +436,14 @@ private fun ToggleOptionRow(
     modifier =
       Modifier.fillMaxWidth()
         .border(1.5.dp, MaterialTheme.colorScheme.outline)
-        .clickable { onCheckedChange(!checked) }
+        .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+        .semantics(mergeDescendants = true) {}
         .padding(horizontal = 12.dp, vertical = 6.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
     EInkText(label, style = MaterialTheme.typography.titleSmall)
-    Switch(checked = checked, onCheckedChange = onCheckedChange)
+    Switch(checked = checked, onCheckedChange = null)
   }
 }
 

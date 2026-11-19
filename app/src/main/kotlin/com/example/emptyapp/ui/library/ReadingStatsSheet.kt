@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -59,6 +61,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -599,6 +602,37 @@ private fun BadgeCard(
   }
 }
 
+internal fun buildSevenDayChartAccessibilityDescription(
+  chartTitle: String,
+  chartSubtitle: String,
+  weekSeries: List<DailyReadingStat>,
+  minUnit: String,
+  isEn: Boolean,
+): String {
+  val header = "$chartTitle. $chartSubtitle"
+  if (weekSeries.isEmpty()) return header
+  val dayEntries =
+    weekSeries.joinToString(", ") { stat ->
+      val minutes = stat.secondsRead / 60
+      val weekday = shortWeekdayLabel(stat.date, isEn)
+      "$weekday: $minutes$minUnit"
+    }
+  return "$header. $dayEntries"
+}
+
+internal fun buildHeatmapAccessibilityDescription(
+  heatmapTitle: String,
+  activeDaysSummary: String,
+  days: List<DailyReadingStat>,
+  goalSeconds: Int,
+): String {
+  val totalDays = days.size
+  val activeInWindow = days.count { it.secondsRead > 0 }
+  val effectiveGoal = goalSeconds.coerceAtLeast(60)
+  val goalMetCount = days.count { it.secondsRead >= effectiveGoal }
+  return "$heatmapTitle. $activeDaysSummary ($activeInWindow/$totalDays, $goalMetCount ≥ 100%)"
+}
+
 @Composable
 private fun SevenDayBarChartCard(
   weekSeries: List<DailyReadingStat>,
@@ -609,6 +643,18 @@ private fun SevenDayBarChartCard(
   val maxMinutes = maxOf(goalMinutes, weekSeries.maxOfOrNull { it.secondsRead / 60 } ?: 0, 1)
   val isEn = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(LocalContext.current) == "en"
   val minUnit = if (isEn) "m" else "p"
+  val chartTitle = stringResource(R.string.stats_chart_7d)
+  val chartSubtitle = stringResource(R.string.stats_chart_7d_sub, avgMinutes7d, pagesPerHour)
+  val chartA11yDesc =
+    remember(chartTitle, chartSubtitle, weekSeries, minUnit, isEn) {
+      buildSevenDayChartAccessibilityDescription(
+        chartTitle = chartTitle,
+        chartSubtitle = chartSubtitle,
+        weekSeries = weekSeries,
+        minUnit = minUnit,
+        isEn = isEn,
+      )
+    }
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -621,15 +667,18 @@ private fun SevenDayBarChartCard(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText(stringResource(R.string.stats_chart_7d), style = MaterialTheme.typography.titleSmall)
+      EInkText(chartTitle, style = MaterialTheme.typography.titleSmall)
       EInkText(
-        text = stringResource(R.string.stats_chart_7d_sub, avgMinutes7d, pagesPerHour),
+        text = chartSubtitle,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth().height(128.dp),
+      modifier =
+        Modifier.fillMaxWidth()
+          .height(128.dp)
+          .clearAndSetSemantics { contentDescription = chartA11yDesc },
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       verticalAlignment = Alignment.Bottom,
     ) {
@@ -685,6 +734,17 @@ private fun ReadingHeatmapCard(
   val fg = MaterialTheme.colorScheme.onBackground
   val border = MaterialTheme.colorScheme.outlineVariant
   val weeks = days.chunked(7)
+  val heatmapTitle = stringResource(R.string.stats_heatmap_12w)
+  val activeDaysSummary = stringResource(R.string.stats_heatmap_days, activeDaysCount)
+  val heatmapA11yDesc =
+    remember(heatmapTitle, activeDaysSummary, days, goalSeconds) {
+      buildHeatmapAccessibilityDescription(
+        heatmapTitle = heatmapTitle,
+        activeDaysSummary = activeDaysSummary,
+        days = days,
+        goalSeconds = goalSeconds,
+      )
+    }
 
   Column(
     modifier =
@@ -698,15 +758,17 @@ private fun ReadingHeatmapCard(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText(stringResource(R.string.stats_heatmap_12w), style = MaterialTheme.typography.titleSmall)
+      EInkText(heatmapTitle, style = MaterialTheme.typography.titleSmall)
       EInkText(
-        text = stringResource(R.string.stats_heatmap_days, activeDaysCount),
+        text = activeDaysSummary,
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.secondary,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .clearAndSetSemantics { contentDescription = heatmapA11yDesc },
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       weeks.forEach { week ->
@@ -864,7 +926,15 @@ private fun GoogleSyncCard(
         color = MaterialTheme.colorScheme.secondary,
       )
       Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+          Modifier.fillMaxWidth()
+            .toggleable(
+              value = syncState.syncBookFiles,
+              enabled = !syncState.syncing,
+              role = Role.Switch,
+              onValueChange = onToggleSyncBookFiles,
+            )
+            .semantics(mergeDescendants = true) {},
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
       ) {
@@ -875,7 +945,7 @@ private fun GoogleSyncCard(
         )
         Switch(
           checked = syncState.syncBookFiles,
-          onCheckedChange = onToggleSyncBookFiles,
+          onCheckedChange = null,
           enabled = !syncState.syncing,
         )
       }
@@ -1075,7 +1145,11 @@ private fun EInkDisplaySettingsCard(
             Modifier
               .border(1.5.dp, MaterialTheme.colorScheme.outline)
               .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-              .clickable { onUpdateSettings { it.copy(tone = tone) } }
+              .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = { onUpdateSettings { it.copy(tone = tone) } },
+              )
               .padding(horizontal = 12.dp, vertical = 8.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -1089,36 +1163,57 @@ private fun EInkDisplaySettingsCard(
       }
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .toggleable(
+            value = settings.paperGrain,
+            role = Role.Switch,
+            onValueChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
+          )
+          .semantics(mergeDescendants = true) {},
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       EInkText(stringResource(R.string.settings_paper_grain), style = MaterialTheme.typography.bodyMedium)
       Switch(
         checked = settings.paperGrain,
-        onCheckedChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
+        onCheckedChange = null,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .toggleable(
+            value = settings.grayscale,
+            role = Role.Switch,
+            onValueChange = { on -> onUpdateSettings { it.copy(grayscale = on) } },
+          )
+          .semantics(mergeDescendants = true) {},
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       EInkText(stringResource(R.string.settings_grayscale), style = MaterialTheme.typography.bodyMedium)
       Switch(
         checked = settings.grayscale,
-        onCheckedChange = { on -> onUpdateSettings { it.copy(grayscale = on) } },
+        onCheckedChange = null,
       )
     }
     Row(
-      modifier = Modifier.fillMaxWidth(),
+      modifier =
+        Modifier.fillMaxWidth()
+          .toggleable(
+            value = settings.flashEnabled,
+            role = Role.Switch,
+            onValueChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
+          )
+          .semantics(mergeDescendants = true) {},
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
       EInkText(stringResource(R.string.onboard_toggle_flash), style = MaterialTheme.typography.bodyMedium)
       Switch(
         checked = settings.flashEnabled,
-        onCheckedChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
+        onCheckedChange = null,
       )
     }
     EInkText(
@@ -1142,7 +1237,11 @@ private fun EInkDisplaySettingsCard(
             Modifier.weight(1f)
               .border(1.5.dp, MaterialTheme.colorScheme.outline)
               .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-              .clickable { onUpdateSettings { it.copy(orientationLock = lock) } }
+              .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = { onUpdateSettings { it.copy(orientationLock = lock) } },
+              )
               .padding(vertical = 8.dp),
           contentAlignment = Alignment.Center,
         ) {
@@ -1195,7 +1294,11 @@ private fun LanguageCard(
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
               )
               .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-              .clickable { if (!selected) onChangeLanguage(lang) }
+              .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = { if (!selected) onChangeLanguage(lang) },
+              )
               .padding(vertical = 10.dp),
           contentAlignment = Alignment.Center,
         ) {

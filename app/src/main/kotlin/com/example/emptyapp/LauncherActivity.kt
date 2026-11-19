@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -81,6 +82,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -449,29 +451,49 @@ private fun MinimalistHomePage(
         // 1. Top status bar: Battery + Streak + Quick Tone Swatches
         Row(
           modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
+          horizontalArrangement = Arrangement.spacedBy(4.dp),
           verticalAlignment = Alignment.CenterVertically,
         ) {
           EInkText(
             text = stringResource(R.string.launcher_status_format, batteryPct, stats.currentStreak),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.weight(1f),
           )
-          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
             EInkTone.entries.forEach { option ->
               val selected = option == tone
+              val toneLabel =
+                when (option) {
+                  EInkTone.PAPER -> stringResource(R.string.tone_paper)
+                  EInkTone.WARM -> stringResource(R.string.tone_warm)
+                  EInkTone.HIGH_CONTRAST -> stringResource(R.string.tone_white)
+                  EInkTone.SOFT_GRAY -> stringResource(R.string.tone_gray)
+                  EInkTone.DARK -> stringResource(R.string.tone_dark)
+                }
               Box(
                 modifier =
-                  Modifier.size(18.dp)
-                    .clip(CircleShape)
-                    .background(Color(option.background))
-                    .border(
-                      width = if (selected) 2.2.dp else 1.dp,
-                      color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                      shape = CircleShape,
+                  Modifier.size(48.dp)
+                    .selectable(
+                      selected = selected,
+                      role = Role.RadioButton,
+                      onClick = { onToneChange(option) },
                     )
-                    .clickable { onToneChange(option) },
-              )
+                    .semantics { contentDescription = toneLabel },
+                contentAlignment = Alignment.Center,
+              ) {
+                Box(
+                  modifier =
+                    Modifier.size(18.dp)
+                      .clip(CircleShape)
+                      .background(Color(option.background))
+                      .border(
+                        width = if (selected) 2.2.dp else 1.dp,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                        shape = CircleShape,
+                      ),
+                )
+              }
             }
           }
         }
@@ -772,33 +794,49 @@ private fun MinimalistAppDrawerPage(
       OutlinedButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
         EInkText(stringResource(R.string.launcher_back_home))
       }
-      Box(
+      Row(
         modifier =
           Modifier.weight(1f)
+            .height(48.dp)
             .border(1.5.dp, MaterialTheme.colorScheme.outline)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(start = 12.dp, end = if (query.isNotEmpty()) 0.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        if (query.isEmpty()) {
-          EInkText(
-            stringResource(R.string.launcher_search_apps),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+          if (query.isEmpty()) {
+            EInkText(
+              stringResource(R.string.launcher_search_apps),
+              style = MaterialTheme.typography.bodyMedium,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+          }
+          BasicTextField(
+            value = query,
+            onValueChange = { query = it },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = ink),
+            cursorBrush = SolidColor(ink),
+            modifier = Modifier.fillMaxWidth(),
           )
         }
-        BasicTextField(
-          value = query,
-          onValueChange = { query = it },
-          singleLine = true,
-          textStyle = MaterialTheme.typography.bodyMedium.copy(color = ink),
-          cursorBrush = SolidColor(ink),
-          modifier = Modifier.fillMaxWidth(),
-        )
+        if (query.isNotEmpty()) {
+          val clearCd = stringResource(R.string.cd_clear_search)
+          Box(
+            modifier =
+              Modifier.size(48.dp)
+                .clickable { query = "" }
+                .semantics { contentDescription = clearCd },
+            contentAlignment = Alignment.Center,
+          ) {
+            EInkText("×", style = MaterialTheme.typography.titleMedium)
+          }
+        }
       }
       val viewModeLabel = stringResource(viewMode.labelRes)
       IconButton(
         onClick = onCycleViewMode,
         modifier =
-          Modifier.size(40.dp)
+          Modifier.size(48.dp)
             .border(1.5.dp, MaterialTheme.colorScheme.outline)
             .semantics { contentDescription = viewModeLabel },
       ) {

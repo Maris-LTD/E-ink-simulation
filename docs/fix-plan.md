@@ -77,7 +77,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 ### 5E — Thư viện, Launcher, Wallpaper, Widget, l10n, a11y
 - [x] 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm"
 - [x] 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`
-- [ ] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
+- [x] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
 - [ ] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
 - [ ] 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main
 - [ ] 57. L30 + L31 — `docs/privacy-policy.md` bổ sung (snippet trên màn khoá, nút "Dịch ngoài", device-transfer, giới hạn text từ điển); `.gitignore` chặn `*.jks`/`*.keystore`
@@ -1188,3 +1188,29 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 54 — M22 + L26: TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại.
+
+### 54. M22 + L26 — TutorialOverlay chặn touch bằng pointerInput + ẩn semantics phía dưới; a11y còn lại — 2026-11-19
+**Nguyên nhân:**
+- **M22 (INC #25):** `TutorialOverlay` dùng `.clickable(indication = null) {}` để chặn chạm nên gộp toàn bộ nội dung overlay thành một node "button" với TalkBack; cây semantics của `LibraryScreen` phía dưới vẫn hiển thị nên TalkBack vẫn có thể vuốt xuống nút Xoá sách.
+- **L26 (INC #26):** Swatch chọn tone ở Launcher là `18.dp` không nhãn/role; các nút `?`, `Stats`, `+`, `viewMode`, xoá tìm kiếm `×` có vùng chạm `< 48.dp`; các chip/pill chọn tone, hướng, ngôn ngữ, tác giả, sort, font, chế độ PDF thiếu `Role.RadioButton` + trạng thái `selected`; `ToggleOptionRow`, các switch cài đặt và `SwitchRow` bị tách thành 2 điểm focus; biểu đồ 7 ngày và heatmap 12 tuần thiếu `contentDescription` cho TalkBack.
+
+**Đã sửa:**
+- `ui/library/TutorialOverlay.kt` & `ui/library/LibraryScreen.kt` (**M22 + L26**):
+  - `TutorialOverlay`: thay `.clickable(...) {}` bằng `.pointerInput(Unit) { awaitPointerEventScope { while (true) { awaitPointerEvent().changes.forEach { it.consume() } } } }` để chặn chạm mà không phá cây semantics của overlay; `ToneChip` dùng `.selectable(selected, role = Role.RadioButton)`; `ToggleOptionRow` dùng `.toggleable(value = checked, role = Role.Switch)` + `.semantics(mergeDescendants = true) {}` với `Switch(..., onCheckedChange = null)`.
+  - `LibraryScreen`: gắn `.clearAndSetSemantics {}` cho `Column` nội dung thư viện khi `tutorialOpen == true`; mở rộng vùng chạm các nút `?`, `Stats`, `+`, `viewMode`, xoá tìm kiếm `×` lên `48.dp` (giữ nguyên kích thước hiển thị và đặt `contentDescription` đầy đủ); tách nút sort thành các `FilterPill` cho từng `LibrarySort` và gắn `.selectable(selected = active, role = Role.RadioButton)` cho `FilterPill`.
+- `LauncherActivity.kt` (**L26**):
+  - Bọc mỗi swatch tone trong `Box(Modifier.size(48.dp))` với `.selectable(selected, role = Role.RadioButton)` và `contentDescription` theo `tone_*`; đặt `Modifier.weight(1f)` cho dòng trạng thái pin/streak để không đẩy 5 swatch tràn khỏi màn hình hẹp.
+  - Tăng nút xoá tìm kiếm `×` (dùng `cd_clear_search`) và nút `viewMode` ở App Drawer lên `48.dp`.
+- `ui/library/ReadingStatsSheet.kt` (**L26**):
+  - Thêm helper thuần Kotlin `buildSevenDayChartAccessibilityDescription(...)` và `buildHeatmapAccessibilityDescription(...)`, gắn `.clearAndSetSemantics { contentDescription = ... }` cho vùng biểu đồ 7 ngày và lưới heatmap 12 tuần.
+  - Gắn `.selectable(..., role = Role.RadioButton)` cho các chip tone, hướng màn hình (`OrientationLock`) và ngôn ngữ (`AppLanguage`); gộp các hàng switch đồng bộ file sách, vân giấy, đen trắng, nháy E-Ink bằng `.toggleable(..., role = Role.Switch)` + `.semantics(mergeDescendants = true) {}` + `Switch(..., onCheckedChange = null)`.
+- `ui/reader/ReaderSettingsPanel.kt` (**L26**):
+  - Gắn `Modifier.semantics { role = Role.RadioButton; this.selected = isSelected }` cho các nút trong `ChoiceRow` (font, chế độ PDF, hướng màn hình) và gộp `SwitchRow` thành 1 điểm focus bằng `.toggleable(..., role = Role.Switch)` + `.semantics(mergeDescendants = true) {}`.
+- `test/.../ui/library/ReadingStatsAccessibilityTest.kt`:
+  - Thêm 3 unit test kiểm tra `buildSevenDayChartAccessibilityDescription` và `buildHeatmapAccessibilityDescription`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **257/257 tests pass** qua 45 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 55 — L24 + L25: Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days`, bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`.

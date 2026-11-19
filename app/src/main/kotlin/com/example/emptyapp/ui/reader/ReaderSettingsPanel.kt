@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkFont
@@ -170,10 +175,16 @@ private fun <T> ChoiceRow(
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       options.forEach { option ->
-        if (option == selected) {
-          Button(onClick = { onSelect(option) }) { Text(nameOf(option)) }
+        val isSelected = option == selected
+        val chipModifier =
+          Modifier.semantics {
+            role = Role.RadioButton
+            this.selected = isSelected
+          }
+        if (isSelected) {
+          Button(onClick = { onSelect(option) }, modifier = chipModifier) { Text(nameOf(option)) }
         } else {
-          OutlinedButton(onClick = { onSelect(option) }) { Text(nameOf(option)) }
+          OutlinedButton(onClick = { onSelect(option) }, modifier = chipModifier) { Text(nameOf(option)) }
         }
       }
     }
@@ -199,11 +210,15 @@ private fun StepperRow(label: String, value: String, onMinus: () -> Unit, onPlus
 @Composable
 private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
   Row(
-    modifier = Modifier.fillMaxWidth(),
+    modifier =
+      Modifier.fillMaxWidth()
+        .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+        .semantics(mergeDescendants = true) {}
+        .padding(vertical = 4.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Text(label, style = MaterialTheme.typography.labelLarge)
-    Switch(checked = checked, onCheckedChange = onCheckedChange)
+    Switch(checked = checked, onCheckedChange = null)
   }
 }
