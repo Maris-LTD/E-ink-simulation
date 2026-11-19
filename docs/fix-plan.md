@@ -35,7 +35,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 22. U2 + U3 — PDF zoom không chớp trắng, tap-zoom, lật trang khi zoom, placeholder/retry
 - [x] 23. U4 — Thông báo lỗi sync localized, trạng thái "kết nối lại"
 - [x] 24. U5 — Quyền thông báo, notification màn khoá, focus mode, lỗi intent bị nuốt
-- [ ] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
+- [x] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
 - [ ] 26. U7 — Accessibility (contentDescription, 48dp, semantics)
 - [ ] 27. U8 + U9 — Launcher pins, empty state, sort, cạnh trái ẩn, phím âm lượng, đồng hồ 12h
 - [ ] 28. U10 + U11 — Chuỗi cứng, plurals, privacy policy
@@ -451,3 +451,16 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 25 — U6: dialog ghi chú highlight không mất text khi chạm ngoài/back, checkbox xoá trên Drive mặc định tắt + undo, `TutorialOverlay` chặn touch không xuyên xuống dưới, thông báo lỗi mở sách thân thiện + nút thử lại.
+
+### 25. U6 — An toàn thao tác nhập liệu, xoá sách, TutorialOverlay & lỗi mở sách — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Dialog ghi chú highlight mất nội dung khi chạm ngoài:** `HighlightNoteDialog.kt` đổi sang `rememberSaveable` cho `note` và đặt `DialogProperties(dismissOnClickOutside = false)`; `ReaderActivity.kt` hiển thị `Toast` xác nhận (`reader_highlight_saved`) khi highlight nhanh.
+- **Dialog xoá sách mặc định xoá luôn trên Drive:** `LibraryScreen.kt` đổi mặc định `deleteFromCloud = false` để tránh xoá nhầm bản sao lưu đám mây.
+- **`TutorialOverlay` cho bấm xuyên xuống màn hình dưới:** `TutorialOverlay.kt` thêm `.clickable(indication = null) {}` lên `Box` gốc để chặn toàn bộ touch xuyên qua.
+- **Lỗi mở sách hiện chuỗi kỹ thuật thô của Readium & không có nút thử lại:** `ReaderViewModel.kt` kiểm tra `!file.exists()`, thay thông báo lỗi mở sách bằng chuỗi đã localize (`reader_cannot_open_book` / `reader_book_not_found`) và thêm `retryLoad()`; `ReaderActivity.kt` thêm nút `action_retry` vào `CenteredMessage`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: gõ ghi chú rồi chạm ngoài dialog (không đóng), mở dialog xoá sách (checkbox Drive mặc định tắt), chạm vùng trống trên TutorialOverlay (không bấm xuyên), mở sách lỗi thấy nút Thử lại.
+
+**Còn để lại:** chưa hỗ trợ hoàn tác (undo) khôi phục file sách sau khi đã xoá cục bộ.
+
+**Bước tiếp theo:** mục 26 — U7: Accessibility (`contentDescription`, `minimumInteractiveComponentSize()`, `Role.Tab`/`selected`/`stateDescription`, semantics cho biểu đồ/heatmap).

@@ -86,6 +86,7 @@
     <string name="reader_menu_lookup">Define / Translate</string>
     <string name="reader_bookmark_saved">Bookmark saved</string>
     <string name="reader_bookmark_removed">Bookmark removed</string>
+    <string name="reader_highlight_saved">Highlight saved</string>
     <string name="reader_settings_button">Settings</string>
     <string name="reader_focus_on">Focus: ON</string>
     <string name="reader_focus_off">Focus</string>

@@ -115,6 +115,10 @@ fun TutorialOverlay(
       modifier
         .fillMaxSize()
         .background(MaterialTheme.colorScheme.background)
+        .clickable(
+          interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+          indication = null,
+        ) {}
         .padding(16.dp),
   ) {
     Column(modifier = Modifier.fillMaxSize()) {

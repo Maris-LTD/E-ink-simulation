@@ -353,7 +353,7 @@ fun LibraryScreen(
       )
     }
     pendingDeleteBook?.let { bookToDelete ->
-      var deleteFromCloud by remember(bookToDelete.id) { mutableStateOf(true) }
+      var deleteFromCloud by remember(bookToDelete.id) { mutableStateOf(false) }
       AlertDialog(
         onDismissRequest = { pendingDeleteBook = null },
         containerColor = MaterialTheme.colorScheme.background,

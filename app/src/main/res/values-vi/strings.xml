@@ -86,6 +86,7 @@
     <string name="reader_menu_lookup">Tra từ / Dịch</string>
     <string name="reader_bookmark_saved">Đã lưu dấu trang</string>
     <string name="reader_bookmark_removed">Đã bỏ dấu trang</string>
+    <string name="reader_highlight_saved">Đã lưu highlight</string>
     <string name="reader_settings_button">Cài đặt</string>
     <string name="reader_focus_on">Focus: BẬT</string>
     <string name="reader_focus_off">Focus</string>

@@ -425,6 +425,11 @@ class ReaderViewModel(
       }
   }
 
+  fun retryLoad() {
+    mutableState.value = ReaderUiState.Loading
+    viewModelScope.launch { load() }
+  }
+
   private suspend fun load() {
     val book = repository.find(bookId)
     if (book == null) {
@@ -433,6 +438,10 @@ class ReaderViewModel(
     }
     currentBookTitle = book.title
     val file = repository.fileOf(book)
+    if (!file.exists()) {
+      mutableState.value = ReaderUiState.Error(str(R.string.reader_book_not_found, "Không tìm thấy sách"))
+      return
+    }
     repository
       .engine
       .open(file)
@@ -457,7 +466,7 @@ class ReaderViewModel(
           ensurePdfClassified(file)
         }
       }
-      .onFailure { mutableState.value = ReaderUiState.Error(it.message ?: str(R.string.reader_cannot_open_book, "Không mở được sách")) }
+      .onFailure { mutableState.value = ReaderUiState.Error(str(R.string.reader_cannot_open_book, "Không mở được sách")) }
   }
 
   private fun ensurePdfClassified(file: File) {

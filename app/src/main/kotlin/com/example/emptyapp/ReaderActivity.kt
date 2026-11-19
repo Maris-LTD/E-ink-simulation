@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -356,7 +357,7 @@ class ReaderActivity : FragmentActivity() {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
       when (val current = state) {
         ReaderUiState.Loading -> CenteredMessage(getString(R.string.reader_opening), null)
-        is ReaderUiState.Error -> CenteredMessage(current.message, ::finish)
+        is ReaderUiState.Error -> CenteredMessage(current.message, ::finish, viewModel::retryLoad)
         is ReaderUiState.Ready -> {
           if (current.book.format != BookFormat.PDF) {
             remember(current.publication) { installNavigatorFactory(current) }
@@ -438,9 +439,23 @@ class ReaderActivity : FragmentActivity() {
     )
 
   @Composable
-  private fun CenteredMessage(message: String, onBack: (() -> Unit)?) {
+  private fun CenteredMessage(
+    message: String,
+    onBack: (() -> Unit)?,
+    onRetry: (() -> Unit)? = null,
+  ) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text(message, style = MaterialTheme.typography.bodyLarge)
+      androidx.compose.foundation.layout.Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+      ) {
+        Text(message, style = MaterialTheme.typography.bodyLarge)
+        if (onRetry != null) {
+          androidx.compose.material3.OutlinedButton(onClick = onRetry) {
+            Text(getString(R.string.action_retry))
+          }
+        }
+      }
       if (onBack != null) {
         TextButton(onClick = onBack, modifier = Modifier.align(Alignment.BottomCenter)) {
           Text(getString(R.string.action_back))
@@ -497,7 +512,15 @@ class ReaderActivity : FragmentActivity() {
         return when (item.itemId) {
           MENU_HIGHLIGHT -> {
             lifecycleScope.launch {
-              nav.currentSelection()?.let { viewModel.addHighlight(it.locator) }
+              val sel = nav.currentSelection()
+              if (sel != null) {
+                viewModel.addHighlight(sel.locator)
+                android.widget.Toast.makeText(
+                  this@ReaderActivity,
+                  getString(R.string.reader_highlight_saved),
+                  android.widget.Toast.LENGTH_SHORT,
+                ).show()
+              }
               nav.clearSelection()
             }
             mode.finish()
