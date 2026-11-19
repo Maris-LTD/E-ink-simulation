@@ -230,10 +230,25 @@ class ReaderActivity : FragmentActivity() {
     if (!force && positionKey == lastLockScreenPositionKey) return
     lastLockScreenPositionKey = positionKey
     val appContext = applicationContext
+    val capturedAt = System.currentTimeMillis()
+    val locatorJson = locator?.toJSON()?.toString()
 
     container.appScope.launch(Dispatchers.IO) {
-      val (snippets, startIdx) = extractLockScreenSnippets(ready, locator, progress)
-      if (snippets.isEmpty()) return@launch
+      val (extractedSnippets, extractedStartIdx) = extractLockScreenSnippets(ready, locator, progress)
+      val fallbackSnippet =
+        locator?.title?.takeIf { it.isNotBlank() }
+          ?: ready.toc.firstOrNull { it.url() == locator?.href }?.title?.takeIf { it.isNotBlank() }
+          ?: ready.book.title.takeIf { it.isNotBlank() }
+      val (snippets, startIdx) =
+        if (extractedSnippets.isNotEmpty()) {
+          extractedSnippets to extractedStartIdx
+        } else if (fallbackSnippet != null) {
+          listOf(fallbackSnippet) to 0
+        } else {
+          container.lockScreenReading.clear()
+          LockScreenReadingNotifier.cancel(appContext)
+          return@launch
+        }
       val lockState =
         LockScreenReadingState(
           bookId = ready.book.id,
@@ -242,7 +257,8 @@ class ReaderActivity : FragmentActivity() {
           snippets = snippets,
           currentSnippetIndex = startIdx,
           progress = progress,
-          locatorJson = locator?.toJSON()?.toString(),
+          locatorJson = locatorJson,
+          capturedAt = capturedAt,
         )
       container.lockScreenReading.updateSession(lockState)
       LockScreenReadingNotifier.show(
@@ -256,6 +272,7 @@ class ReaderActivity : FragmentActivity() {
         snippetIndex = lockState.currentSnippetIndex,
         snippetCount = lockState.snippets.size,
         locatorJson = lockState.locatorJson,
+        locatorCreatedAt = lockState.capturedAt,
       )
     }
   }
@@ -576,13 +593,21 @@ class ReaderActivity : FragmentActivity() {
     private const val MENU_NOTE = 1002
     private const val MENU_LOOKUP = 1003
 
-    fun intentFor(context: Context, bookId: String, locatorJson: String? = null): Intent =
+    fun intentFor(
+      context: Context,
+      bookId: String,
+      locatorJson: String? = null,
+      locatorCreatedAt: Long = System.currentTimeMillis(),
+    ): Intent =
       Intent(context, ReaderActivity::class.java)
         .putExtra(EXTRA_BOOK_ID, bookId)
         .apply {
           if (locatorJson != null) {
             putExtra(EXTRA_LOCATOR_JSON, locatorJson)
-            putExtra(EXTRA_LOCATOR_CREATED_AT, System.currentTimeMillis())
+            putExtra(
+              EXTRA_LOCATOR_CREATED_AT,
+              if (locatorCreatedAt > 0L) locatorCreatedAt else System.currentTimeMillis(),
+            )
           }
         }
   }

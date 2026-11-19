@@ -79,6 +79,7 @@
             <intent-filter>
                 <action android:name="com.example.emptyapp.LOCKSCREEN_PREV" />
                 <action android:name="com.example.emptyapp.LOCKSCREEN_NEXT" />
+                <action android:name="com.example.emptyapp.LOCKSCREEN_DISMISSED" />
             </intent-filter>
         </receiver>
     </application>

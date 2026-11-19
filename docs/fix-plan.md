@@ -46,7 +46,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 ### 5A — Chặn đọc sách / sai vị trí / build gate
 - [x] 29. H1 — PDF Reflow kẹt spinner: fallback trang gốc (hoặc lỗi + nút "Về trang gốc") khi phân tích rỗng, tap giữa mở toolbar trên 2 màn spinner, `analyzeAllPages` bắt lỗi theo từng trang
 - [x] 30. H3 — Bookmark EPUB so theo `href` + khoảng progression của trang hiện tại (dùng `PaginationListener`), chỉ so `position` cho PDF/CBZ/fixed-layout
-- [ ] 31. M1 + M2 + L3 — Notification màn khoá: `deleteIntent`/PREV/NEXT dùng intent tường minh; snippet rỗng không giữ session cũ; lưu `capturedAt` làm `EXTRA_LOCATOR_CREATED_AT`; `stepSnippet` trả `null` khi không đổi; `LockScreenReadingStore` ghi tuần tự (`limitedParallelism(1)`, `_state.update`)
+- [x] 31. M1 + M2 + L3 — Notification màn khoá: `deleteIntent`/PREV/NEXT dùng intent tường minh; snippet rỗng không giữ session cũ; lưu `capturedAt` làm `EXTRA_LOCATOR_CREATED_AT`; `stepSnippet` trả `null` khi không đổi; `LockScreenReadingStore` ghi tuần tự (`limitedParallelism(1)`, `_state.update`)
 - [ ] 32. Lint gate — sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission` (`areNotificationsEnabled`); `bundle.language.enableSplit = false`; kiểm `bcpkix` TrustAll có còn trong APK release; `HardcodedText` "‹ ›", `SmallSp` widget, dọn `UnusedResources` → `lintDebug` xanh
 
 ### 5B — Đồng bộ Google Drive & an toàn dữ liệu
@@ -591,3 +591,29 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 31 — M1 + M2 + L3: Notification màn khoá (`deleteIntent`/PREV/NEXT tường minh, snippet rỗng, `capturedAt`, `stepSnippet`, `LockScreenReadingStore` tuần tự).
+
+### 31. M1 + M2 + L3 — Notification màn khoá, giữ vị trí chính xác & ghi session tuần tự — 2026-11-19
+**Nguyên nhân:**
+- **M1:** `LockScreenReadingNotifier.show` tạo `deleteIntent` bằng implicit `Intent(ACTION_DISMISSED).setPackage(pkg)`, trong khi `<intent-filter>` của `LockScreenNavReceiver` trong `AndroidManifest.xml` chỉ khai báo `LOCKSCREEN_PREV` và `LOCKSCREEN_NEXT` → broadcast khi người dùng gạt bỏ notification không bao giờ tới receiver, `dismissed_by_user` luôn `false`, khiến `EInkWallpaperService` đăng lại notification mỗi lần bật màn hình khoá.
+- **M2:** Khi `extractLockScreenSnippets` trả về danh sách rỗng (chương chỉ có ảnh, PDF scan không có text layer, hoặc publication đã đóng trước khi coroutine chạy), `ReaderActivity.postLockScreenNotification` thoát sớm (`return@launch`) và giữ nguyên session cũ (có thể của chương trước hoặc sách khác). Khi người dùng bấm Prev/Next hoặc chạm mở từ notification cũ: (1) `LockScreenReadingNotifier` tạo `ReaderActivity.intentFor` với `EXTRA_LOCATOR_CREATED_AT = System.currentTimeMillis()` lúc dựng notification (ví dụ từ wallpaper khi bật màn hình) nên locator cũ thắng `book.updatedAt` mới hơn; (2) bấm Prev ở snippet đầu hoặc Next ở snippet cuối trong `LockScreenReadingStore.stepSnippet` vẫn trả về `current` thay vì `null`, làm `LockScreenNavReceiver` gọi `library.saveProgress` với locator cũ và `updatedAt = now`, ghi đè lùi tiến độ đọc và đẩy lên cloud qua sync.
+- **L3:** `LockScreenReadingStore` dùng `Dispatchers.IO` không giới hạn độ song song (mỗi lần `saveToDisk` / `clear` là một `launch` riêng tranh lock `synchronized`), không đảm bảo thứ tự thực thi giữa các coroutine → snapshot cũ có thể ghi đè sau hoặc làm hồi sinh file sau `clear()`; `stepSnippet` đọc-sửa-ghi `_state.value` không nguyên tử.
+
+**Đã sửa:**
+- `reader/LockScreenReadingNotifier.kt` & `AndroidManifest.xml`:
+  - Đổi cả 3 `PendingIntent` (`ACTION_PREV`, `ACTION_NEXT`, `ACTION_DISMISSED`) sang explicit intent `Intent(context, LockScreenNavReceiver::class.java).setAction(...)`, đồng thời bổ sung `<action android:name="com.example.emptyapp.LOCKSCREEN_DISMISSED" />` vào `<intent-filter>` của `LockScreenNavReceiver`.
+  - Thêm tham số `locatorCreatedAt: Long = 0L` vào `LockScreenReadingNotifier.show(...)` và truyền xuống `ReaderActivity.intentFor(...)`.
+- `ReaderActivity.kt`, `reader/LockScreenNavReceiver.kt`, `system/EInkWallpaperService.kt`:
+  - `ReaderActivity.intentFor` nhận thêm `locatorCreatedAt: Long = System.currentTimeMillis()` để giữ nguyên thời điểm chụp locator thực tế.
+  - Trong `ReaderActivity.postLockScreenNotification`: chụp `capturedAt` và `locatorJson` ngay khi lấy locator hiện tại; nếu `extractLockScreenSnippets` trả về rỗng thì cập nhật session với 1 snippet fallback (tiêu đề chương từ locator/TOC hoặc tên sách) kèm locator hiện tại để luôn ghi đè session cũ (hoặc `clear()` + `cancel()` nếu không có cả tên sách), và truyền `locatorCreatedAt = lockState.capturedAt` khi hiển thị notification.
+  - `LockScreenNavReceiver` và `EInkWallpaperService.ensureLockScreenNotificationOnLock` truyền `locatorCreatedAt = lockState.capturedAt` vào `LockScreenReadingNotifier.show`.
+- `reader/LockScreenReadingStore.kt`:
+  - Thêm `capturedAt: Long = System.currentTimeMillis()` vào `LockScreenReadingState`.
+  - Đổi `ioScope` sang `Dispatchers.IO.limitedParallelism(1)` và dùng `stateLock` kết hợp `_state.update { ... }`; hàm `schedulePersistSnapshot()` luôn đọc snapshot mới nhất của `_state.value` trên kênh tuần tự để ghi hoặc xoá file, đảm bảo `clear()` và `updateSession()` không bao giờ bị ghi đè ngược thứ tự.
+  - `stepSnippet(delta)` trả về `null` (và không ghi đĩa) khi `current == null`, `snippets.isEmpty()`, hoặc `nextIdx == current.currentSnippetIndex` (đang ở biên đầu/cuối); cập nhật progression trong `locatorJson` bằng `kotlinx.serialization.json` thuần Kotlin và làm mới `capturedAt` khi bước chuyển thành công.
+- Mới `test/.../reader/LockScreenReadingStoreTest.kt`: 3 unit test kiểm tra `updateSession` (clamp index, lưu & reload `capturedAt`), `stepSnippet` (trả `null` ở biên đầu/cuối và khi snippet rỗng, cập nhật progression & `capturedAt` khi bước hợp lệ), và `clear` (xoá file trên đĩa, không hồi sinh dữ liệu cũ).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (82/82 tests pass, gồm 3/3 test mới trong `LockScreenReadingStoreTest`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 32 — Lint gate: sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission`, cấu hình `bundle.language.enableSplit = false`, dọn warning/error lint để `lintDebug` xanh.

@@ -44,6 +44,7 @@ class LockScreenNavReceiver : BroadcastReceiver() {
           snippetIndex = updated.currentSnippetIndex,
           snippetCount = updated.snippets.size,
           locatorJson = updated.locatorJson,
+          locatorCreatedAt = updated.capturedAt,
         )
       } finally {
         pendingResult.finish()

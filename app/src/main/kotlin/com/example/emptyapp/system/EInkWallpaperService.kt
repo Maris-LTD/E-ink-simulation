@@ -190,6 +190,7 @@ class EInkWallpaperService : WallpaperService() {
           snippetIndex = lockState.currentSnippetIndex,
           snippetCount = lockState.snippets.size,
           locatorJson = lockState.locatorJson,
+          locatorCreatedAt = lockState.capturedAt,
         )
         return
       }

@@ -42,10 +42,17 @@ object LockScreenReadingNotifier {
     snippetIndex: Int = 0,
     snippetCount: Int = 0,
     locatorJson: String? = null,
+    locatorCreatedAt: Long = 0L,
   ) {
     if (!hasPermission(context)) return
     ensureChannel(context)
-    val intent = ReaderActivity.intentFor(context, bookId, locatorJson)
+    val intent =
+      ReaderActivity.intentFor(
+        context = context,
+        bookId = bookId,
+        locatorJson = locatorJson,
+        locatorCreatedAt = locatorCreatedAt,
+      )
     val pendingIntent =
       PendingIntent.getActivity(
         context,
@@ -84,14 +91,16 @@ object LockScreenReadingNotifier {
             PendingIntent.getBroadcast(
               context,
               4101,
-              Intent(LockScreenNavReceiver.ACTION_PREV).setPackage(context.packageName),
+              Intent(context, LockScreenNavReceiver::class.java)
+                .setAction(LockScreenNavReceiver.ACTION_PREV),
               PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
           val nextIntent =
             PendingIntent.getBroadcast(
               context,
               4102,
-              Intent(LockScreenNavReceiver.ACTION_NEXT).setPackage(context.packageName),
+              Intent(context, LockScreenNavReceiver::class.java)
+                .setAction(LockScreenNavReceiver.ACTION_NEXT),
               PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
           setViewVisibility(R.id.btn_prev, View.VISIBLE)
@@ -108,7 +117,8 @@ object LockScreenReadingNotifier {
       PendingIntent.getBroadcast(
         context,
         4103,
-        Intent(LockScreenNavReceiver.ACTION_DISMISSED).setPackage(context.packageName),
+        Intent(context, LockScreenNavReceiver::class.java)
+          .setAction(LockScreenNavReceiver.ACTION_DISMISSED),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
     val notification =

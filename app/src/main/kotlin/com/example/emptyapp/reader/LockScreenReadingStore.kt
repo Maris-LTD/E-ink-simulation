@@ -3,15 +3,21 @@ package com.example.emptyapp.reader
 import android.content.Context
 import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 
 @Serializable
 data class LockScreenReadingState(
@@ -22,6 +28,7 @@ data class LockScreenReadingState(
   val currentSnippetIndex: Int = 0,
   val progress: Float = 0f,
   val locatorJson: String? = null,
+  val capturedAt: Long = System.currentTimeMillis(),
 ) {
   val currentSnippet: String
     get() = snippets.getOrNull(currentSnippetIndex.coerceIn(0, (snippets.size - 1).coerceAtLeast(0))).orEmpty()
@@ -91,12 +98,19 @@ object LockScreenTextChunker {
   }
 }
 
-class LockScreenReadingStore(context: Context) {
-  private val file = File(context.applicationContext.filesDir, "lockscreen_reading.json")
+class LockScreenReadingStore internal constructor(
+  private val file: File,
+  ioDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1),
+  private val nowProvider: () -> Long = System::currentTimeMillis,
+) {
+  constructor(context: Context) : this(
+    file = File(context.applicationContext.filesDir, "lockscreen_reading.json"),
+  )
+
   private val json = Json { ignoreUnknownKeys = true }
   private val store = AtomicJsonFile(file, LockScreenReadingState.serializer(), json)
-  private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-  private val writeLock = Any()
+  private val ioScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+  private val stateLock = Any()
   private val _state = MutableStateFlow(loadFromDisk())
   val state: StateFlow<LockScreenReadingState?> = _state.asStateFlow()
 
@@ -106,46 +120,77 @@ class LockScreenReadingStore(context: Context) {
         currentSnippetIndex =
           if (newState.snippets.isEmpty()) 0
           else newState.currentSnippetIndex.coerceIn(0, newState.snippets.lastIndex),
+        capturedAt = if (newState.capturedAt > 0L) newState.capturedAt else nowProvider(),
       )
-    _state.value = clamped
-    saveToDisk(clamped)
+    synchronized(stateLock) {
+      _state.update { clamped }
+      schedulePersistSnapshot()
+    }
   }
 
   fun stepSnippet(delta: Int): LockScreenReadingState? {
-    val current = _state.value ?: return null
-    if (current.snippets.isEmpty()) return current
-    val nextIdx = (current.currentSnippetIndex + delta).coerceIn(0, current.snippets.lastIndex)
-    if (nextIdx == current.currentSnippetIndex) return current
-    val updatedLocatorJson =
-      current.locatorJson?.let { raw ->
-        runCatching {
-          val obj = org.json.JSONObject(raw)
-          val locations = obj.optJSONObject("locations") ?: org.json.JSONObject().also { obj.put("locations", it) }
-          if (current.snippets.size > 1) {
-            val newChapterProg = nextIdx.toDouble() / (current.snippets.size - 1).toDouble()
-            locations.put("progression", newChapterProg)
+    var stepped: LockScreenReadingState? = null
+    synchronized(stateLock) {
+      _state.update { current ->
+        if (current == null || current.snippets.isEmpty()) {
+          stepped = null
+          return@update current
+        }
+        val nextIdx = (current.currentSnippetIndex + delta).coerceIn(0, current.snippets.lastIndex)
+        if (nextIdx == current.currentSnippetIndex) {
+          stepped = null
+          return@update current
+        }
+        val updatedLocatorJson =
+          current.locatorJson?.let { raw ->
+            updateLocatorProgression(raw, nextIdx, current.snippets.size)
           }
-          obj.toString()
-        }.getOrDefault(raw)
+        val updated =
+          current.copy(
+            currentSnippetIndex = nextIdx,
+            locatorJson = updatedLocatorJson,
+            capturedAt = nowProvider(),
+          )
+        stepped = updated
+        updated
       }
-    val updated =
-      current.copy(
-        currentSnippetIndex = nextIdx,
-        locatorJson = updatedLocatorJson,
-      )
-    _state.value = updated
-    saveToDisk(updated)
-    return updated
+      if (stepped != null) {
+        schedulePersistSnapshot()
+      }
+    }
+    return stepped
   }
 
   fun clear() {
-    _state.value = null
-    ioScope.launch {
-      synchronized(writeLock) {
-        runCatching { if (file.exists()) file.delete() }
-      }
+    synchronized(stateLock) {
+      _state.update { null }
+      schedulePersistSnapshot()
     }
   }
+
+  private fun updateLocatorProgression(raw: String, nextIdx: Int, snippetCount: Int): String =
+    runCatching {
+      val root = json.parseToJsonElement(raw).jsonObject
+      val existingLocations = (root["locations"] as? JsonObject)?.toMap().orEmpty()
+      val updatedLocations =
+        buildJsonObject {
+          for ((k, v) in existingLocations) {
+            if (k != "progression" || snippetCount <= 1) put(k, v)
+          }
+          if (snippetCount > 1) {
+            val newChapterProg = nextIdx.toDouble() / (snippetCount - 1).toDouble()
+            put("progression", JsonPrimitive(newChapterProg))
+          }
+        }
+      val updatedRoot =
+        buildJsonObject {
+          for ((k, v) in root) {
+            if (k != "locations") put(k, v)
+          }
+          put("locations", updatedLocations)
+        }
+      json.encodeToString(JsonObject.serializer(), updatedRoot)
+    }.getOrDefault(raw)
 
   private fun loadFromDisk(): LockScreenReadingState? =
     runCatching {
@@ -153,10 +198,15 @@ class LockScreenReadingStore(context: Context) {
       json.decodeFromString(LockScreenReadingState.serializer(), file.readText())
     }.getOrNull()
 
-  private fun saveToDisk(value: LockScreenReadingState) {
+  private fun schedulePersistSnapshot() {
     ioScope.launch {
-      synchronized(writeLock) {
-        runCatching { store.write(value) }
+      val snapshot = synchronized(stateLock) { _state.value }
+      runCatching {
+        if (snapshot == null) {
+          if (file.exists()) file.delete()
+        } else {
+          store.write(snapshot)
+        }
       }
     }
   }
