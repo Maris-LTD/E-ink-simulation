@@ -60,7 +60,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 40. L5 + L7 + L9 + L22 (`updatedAt`) — Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ
 
 ### 5C — PDF
-- [ ] 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder (bỏ code chết `seedAnalyses`/`analysisCache` nếu không dùng), prefetch trang kề; GUIDED chặn lật khi chưa có regions và giữ `pendingBackwardLandingPage`; smart tap-zoom ở SMART phân tích trang hiện tại; trích chữ bằng 1 lần `getText` + `startPage/endPage`
+- [x] 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder (bỏ code chết `seedAnalyses`/`analysisCache` nếu không dùng), prefetch trang kề; GUIDED chặn lật khi chưa có regions và giữ `pendingBackwardLandingPage`; smart tap-zoom ở SMART phân tích trang hiện tại; trích chữ bằng 1 lần `getText` + `startPage/endPage`
 - [ ] 42. M12 + L13 — Tap-zoom khi autoCrop đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị
 - [ ] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
 - [ ] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
@@ -854,3 +854,31 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 41 — M10 + M11 + L11 (PDF: một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder, prefetch trang kề, GUIDED chặn lật khi chưa có regions, smart tap-zoom ở SMART, trích chữ 1 lần).
+
+### 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)`, cache & prefetch analysis theo trang, chặn lật & giữ `pendingBackwardLandingPage` ở GUIDED, smart tap-zoom ở SMART_ORIGINAL & trích chữ 1 lần `getText` — 2026-11-19
+**Nguyên nhân:**
+- **M10:** `PdfPagerReader` phân tích lười từng trang bằng `PdfPageAnalyzer.analyzePages(file, listOf(pageIndex))` mở riêng một `PDDocument.load(file)` cho mỗi trang đang compose (3 trang song song), bỏ trống `holder.seedAnalyses` / `analysisCache` như code chết và không prefetch trang kề. Ở `GUIDED_COLUMN`, khi `pageAnalysis == null`, `guidedRegions` trả về 1 vùng toàn trang nên `activePageRegionPrev`/`Next` trả `false` khiến tap cạnh hoặc giữ phím âm lượng lật bỏ qua cả trang; đồng thời khi lật lùi (`pendingBackwardLandingPage == pageIndex`), code gán `guidedRegionIndex = 0` và xoá ngay `pendingBackwardLandingPage` trước khi regions thật trả về.
+- **M11:** `PdfPagerReader` chỉ chạy phân tích trang khi `readingMode == GUIDED_COLUMN`, nên ở `SMART_ORIGINAL` (mặc định) nếu sách chưa từng mở Reflow thì `pageAnalysis` luôn `null` và double-tap luôn zoom 2.2× cố định thay vì `findTapTargetRect`.
+- **L11:** Trong `PdfPageAnalyzer.analyzeAllPages`, việc tái sử dụng `ReusableLineStripper` nhưng gọi `getText(document)` riêng cho từng trang vẫn khiến `PDFTextStripper.processPages` duyệt lại toàn bộ `PDPageTree` từ đầu tới cuối N lần (O(N²) trên sách 500–1000 trang).
+
+**Đã sửa:**
+- `reader/pdf/PdfPageAnalyzer.kt` (**L11**):
+  - Tách `BaseLineStripper` dùng chung logic gom chunk `PdfTextLine` (tắt ghi separator vào `StringWriter` để tránh cấp phát chuỗi thừa) và thêm `BatchLineStripper` override `startDocument`/`processPage`/`startPage`/`endPage` gom `Map<Int, List<PdfTextLine>>` chỉ trong **1 lượt `getText(document)`** cho toàn bộ tài liệu (hỗ trợ `shouldContinue`, cập nhật tiến độ và cô lập lỗi từng trang trong `failedPages`).
+  - `analyzeAllPages` dùng `BatchLineStripper` 1 lượt rồi lắp ghép graphics/images qua `analyzePageSafely` theo từng trang (chỉ fallback về `ReusableLineStripper` cho trang lỗi hoặc khi batch `getText` lỗi ở sách hỏng).
+  - Cập nhật `ReusableLineStripper` override `processPages` để chỉ xử lý đúng trang đích thay vì duyệt toàn bộ `PDPageTree`.
+- Mới `ui/reader/PdfAnalysisSession.kt` & cập nhật `ui/reader/PdfRendererHolder.kt` (**M10 + M11**):
+  - Mở **một `PDDocument` duy nhất cho cả phiên** (lười khi có yêu cầu chưa nằm trong cache) và đóng an toàn trong `close()` trên cùng `Dispatchers.IO.limitedParallelism(1)` (kết hợp một `ReusableLineStripper` dùng tuần tự).
+  - Kết nối thật `analysisCache` (`ConcurrentHashMap<Int, PdfPageAnalysis>`) + `analysisVersion: StateFlow<Int>`: triển khai `seedAnalyses`, `cachedAnalysis(pageIndex)`, `getOrAnalyzePage(pageIndex)` (trả `emptyPageAnalysis` nếu mở PDFBox thất bại để không kẹt điều hướng, trả `null` nếu đã `closed`), và `prefetchAdjacentAnalyses(centerIndex)` (ưu tiên `centerIndex + 1`, `centerIndex - 1`).
+- Mới `reader/pdf/PdfGuidedNavigation.kt` & cập nhật `ui/reader/PdfPagerReader.kt` (**M10 + M11**):
+  - Truyền `context` vào `openPdfHolder(file, context)` và đọc `pageAnalysis` trực tiếp từ `loadedAnalyses` hoặc `holder.cachedAnalysis(pageIndex)` kèm `holder.analysisVersion`.
+  - Ở `GUIDED_COLUMN`: phân tích ưu tiên `pagerState.currentPage` rồi mới `holder.prefetchAdjacentAnalyses(pagerState.currentPage)`; `PdfGuidedNavigation.stepPrev`/`stepNext` luôn trả `consumed = true` để **chặn lật trang** khi `pageAnalysis == null` hoặc đang chờ landing backward; `PdfGuidedNavigation.resolveRegionIndex` chỉ gán `guidedRegionIndex = guidedRegions.lastIndex` và gọi `onConsumeBackwardLanding()` **sau khi `pageAnalysis != null`**.
+  - Ở `SMART_ORIGINAL`: tự động phân tích trang hiện tại khi settle (`pagerState.settledPage`) qua `holder.getOrAnalyzePage(...)`, và trong `onDoubleTap` dùng `rememberUpdatedState` + gọi `holder.getOrAnalyzePage(pageIndex)` nếu chưa có analysis để `findTapTargetRect` luôn có dữ liệu (cộng thêm `computeDoubleTapCamera`).
+- `app/build.gradle.kts` & unit test mới (**15 tests mới**):
+  - Cấu hình `packagePdfBoxTestResources` (đóng gói `com/tom_roush/pdfbox/resources/**` từ `mergeDebugAssets` cho `testImplementation`) + `unitTests.isReturnDefaultValues = true` để chạy test `PDDocument`/`PDFTextStripper` thật trên JVM.
+  - Mới `test/.../reader/pdf/PdfPageAnalyzerBatchTest.kt` (6 tests), `test/.../reader/pdf/PdfGuidedNavigationTest.kt` (4 tests) và `test/.../ui/reader/PdfAnalysisSessionTest.kt` (5 tests).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **196/196 pass**, gồm **15/15** test mới; `lintDebug`: **0 errors**). Kiểm tra tay đề nghị: mở sách nhiều cột ở `GUIDED_COLUMN` chưa từng mở Reflow (lật nhanh không bỏ trang, lật lùi vào vùng cuối trang trước); mở sách ở `SMART_ORIGINAL` chưa mở Reflow rồi double-tap vào cột chữ/ảnh (zoom đúng vùng thay vì 2.2× cố định); mở Reflow sách PDF dài (>500 trang) thấy bước trích chữ chỉ quét 1 lượt.
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 42 — M12 + L13: Tap-zoom khi `autoCrop` đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị.

@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,6 +46,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -81,8 +83,10 @@ import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
+import com.example.emptyapp.reader.pdf.CameraTransform
 import com.example.emptyapp.reader.pdf.PaginatedReflowElement
 import com.example.emptyapp.reader.pdf.PdfDocumentCache
+import com.example.emptyapp.reader.pdf.PdfGuidedNavigation
 import com.example.emptyapp.reader.pdf.PdfPageAnalysis
 import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
 import com.example.emptyapp.reader.pdf.PdfReadingMode
@@ -138,7 +142,7 @@ fun PdfPagerReader(
 ) {
   val context = LocalContext.current
   val density = LocalDensity.current
-  val holder = remember(file) { openPdfHolder(file) }
+  val holder = remember(file) { openPdfHolder(file, context) }
   DisposableEffect(holder) {
     onDispose { holder?.close() }
   }
@@ -592,6 +596,25 @@ fun PdfPagerReader(
           }
       }
 
+      LaunchedEffect(readingMode) {
+        if (readingMode != PdfReadingMode.GUIDED_COLUMN) {
+          pendingBackwardLandingPage = null
+        }
+      }
+
+      LaunchedEffect(holder, pagerState.currentPage, readingMode, loadedAnalyses) {
+        if (readingMode == PdfReadingMode.GUIDED_COLUMN && loadedAnalyses == null) {
+          holder.getOrAnalyzePage(pagerState.currentPage)
+          holder.prefetchAdjacentAnalyses(pagerState.currentPage)
+        }
+      }
+
+      LaunchedEffect(holder, pagerState.settledPage, readingMode, loadedAnalyses) {
+        if (readingMode == PdfReadingMode.SMART_ORIGINAL && loadedAnalyses == null) {
+          holder.getOrAnalyzePage(pagerState.settledPage)
+        }
+      }
+
       HorizontalPager(
         state = pagerState,
         beyondViewportPageCount = 1,
@@ -613,24 +636,10 @@ fun PdfPagerReader(
             else -> 1
           }
         val autoCrop = settings.pdfAutoCrop && readingMode != PdfReadingMode.GUIDED_COLUMN
-        val pageAnalysis by
-          produceState<PdfPageAnalysis?>(
-            initialValue = loadedAnalyses?.getOrNull(pageIndex),
-            file,
-            pageIndex,
-            readingMode,
-            loadedAnalyses,
-          ) {
-            val fromAll = loadedAnalyses?.getOrNull(pageIndex)
-            if (fromAll != null) {
-              value = fromAll
-            } else if (readingMode == PdfReadingMode.GUIDED_COLUMN) {
-              value =
-                withContext(Dispatchers.IO) {
-                  PdfPageAnalyzer.ensureInitialized(context)
-                  PdfPageAnalyzer.analyzePages(file, listOf(pageIndex)).firstOrNull()
-                }
-            }
+        val analysisVersion by holder.analysisVersion.collectAsState()
+        val pageAnalysis =
+          remember(holder, pageIndex, loadedAnalyses, analysisVersion) {
+            loadedAnalyses?.getOrNull(pageIndex) ?: holder.cachedAnalysis(pageIndex)
           }
         var guidedRegionIndex by remember(pageIndex, readingMode) { mutableIntStateOf(0) }
         var bitmap by remember(holder, pageIndex, autoCrop) {
@@ -651,22 +660,43 @@ fun PdfPagerReader(
             }
           }
 
-        DisposableEffect(pagerState.currentPage, pageIndex, readingMode, guidedRegions) {
-          if (pagerState.currentPage == pageIndex && readingMode == PdfReadingMode.GUIDED_COLUMN && guidedRegions.isNotEmpty()) {
+        val latestAnalysis by rememberUpdatedState(pageAnalysis)
+        val latestRegions by rememberUpdatedState(guidedRegions)
+        val latestPendingBackward by rememberUpdatedState(pendingBackwardLandingPage)
+        val latestBitmap by rememberUpdatedState(bitmap)
+        val latestAutoCrop by rememberUpdatedState(autoCrop)
+
+        DisposableEffect(pagerState.currentPage, pageIndex, readingMode) {
+          if (pagerState.currentPage == pageIndex && readingMode == PdfReadingMode.GUIDED_COLUMN) {
             activePageRegionPrev = {
-              if (guidedRegionIndex > 0) {
-                guidedRegionIndex -= 1
+              if (pagerState.currentPage != pageIndex) {
                 true
               } else {
-                false
+                val step =
+                  PdfGuidedNavigation.stepPrev(
+                    readingMode = readingMode,
+                    hasAnalysis = latestAnalysis != null,
+                    currentRegionIndex = guidedRegionIndex,
+                    awaitingBackwardLanding = latestPendingBackward == pageIndex,
+                  )
+                guidedRegionIndex = step.nextRegionIndex
+                step.consumed
               }
             }
             activePageRegionNext = {
-              if (guidedRegionIndex < guidedRegions.lastIndex) {
-                guidedRegionIndex += 1
+              if (pagerState.currentPage != pageIndex) {
                 true
               } else {
-                false
+                val step =
+                  PdfGuidedNavigation.stepNext(
+                    readingMode = readingMode,
+                    hasAnalysis = latestAnalysis != null,
+                    currentRegionIndex = guidedRegionIndex,
+                    regionCount = latestRegions.size,
+                    awaitingBackwardLanding = latestPendingBackward == pageIndex,
+                  )
+                guidedRegionIndex = step.nextRegionIndex
+                step.consumed
               }
             }
           } else if (pagerState.currentPage == pageIndex) {
@@ -703,15 +733,17 @@ fun PdfPagerReader(
           }
         }
 
-        LaunchedEffect(readingMode, guidedRegions, pendingBackwardLandingPage, pageIndex) {
-          if (readingMode == PdfReadingMode.GUIDED_COLUMN && guidedRegions.isNotEmpty()) {
-            if (pendingBackwardLandingPage == pageIndex) {
-              guidedRegionIndex = guidedRegions.lastIndex
-              pendingBackwardLandingPage = null
-            } else if (guidedRegionIndex > guidedRegions.lastIndex) {
-              guidedRegionIndex = 0
-            }
-          }
+        LaunchedEffect(readingMode, pageAnalysis, guidedRegions, pendingBackwardLandingPage, pageIndex) {
+          guidedRegionIndex =
+            PdfGuidedNavigation.resolveRegionIndex(
+              readingMode = readingMode,
+              pageAnalysis = pageAnalysis,
+              guidedRegions = guidedRegions,
+              currentRegionIndex = guidedRegionIndex,
+              pendingBackwardLandingPage = pendingBackwardLandingPage,
+              pageIndex = pageIndex,
+              onConsumeBackwardLanding = { pendingBackwardLandingPage = null },
+            )
         }
 
         LaunchedEffect(readingMode, guidedRegions, guidedRegionIndex, bitmap, targetWidthPx, targetHeightPx) {
@@ -751,7 +783,7 @@ fun PdfPagerReader(
           modifier =
             Modifier.fillMaxSize()
               .clipToBounds()
-              .pointerInput(pageIndex, targetWidthPx, targetHeightPx, readingMode, pageAnalysis, bitmap, autoCrop) {
+              .pointerInput(pageIndex, targetWidthPx, targetHeightPx, readingMode) {
                 detectTapGestures(
                   onDoubleTap = { tapOffset ->
                     if (readingMode == PdfReadingMode.GUIDED_COLUMN) return@detectTapGestures
@@ -759,45 +791,39 @@ fun PdfPagerReader(
                       scale = 1f
                       offset = Offset.Zero
                     } else {
-                      val currentBmp = bitmap
-                      val tapRegion =
-                        if (currentBmp != null && pageAnalysis != null) {
-                          val fitScale = minOf(targetWidthPx.toFloat() / currentBmp.width, targetHeightPx.toFloat() / currentBmp.height)
-                          val dispW = currentBmp.width * fitScale
-                          val dispH = currentBmp.height * fitScale
-                          val imgLeft = (targetWidthPx - dispW) / 2f
-                          val imgTop = (targetHeightPx - dispH) / 2f
-                          val rawNormX = ((tapOffset.x - imgLeft) / dispW).coerceIn(0f, 1f)
-                          val rawNormY = ((tapOffset.y - imgTop) / dispH).coerceIn(0f, 1f)
-                          val crop = if (autoCrop) holder.cachedCropRect(pageIndex) else null
-                          val normX = if (crop != null) (crop.left + rawNormX * crop.width).coerceIn(0f, 1f) else rawNormX
-                          val normY = if (crop != null) (crop.top + rawNormY * crop.height).coerceIn(0f, 1f) else rawNormY
-                          PdfRegionNavigator.findTapTargetRect(pageAnalysis, normX, normY)
-                        } else {
-                          null
-                        }
-                      if (tapRegion != null && currentBmp != null) {
+                      val currentBmp = latestBitmap
+                      val existingAnalysis = latestAnalysis
+                      if (existingAnalysis != null || currentBmp == null) {
                         val cam =
-                          PdfRegionNavigator.computeCameraTransform(
-                            region = tapRegion,
-                            bitmapWidth = currentBmp.width.toFloat(),
-                            bitmapHeight = currentBmp.height.toFloat(),
-                            containerWidth = targetWidthPx.toFloat(),
-                            containerHeight = targetHeightPx.toFloat(),
+                          computeDoubleTapCamera(
+                            tapOffset = tapOffset,
+                            bitmap = currentBmp,
+                            pageAnalysis = existingAnalysis,
+                            cropRect = if (latestAutoCrop) holder.cachedCropRect(pageIndex) else null,
+                            targetWidthPx = targetWidthPx,
+                            targetHeightPx = targetHeightPx,
                           )
                         scale = cam.scale
                         offset = Offset(cam.offsetX, cam.offsetY)
                       } else {
-                        val targetScale = 2.2f
-                        val centerX = targetWidthPx / 2f
-                        val centerY = targetHeightPx / 2f
-                        val rawOffset =
-                          Offset(
-                            x = (centerX - tapOffset.x) * (targetScale - 1f),
-                            y = (centerY - tapOffset.y) * (targetScale - 1f),
-                          )
-                        scale = targetScale
-                        offset = clampOffset(rawOffset, targetScale, targetWidthPx, targetHeightPx)
+                        scope.launch {
+                          val analyzed = holder.getOrAnalyzePage(pageIndex)
+                          if (pagerState.currentPage == pageIndex && scale <= 1.01f) {
+                            val bmp = latestBitmap ?: currentBmp
+                            val crop = if (latestAutoCrop) holder.cachedCropRect(pageIndex) else null
+                            val cam =
+                              computeDoubleTapCamera(
+                                tapOffset = tapOffset,
+                                bitmap = bmp,
+                                pageAnalysis = analyzed,
+                                cropRect = crop,
+                                targetWidthPx = targetWidthPx,
+                                targetHeightPx = targetHeightPx,
+                              )
+                            scale = cam.scale
+                            offset = Offset(cam.offsetX, cam.offsetY)
+                          }
+                        }
                       }
                     }
                   },
@@ -1130,6 +1156,50 @@ private fun PdfReflowImageZoomOverlay(
       )
     }
   }
+}
+
+private fun computeDoubleTapCamera(
+  tapOffset: Offset,
+  bitmap: ImageBitmap?,
+  pageAnalysis: PdfPageAnalysis?,
+  cropRect: NormalizedCropRect?,
+  targetWidthPx: Int,
+  targetHeightPx: Int,
+): CameraTransform {
+  val tapRegion =
+    if (bitmap != null && pageAnalysis != null) {
+      val fitScale = minOf(targetWidthPx.toFloat() / bitmap.width, targetHeightPx.toFloat() / bitmap.height)
+      val dispW = bitmap.width * fitScale
+      val dispH = bitmap.height * fitScale
+      val imgLeft = (targetWidthPx - dispW) / 2f
+      val imgTop = (targetHeightPx - dispH) / 2f
+      val rawNormX = ((tapOffset.x - imgLeft) / dispW).coerceIn(0f, 1f)
+      val rawNormY = ((tapOffset.y - imgTop) / dispH).coerceIn(0f, 1f)
+      val normX = if (cropRect != null) (cropRect.left + rawNormX * cropRect.width).coerceIn(0f, 1f) else rawNormX
+      val normY = if (cropRect != null) (cropRect.top + rawNormY * cropRect.height).coerceIn(0f, 1f) else rawNormY
+      PdfRegionNavigator.findTapTargetRect(pageAnalysis, normX, normY)
+    } else {
+      null
+    }
+  if (tapRegion != null && bitmap != null) {
+    return PdfRegionNavigator.computeCameraTransform(
+      region = tapRegion,
+      bitmapWidth = bitmap.width.toFloat(),
+      bitmapHeight = bitmap.height.toFloat(),
+      containerWidth = targetWidthPx.toFloat(),
+      containerHeight = targetHeightPx.toFloat(),
+    )
+  }
+  val targetScale = 2.2f
+  val centerX = targetWidthPx / 2f
+  val centerY = targetHeightPx / 2f
+  val rawOffset =
+    Offset(
+      x = (centerX - tapOffset.x) * (targetScale - 1f),
+      y = (centerY - tapOffset.y) * (targetScale - 1f),
+    )
+  val clamped = clampOffset(rawOffset, targetScale, targetWidthPx, targetHeightPx)
+  return CameraTransform(targetScale, clamped.x, clamped.y)
 }
 
 private fun clampOffset(offset: Offset, scale: Float, widthPx: Int, heightPx: Int): Offset {

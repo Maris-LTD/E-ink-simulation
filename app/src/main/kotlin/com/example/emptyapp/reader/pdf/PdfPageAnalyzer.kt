@@ -8,11 +8,11 @@ import com.tom_roush.pdfbox.contentstream.PDFGraphicsStreamEngine
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageTree
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImage
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import java.io.File
-import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 
 object PdfPageAnalyzer {
@@ -67,6 +67,8 @@ object PdfPageAnalyzer {
       emptyPageAnalysis(pageIndex)
     }
 
+  private class StopBatchException : RuntimeException()
+
   fun analyzeAllPages(
     file: File,
     shouldContinue: () -> Boolean = { true },
@@ -75,15 +77,7 @@ object PdfPageAnalyzer {
     if (!file.exists()) return emptyList()
     return try {
       PDDocument.load(file).use { document ->
-        val total = document.numberOfPages
-        val stripper = ReusableLineStripper()
-        val results = ArrayList<PdfPageAnalysis>(total)
-        for (index in 0 until total) {
-          if (!shouldContinue()) return emptyList()
-          results += analyzePageSafely(index) { analyzePage(document, index, stripper) }
-          onProgress(index + 1, total)
-        }
-        results
+        analyzeAllPages(document, shouldContinue, onProgress)
       }
     } catch (e: CancellationException) {
       throw e
@@ -92,24 +86,110 @@ object PdfPageAnalyzer {
     }
   }
 
+  fun analyzeAllPages(
+    document: PDDocument,
+    shouldContinue: () -> Boolean = { true },
+    onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+  ): List<PdfPageAnalysis> {
+    val total = document.numberOfPages
+    if (total <= 0 || !shouldContinue()) return emptyList()
+    val batchStripper =
+      BatchLineStripper(
+        shouldContinue = shouldContinue,
+        onPageDone = { pageIndex ->
+          val halfDone = ((pageIndex + 1) / 2).coerceIn(1, total)
+          onProgress(halfDone, total)
+        },
+      )
+    return analyzeAllPagesWithStripper(document, shouldContinue, onProgress, batchStripper)
+  }
+
+  internal fun analyzeAllPagesWithStripper(
+    document: PDDocument,
+    shouldContinue: () -> Boolean = { true },
+    onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    batchStripper: BatchLineStripper,
+  ): List<PdfPageAnalysis> {
+    val total = document.numberOfPages
+    if (total <= 0 || !shouldContinue()) return emptyList()
+
+    val batchResult =
+      try {
+        batchStripper.extractAll(document)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: StopBatchException) {
+        return emptyList()
+      } catch (_: Throwable) {
+        null
+      }
+
+    if (!shouldContinue()) return emptyList()
+
+    val fallbackStripper by lazy(LazyThreadSafetyMode.NONE) { ReusableLineStripper() }
+    val results = ArrayList<PdfPageAnalysis>(total)
+    for (index in 0 until total) {
+      if (!shouldContinue()) return emptyList()
+      results +=
+        analyzePageSafely(index) {
+          val page = document.getPage(index)
+          val mediaBox = page.cropBox ?: page.mediaBox
+          val pageWidth = (mediaBox?.width ?: DEFAULT_PAGE_WIDTH_PT).coerceAtLeast(1f)
+          val pageHeight = (mediaBox?.height ?: DEFAULT_PAGE_HEIGHT_PT).coerceAtLeast(1f)
+          val originX = mediaBox?.lowerLeftX ?: 0f
+          val originY = mediaBox?.lowerLeftY ?: 0f
+          val textLines =
+            if (batchResult == null || index in batchResult.failedPages) {
+              fallbackStripper.extract(document, index, pageWidth, pageHeight)
+            } else {
+              batchResult.linesByPage[index].orEmpty()
+            }
+          buildPageAnalysis(
+            page = page,
+            pageIndex = index,
+            originX = originX,
+            originY = originY,
+            pageWidth = pageWidth,
+            pageHeight = pageHeight,
+            textLines = textLines,
+          )
+        }
+      val done =
+        if (batchResult != null) {
+          val textPhase = total / 2
+          val graphicsPhase = ((index + 1) * (total - textPhase)) / total
+          (textPhase + graphicsPhase).coerceIn(1, total)
+        } else {
+          index + 1
+        }
+      onProgress(done, total)
+    }
+    return results
+  }
+
   fun analyzePages(file: File, pageIndices: List<Int>): List<PdfPageAnalysis> {
     if (!file.exists() || pageIndices.isEmpty()) return emptyList()
     return try {
       PDDocument.load(file).use { document ->
-        val total = document.numberOfPages
-        val stripper = ReusableLineStripper()
-        pageIndices
-          .asSequence()
-          .filter { it in 0 until total }
-          .distinct()
-          .map { index -> analyzePageSafely(index) { analyzePage(document, index, stripper) } }
-          .toList()
+        analyzePages(document, pageIndices)
       }
     } catch (e: CancellationException) {
       throw e
     } catch (_: Throwable) {
       emptyList()
     }
+  }
+
+  fun analyzePages(document: PDDocument, pageIndices: List<Int>): List<PdfPageAnalysis> {
+    if (pageIndices.isEmpty()) return emptyList()
+    val total = document.numberOfPages
+    val stripper = ReusableLineStripper()
+    return pageIndices
+      .asSequence()
+      .filter { it in 0 until total }
+      .distinct()
+      .map { index -> analyzePageSafely(index) { analyzePage(document, index, stripper) } }
+      .toList()
   }
 
   fun analyzeSamplePages(
@@ -119,14 +199,7 @@ object PdfPageAnalyzer {
     if (!file.exists()) return emptyList()
     return try {
       PDDocument.load(file).use { document ->
-        val total = document.numberOfPages
-        val stripper = ReusableLineStripper()
-        indicesForCount(total)
-          .asSequence()
-          .filter { it in 0 until total }
-          .distinct()
-          .map { index -> analyzePageSafely(index) { analyzePage(document, index, stripper) } }
-          .toList()
+        analyzePages(document, indicesForCount(document.numberOfPages))
       }
     } catch (e: CancellationException) {
       throw e
@@ -142,11 +215,32 @@ object PdfPageAnalyzer {
   ): PdfPageAnalysis {
     val page = document.getPage(pageIndex)
     val mediaBox = page.cropBox ?: page.mediaBox
-    val pageWidth = mediaBox.width.coerceAtLeast(1f)
-    val pageHeight = mediaBox.height.coerceAtLeast(1f)
+    val pageWidth = (mediaBox?.width ?: DEFAULT_PAGE_WIDTH_PT).coerceAtLeast(1f)
+    val pageHeight = (mediaBox?.height ?: DEFAULT_PAGE_HEIGHT_PT).coerceAtLeast(1f)
+    val originX = mediaBox?.lowerLeftX ?: 0f
+    val originY = mediaBox?.lowerLeftY ?: 0f
+    val textLines = stripper.extract(document, pageIndex, pageWidth, pageHeight, page)
+    return buildPageAnalysis(
+      page = page,
+      pageIndex = pageIndex,
+      originX = originX,
+      originY = originY,
+      pageWidth = pageWidth,
+      pageHeight = pageHeight,
+      textLines = textLines,
+    )
+  }
 
-    val textLines = stripper.extract(document, pageIndex, pageWidth, pageHeight)
-    val graphicsStats = extractGraphicsStats(page, mediaBox.lowerLeftX, mediaBox.lowerLeftY, pageWidth, pageHeight)
+  private fun buildPageAnalysis(
+    page: PDPage,
+    pageIndex: Int,
+    originX: Float,
+    originY: Float,
+    pageWidth: Float,
+    pageHeight: Float,
+    textLines: List<PdfTextLine>,
+  ): PdfPageAnalysis {
+    val graphicsStats = extractGraphicsStats(page, originX, originY, pageWidth, pageHeight)
     val charCount = textLines.sumOf { it.text.count { ch -> !ch.isWhitespace() } }
     val columnCount = detectColumnCount(textLines)
 
@@ -194,30 +288,34 @@ object PdfPageAnalyzer {
     return 1
   }
 
-  class ReusableLineStripper : PDFTextStripper() {
-    private var pageWidth = 1f
-    private var pageHeight = 1f
-    private var collected = ArrayList<PdfTextLine>()
+  abstract class BaseLineStripper : PDFTextStripper() {
+    protected var pageWidth = 1f
+    protected var pageHeight = 1f
+    protected var collected = ArrayList<PdfTextLine>()
 
     init {
       sortByPosition = true
     }
 
-    fun extract(
-      document: PDDocument,
-      pageIndex: Int,
-      pageWidth: Float,
-      pageHeight: Float,
-    ): List<PdfTextLine> {
-      this.pageWidth = pageWidth
-      this.pageHeight = pageHeight
-      val out = ArrayList<PdfTextLine>()
-      this.collected = out
-      startPage = pageIndex + 1
-      endPage = pageIndex + 1
-      runCatching { getText(document) }
-      return out
-    }
+    override fun writeLineSeparator() {}
+
+    override fun writeWordSeparator() {}
+
+    override fun writePageStart() {}
+
+    override fun writePageEnd() {}
+
+    override fun writeParagraphStart() {}
+
+    override fun writeParagraphEnd() {}
+
+    override fun startArticle(isLTR: Boolean) {}
+
+    override fun endArticle() {}
+
+    override fun writeCharacters(text: TextPosition) {}
+
+    override fun writeString(text: String) {}
 
     override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
       if (text.isBlank() || textPositions.isEmpty()) return
@@ -282,6 +380,116 @@ object PdfPageAnalyzer {
         }
       }
       emitChunk()
+    }
+  }
+
+  class ReusableLineStripper : BaseLineStripper() {
+    private var targetPage: PDPage? = null
+
+    fun extract(
+      document: PDDocument,
+      pageIndex: Int,
+      pageWidth: Float,
+      pageHeight: Float,
+      page: PDPage? = null,
+    ): List<PdfTextLine> {
+      if (pageIndex !in 0 until document.numberOfPages) return emptyList()
+      this.pageWidth = pageWidth
+      this.pageHeight = pageHeight
+      val out = ArrayList<PdfTextLine>()
+      this.collected = out
+      this.targetPage = page ?: document.getPage(pageIndex)
+      startPage = 0
+      endPage = 0
+      try {
+        getText(document)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+      } finally {
+        targetPage = null
+      }
+      return out
+    }
+
+    override fun processPages(pages: PDPageTree) {
+      val page = targetPage
+      if (page != null) {
+        if (page.hasContents()) {
+          processPage(page)
+        }
+      } else {
+        super.processPages(pages)
+      }
+    }
+  }
+
+  data class BatchExtractionResult(
+    val linesByPage: Map<Int, List<PdfTextLine>>,
+    val failedPages: Set<Int>,
+  )
+
+  open class BatchLineStripper(
+    private val shouldContinue: () -> Boolean = { true },
+    private val onPageDone: (pageIndex: Int) -> Unit = {},
+  ) : BaseLineStripper() {
+    private val linesByPage = HashMap<Int, List<PdfTextLine>>()
+    private val failedPages = HashSet<Int>()
+    private var activePageIndex = -1
+    private var pageActive = false
+
+    open fun extractAll(document: PDDocument): BatchExtractionResult {
+      val total = document.numberOfPages
+      if (total <= 0) return BatchExtractionResult(emptyMap(), emptySet())
+      startPage = 1
+      endPage = total
+      getText(document)
+      return BatchExtractionResult(HashMap(linesByPage), HashSet(failedPages))
+    }
+
+    fun snapshotLinesByPage(): Map<Int, List<PdfTextLine>> = HashMap(linesByPage)
+
+    override fun startDocument(document: PDDocument) {
+      linesByPage.clear()
+      failedPages.clear()
+      activePageIndex = -1
+      pageActive = false
+    }
+
+    override fun processPage(page: PDPage) {
+      if (!shouldContinue()) throw StopBatchException()
+      val pageIndex = currentPageNo - 1
+      try {
+        super.processPage(page)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: StopBatchException) {
+        throw e
+      } catch (_: Throwable) {
+        if (pageIndex >= 0) failedPages += pageIndex
+        pageActive = false
+        activePageIndex = -1
+        collected = ArrayList()
+      }
+    }
+
+    override fun startPage(page: PDPage) {
+      if (!shouldContinue()) throw StopBatchException()
+      val mediaBox = page.cropBox ?: page.mediaBox
+      pageWidth = (mediaBox?.width ?: DEFAULT_PAGE_WIDTH_PT).coerceAtLeast(1f)
+      pageHeight = (mediaBox?.height ?: DEFAULT_PAGE_HEIGHT_PT).coerceAtLeast(1f)
+      activePageIndex = currentPageNo - 1
+      collected = ArrayList()
+      pageActive = activePageIndex >= 0
+    }
+
+    override fun endPage(page: PDPage) {
+      if (pageActive && activePageIndex >= 0) {
+        linesByPage[activePageIndex] = collected
+        onPageDone(activePageIndex)
+      }
+      pageActive = false
+      activePageIndex = -1
     }
   }
 

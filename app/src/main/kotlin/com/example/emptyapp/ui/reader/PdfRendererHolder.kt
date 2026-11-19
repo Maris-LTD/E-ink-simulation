@@ -1,5 +1,6 @@
 package com.example.emptyapp.ui.reader
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.graphics.Matrix
@@ -9,12 +10,15 @@ import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.example.emptyapp.reader.pdf.PdfPageAnalysis
+import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
 import com.example.emptyapp.reader.pdf.PdfRect
+import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.File
 import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,20 +27,42 @@ import kotlinx.coroutines.withContext
 internal class PdfRendererHolder(
   private val descriptor: ParcelFileDescriptor,
   private val renderer: PdfRenderer,
+  private val file: File? = null,
+  private val appContext: Context? = null,
   private val budget: PdfBitmapBudget = PdfBitmapBudget.fromRuntime(),
 ) {
   private val mutex = Mutex()
   @Volatile private var closed = false
   private val cropCache = HashMap<Int, NormalizedCropRect>()
-  private val analysisCache = HashMap<Int, PdfPageAnalysis>()
+  private val analysisSession =
+    PdfAnalysisSession(
+      pageCount = renderer.pageCount,
+      openDocument = ::openAnalysisDocument,
+    )
   private val pageBitmapCache =
     object : LruCache<String, ImageBitmap>(budget.cacheKiloBytes) {
       override fun sizeOf(key: String, value: ImageBitmap): Int = imageKiloBytes(value)
     }
   val pageCount: Int = renderer.pageCount
+  val analysisVersion: StateFlow<Int>
+    get() = analysisSession.analysisVersion
 
   fun seedAnalyses(pages: List<PdfPageAnalysis>) {
-    pages.forEach { analysisCache[it.pageIndex] = it }
+    if (!closed) {
+      analysisSession.seedAnalyses(pages)
+    }
+  }
+
+  fun cachedAnalysis(pageIndex: Int): PdfPageAnalysis? =
+    if (closed) null else analysisSession.cachedAnalysis(pageIndex)
+
+  suspend fun getOrAnalyzePage(pageIndex: Int): PdfPageAnalysis? =
+    if (closed) null else analysisSession.getOrAnalyzePage(pageIndex)
+
+  suspend fun prefetchAdjacentAnalyses(centerIndex: Int) {
+    if (!closed) {
+      analysisSession.prefetchAdjacentAnalyses(centerIndex)
+    }
   }
 
   fun cachedCropRect(index: Int): NormalizedCropRect? = cropCache[index]
@@ -162,10 +188,31 @@ internal class PdfRendererHolder(
     if (closed) return
     closed = true
     pageBitmapCache.evictAll()
+    analysisSession.close()
     CoroutineScope(Dispatchers.IO + NonCancellable).launch {
       mutex.withLock {
         runCatching { renderer.close() }
         runCatching { descriptor.close() }
+      }
+    }
+  }
+
+  private fun openAnalysisDocument(): PdfAnalysisDocument? {
+    val targetFile = file ?: return null
+    if (!targetFile.exists()) return null
+    appContext?.let { PdfPageAnalyzer.ensureInitialized(it) }
+    val document = PDDocument.load(targetFile)
+    val stripper = PdfPageAnalyzer.ReusableLineStripper()
+    return object : PdfAnalysisDocument {
+      override fun analyzePage(pageIndex: Int): PdfPageAnalysis? {
+        if (pageIndex !in 0 until document.numberOfPages) return null
+        return PdfPageAnalyzer.analyzePageSafely(pageIndex) {
+          PdfPageAnalyzer.analyzePage(document, pageIndex, stripper)
+        }
+      }
+
+      override fun close() {
+        runCatching { document.close() }
       }
     }
   }
@@ -206,11 +253,18 @@ internal data class PdfBitmapBudget(
 
 private const val BYTES_PER_PIXEL = 4L
 
-internal fun openPdfHolder(file: File): PdfRendererHolder? {
+internal fun openPdfHolder(file: File, context: Context? = null): PdfRendererHolder? {
   val descriptor =
     runCatching { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) }.getOrNull()
       ?: return null
-  return runCatching { PdfRendererHolder(descriptor, PdfRenderer(descriptor)) }
+  return runCatching {
+    PdfRendererHolder(
+      descriptor = descriptor,
+      renderer = PdfRenderer(descriptor),
+      file = file,
+      appContext = context?.applicationContext,
+    )
+  }
     .onFailure { runCatching { descriptor.close() } }
     .getOrNull()
 }

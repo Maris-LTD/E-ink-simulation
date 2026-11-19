@@ -70,11 +70,25 @@ android {
   lint {
     disable += "TrustAllX509TrustManager"
   }
+
+  testOptions {
+    unitTests.isReturnDefaultValues = true
+  }
 }
 
 kotlin {
   jvmToolchain(17)
 }
+
+val packagePdfBoxTestResources =
+  tasks.register<org.gradle.jvm.tasks.Jar>("packagePdfBoxTestResources") {
+    dependsOn("mergeDebugAssets")
+    from(layout.buildDirectory.dir("intermediates/assets/debug/mergeDebugAssets")) {
+      include("com/tom_roush/pdfbox/resources/**")
+    }
+    archiveBaseName.set("pdfbox-test-resources")
+    destinationDirectory.set(layout.buildDirectory.dir("intermediates/pdfbox_test_res"))
+  }
 
 fun releaseSigningValue(name: String): String? =
   (findProperty(name) as? String)?.takeIf { it.isNotBlank() }
@@ -107,6 +121,7 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(files(packagePdfBoxTestResources))
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)
