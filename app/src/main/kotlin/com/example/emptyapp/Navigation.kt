@@ -29,7 +29,11 @@ fun MainNavigation() {
 
   NavDisplay(
     backStack = backStack,
-    onBack = { backStack.removeLastOrNull() },
+    onBack = {
+      if (backStack.size > 1) {
+        backStack.removeLastOrNull()
+      }
+    },
     entryProvider =
       entryProvider {
         entry<Library> {
@@ -43,9 +47,7 @@ fun MainNavigation() {
               context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
             },
             onOpenStats = {
-              if (backStack.lastOrNull() != ReadingStats) {
-                backStack.add(ReadingStats)
-              }
+              pushNavKeyIfNotTop(backStack, ReadingStats)
             },
           )
         }
@@ -85,7 +87,11 @@ fun MainNavigation() {
               (context as? android.app.Activity)?.recreate()
             },
             writeError = writeError,
-            onBack = { backStack.removeLastOrNull() },
+            onBack = {
+              if (backStack.size > 1 && backStack.lastOrNull() == ReadingStats) {
+                backStack.removeLastOrNull()
+              }
+            },
           )
         }
       },

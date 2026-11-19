@@ -76,7 +76,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 
 ### 5E — Thư viện, Launcher, Wallpaper, Widget, l10n, a11y
 - [x] 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm"
-- [ ] 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`
+- [x] 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`
 - [ ] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
 - [ ] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
 - [ ] 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main
@@ -1168,3 +1168,23 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 53 — M21 + L27: Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`.
+
+### 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats rememberSaveable — 2026-11-19
+**Nguyên nhân:**
+- **M21 (REG #21):** `onBack = { backStack.removeLastOrNull() }` ở `NavDisplay` và `ReadingStatsScreen` không kiểm tra kích thước back stack; khi bấm Back/nút "‹" nhanh 2 lần lúc animation thoát, back stack bị pop rỗng gây crash (`require(backstack not empty)` ở Navigation 3). Đồng thời, bấm đúp nút mở Stats (`onOpenStats`) có thể đẩy nhiều màn `ReadingStats` trùng nhau vào stack.
+- **L27 (NEW):** Tab Stats dùng `remember` (`ReadingStatsSheet.kt`) nên khi đổi ngôn ngữ (`recreate()` Activity), trạng thái tab bị reset về "Tổng quan".
+
+**Đã sửa:**
+- `Navigation.kt` & `NavigationUtils.kt` (**M21**):
+  - Thêm các helper thuần Kotlin `popBackStackSafely` và `pushNavKeyIfNotTop`; cập nhật `NavDisplay` chỉ pop khi `backStack.size > 1` và `ReadingStats` chỉ pop khi `backStack.size > last && last == ReadingStats`.
+  - `onOpenStats` kiểm tra `backStack.lastOrNull() != ReadingStats` trước khi push.
+- `ui/library/ReadingStatsSheet.kt` (**L27**):
+  - Đổi `var selectedTab by remember { mutableIntStateOf(0) }` sang `rememberSaveable { mutableIntStateOf(0) }` để giữ nguyên tab đang chọn khi recreate Activity (đổi ngôn ngữ).
+- `test/.../NavigationUtilsTest.kt`:
+  - Thêm unit test cho `popBackStackSafely` và `pushNavKeyIfNotTop`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **255/255 tests pass** qua 44 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 54 — M22 + L26: TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại.

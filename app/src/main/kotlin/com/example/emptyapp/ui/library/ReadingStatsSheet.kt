@@ -246,7 +246,7 @@ fun ReadingStatsScreen(
       ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
     }
 
-  var selectedTab by remember { mutableIntStateOf(0) }
+  var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
   ) {
