@@ -823,6 +823,9 @@ class GoogleDriveSyncManager(
     ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     saveCloudBooks(uploadResult.payload.books)
     consecutiveBackgroundFailures = 0
+    if (remote != null) {
+      com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(appContext)
+    }
     return SyncRunSummary(
       books = uploadResult.payload.books,
       failedBookDownloads = failedBookDownloads,

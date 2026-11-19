@@ -2,6 +2,7 @@ package com.example.emptyapp.system
 
 import android.app.KeyguardManager
 import android.content.Context
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapShader
@@ -20,12 +21,16 @@ import android.service.wallpaper.WallpaperService
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.format.DateFormat
 import android.view.SurfaceHolder
 import androidx.core.content.res.ResourcesCompat
 import com.example.emptyapp.EmptyApplication
+import com.example.emptyapp.LocaleHelper
 import com.example.emptyapp.R
 import com.example.emptyapp.data.book.mostRecentlyReadBook
+import com.example.emptyapp.data.stats.ReaderRankInfo
 import com.example.emptyapp.data.stats.ReadingGamification
+import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.reader.LockScreenReadingNotifier
 import java.io.File
 import java.time.LocalDateTime
@@ -38,6 +43,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class EInkWallpaperService : WallpaperService() {
   override fun onCreateEngine(): Engine = EInkEngine()
@@ -47,8 +53,22 @@ class EInkWallpaperService : WallpaperService() {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var observerJob: Job? = null
     private var visible = false
-    private var cachedCoverPath: String? = null
+    private var cachedCoverKey: WallpaperCoverKey? = null
+    private var loadingCoverKey: WallpaperCoverKey? = null
+    private var coverLoadJob: Job? = null
     private var cachedCoverBitmap: Bitmap? = null
+
+    private var cachedLocaleKey: WallpaperLocaleKey? = null
+    private var cachedLocalizedContext: Context? = null
+    private var cachedDateLocale: Locale? = null
+    private var cachedLanguageCode: String? = null
+    private var cachedFormatterKey: WallpaperFormatterKey? = null
+    private var cachedDateFormatter: DateTimeFormatter? = null
+    private var cachedClockFormatter: DateTimeFormatter? = null
+    private var cachedRankKey: WallpaperRankKey? = null
+    private var cachedRankInfo: ReaderRankInfo? = null
+    private var cachedExcerptKey: WallpaperExcerptLayoutKey? = null
+    private var cachedExcerptLayout: StaticLayout? = null
 
     private val monoFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
     private val baseTypeface: Typeface by lazy {
@@ -120,6 +140,23 @@ class EInkWallpaperService : WallpaperService() {
       Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = normalTypeface
         textAlign = Paint.Align.LEFT
+      }
+    }
+    private val excerptHeaderPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.LEFT
+      }
+    }
+    private val excerptCounterPaint by lazy {
+      Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = boldTypeface
+        textAlign = Paint.Align.RIGHT
+      }
+    }
+    private val excerptBodyPaint by lazy {
+      TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Typeface.SERIF
       }
     }
     private val grainTilePaint = Paint()
@@ -217,10 +254,14 @@ class EInkWallpaperService : WallpaperService() {
     }
 
     override fun onDestroy() {
+      handler.removeCallbacks(drawTask)
+      coverLoadJob?.cancel()
       observerJob?.cancel()
       engineScope.cancel()
       cachedCoverBitmap?.recycle()
       cachedCoverBitmap = null
+      cachedCoverKey = null
+      loadingCoverKey = null
       grainTileBitmap?.recycle()
       grainTileBitmap = null
       super.onDestroy()
@@ -264,27 +305,28 @@ class EInkWallpaperService : WallpaperService() {
       val goalMin = (stats?.dailyGoalMinutes ?: 20).coerceAtLeast(5)
       val goalProgress = (todaySec.toFloat() / (goalMin * 60f)).coerceIn(0f, 1f)
       val streak = stats?.currentStreak ?: 0
-      val localized = com.example.emptyapp.LocaleHelper.wrap(applicationContext)
-      val rank =
-        if (stats != null) ReadingGamification.rankFor(stats, completedCount, highlightsCount, localized)
-        else null
+      val localized = resolveLocalizedContext()
+      val dateLocale = cachedDateLocale ?: LocaleHelper.effectiveLocale(applicationContext)
+      val languageCode = cachedLanguageCode ?: LocaleHelper.effectiveLanguageCode(applicationContext)
+      val rank = resolveRank(stats, completedCount, highlightsCount, localized, languageCode)
       val batteryPct = readBatteryPercent(applicationContext)
       val now = LocalDateTime.now()
       ensurePaints(w, fgColor)
 
-      val rankText = rank?.let { localized.getString(com.example.emptyapp.R.string.wallpaper_rank_format, it.level, it.title) } ?: localized.getString(com.example.emptyapp.R.string.app_name)
-      val dateLocale = com.example.emptyapp.LocaleHelper.effectiveLocale(applicationContext)
-      val localizedDateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", dateLocale)
+      val rankText =
+        rank?.let { localized.getString(R.string.wallpaper_rank_format, it.level, it.title) }
+          ?: localized.getString(R.string.app_name)
+      val is24Hour = DateFormat.is24HourFormat(applicationContext)
+      ensureFormatters(dateLocale, is24Hour)
       canvas.drawText(
-        localized.getString(com.example.emptyapp.R.string.wallpaper_status_format, batteryPct, streak, rankText),
+        localized.getString(R.string.wallpaper_status_format, batteryPct, streak, rankText),
         w / 2f,
         h * 0.14f,
         statusPaint,
       )
-      val is24Hour = android.text.format.DateFormat.is24HourFormat(applicationContext)
-      val formattedTime = com.example.emptyapp.LocaleHelper.formatClockTime(now, is24Hour, dateLocale)
+      val formattedTime = now.format(cachedClockFormatter!!)
       canvas.drawText(formattedTime, w / 2f, h * 0.29f, clockPaint)
-      canvas.drawText(now.format(localizedDateFormatter), w / 2f, h * 0.34f, datePaint)
+      canvas.drawText(now.format(cachedDateFormatter!!), w / 2f, h * 0.34f, datePaint)
 
       // Lock-screen reading excerpt panel pushed to the bottom to stay clear of notifications
       val lockState = container?.lockScreenReading?.state?.value
@@ -298,7 +340,6 @@ class EInkWallpaperService : WallpaperService() {
           bottom = h * 0.895f,
           padX = padX,
           fgColor = fgColor,
-          baseTypeface = baseTypeface,
           borderPaint = borderPaint,
           lockState = lockState,
           localized = localized,
@@ -330,7 +371,7 @@ class EInkWallpaperService : WallpaperService() {
       canvas.drawRect(coverRect, borderPaint)
 
       val coverFile = currentBook?.let { container?.library?.coverFileOf(it) }
-      val coverBmp = loadCachedCover(coverFile)
+      val coverBmp = resolveCoverBitmap(currentBook?.id, coverFile)
       if (coverBmp != null) {
         val src = Rect(0, 0, coverBmp.width, coverBmp.height)
         canvas.drawBitmap(coverBmp, src, coverRect, imgPaint)
@@ -419,6 +460,69 @@ class EInkWallpaperService : WallpaperService() {
         alpha = 180
         textSize = w * 0.034f
       }
+      excerptHeaderPaint.apply {
+        color = fgColor
+        textSize = w * 0.032f
+      }
+      excerptCounterPaint.apply {
+        color = fgColor
+        alpha = 180
+        textSize = w * 0.032f
+      }
+      excerptBodyPaint.apply {
+        color = fgColor
+        textSize = w * 0.037f
+      }
+    }
+
+    private fun resolveLocalizedContext(): Context {
+      val appLang = LocaleHelper.getSavedLanguage(applicationContext)
+      val sysTag = (Resources.getSystem().configuration.locales[0] ?: Locale.getDefault()).toLanguageTag()
+      val key = WallpaperLocaleKey(appLang, sysTag)
+      val existing = cachedLocalizedContext
+      if (key == cachedLocaleKey && existing != null) return existing
+      val wrapped = LocaleHelper.wrap(applicationContext)
+      cachedLocaleKey = key
+      cachedLocalizedContext = wrapped
+      cachedDateLocale = LocaleHelper.effectiveLocale(applicationContext)
+      cachedLanguageCode = LocaleHelper.effectiveLanguageCode(applicationContext)
+      return wrapped
+    }
+
+    private fun ensureFormatters(dateLocale: Locale, is24Hour: Boolean) {
+      val key = WallpaperFormatterKey(dateLocale.toLanguageTag(), is24Hour)
+      if (key == cachedFormatterKey && cachedDateFormatter != null && cachedClockFormatter != null) return
+      cachedFormatterKey = key
+      cachedDateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", dateLocale)
+      val clockPattern = if (is24Hour) "HH:mm" else "h:mm a"
+      cachedClockFormatter = DateTimeFormatter.ofPattern(clockPattern, dateLocale)
+    }
+
+    private fun resolveRank(
+      stats: ReadingStatsData?,
+      completedCount: Int,
+      highlightsCount: Int,
+      localized: Context,
+      languageCode: String,
+    ): ReaderRankInfo? {
+      if (stats == null) {
+        cachedRankKey = null
+        cachedRankInfo = null
+        return null
+      }
+      val key =
+        WallpaperRankKey(
+          totalSeconds = stats.totalSeconds,
+          totalPagesTurned = stats.totalPagesTurned,
+          completedBooksCount = completedCount,
+          highlightsCount = highlightsCount,
+          languageCode = languageCode,
+        )
+      if (key == cachedRankKey && cachedRankInfo != null) return cachedRankInfo
+      val computed = ReadingGamification.rankFor(stats, completedCount, highlightsCount, localized)
+      cachedRankKey = key
+      cachedRankInfo = computed
+      return computed
     }
 
     private fun drawPaperGrain(
@@ -461,27 +565,50 @@ class EInkWallpaperService : WallpaperService() {
       canvas.drawRect(0f, 0f, w, h, grainTilePaint)
     }
 
-    private fun loadCachedCover(file: File?): Bitmap? {
+    private fun resolveCoverBitmap(bookId: String?, file: File?): Bitmap? {
       val path = file?.takeIf { it.exists() }?.absolutePath
-      if (path == null) {
-        cachedCoverPath = null
+      if (bookId == null || path == null) {
+        coverLoadJob?.cancel()
+        loadingCoverKey = null
+        cachedCoverKey = null
         cachedCoverBitmap?.recycle()
         cachedCoverBitmap = null
         return null
       }
-      if (path == cachedCoverPath && cachedCoverBitmap != null) return cachedCoverBitmap
-      cachedCoverBitmap?.recycle()
-      cachedCoverBitmap =
-        runCatching {
-          val opts =
-            BitmapFactory.Options().apply {
-              inSampleSize = 2
-              inPreferredConfig = Bitmap.Config.RGB_565
+      val key = WallpaperCoverKey(bookId, path)
+      if (key == cachedCoverKey && cachedCoverBitmap != null) return cachedCoverBitmap
+      if (key != loadingCoverKey) {
+        coverLoadJob?.cancel()
+        loadingCoverKey = key
+        coverLoadJob =
+          engineScope.launch(Dispatchers.IO) {
+            val decoded =
+              runCatching {
+                val opts =
+                  BitmapFactory.Options().apply {
+                    inSampleSize = 2
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                  }
+                BitmapFactory.decodeFile(path, opts)
+              }.getOrNull()
+            withContext(Dispatchers.Main.immediate) {
+              if (loadingCoverKey != key) {
+                decoded?.recycle()
+                return@withContext
+              }
+              loadingCoverKey = null
+              if (decoded !== cachedCoverBitmap) {
+                cachedCoverBitmap?.recycle()
+              }
+              cachedCoverBitmap = decoded
+              cachedCoverKey = if (decoded != null) key else null
+              if (visible && decoded != null) {
+                drawFrame()
+              }
             }
-          BitmapFactory.decodeFile(path, opts)
-        }.getOrNull()
-      cachedCoverPath = path
-      return cachedCoverBitmap
+          }
+      }
+      return null
     }
 
     private fun ellipsize(text: String, paint: Paint, maxWidth: Float): String {
@@ -500,7 +627,6 @@ class EInkWallpaperService : WallpaperService() {
       bottom: Float,
       padX: Float,
       fgColor: Int,
-      baseTypeface: Typeface,
       borderPaint: Paint,
       lockState: com.example.emptyapp.reader.LockScreenReadingState,
       localized: Context,
@@ -508,19 +634,6 @@ class EInkWallpaperService : WallpaperService() {
       val right = w - padX
       val innerPad = w * 0.04f
       canvas.drawRect(padX, top, right, bottom, borderPaint)
-
-      val headerPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          textSize = w * 0.032f
-          typeface = Typeface.create(baseTypeface, Typeface.BOLD)
-          textAlign = Paint.Align.LEFT
-        }
-      val counterPaint =
-        Paint(headerPaint).apply {
-          alpha = 180
-          textAlign = Paint.Align.RIGHT
-        }
 
       val pct = (lockState.progress.coerceIn(0f, 1f) * 100).toInt()
       val counterText =
@@ -534,11 +647,11 @@ class EInkWallpaperService : WallpaperService() {
         } else {
           "$pct%"
         }
-      val counterW = counterPaint.measureText(counterText)
+      val counterW = excerptCounterPaint.measureText(counterText)
       val titleMaxW = ((right - innerPad) - (padX + innerPad) - counterW - w * 0.03f).coerceAtLeast(40f)
       val headerY = top + innerPad + w * 0.03f
-      canvas.drawText(ellipsize(lockState.title, headerPaint, titleMaxW), padX + innerPad, headerY, headerPaint)
-      canvas.drawText(counterText, right - innerPad, headerY, counterPaint)
+      canvas.drawText(ellipsize(lockState.title, excerptHeaderPaint, titleMaxW), padX + innerPad, headerY, excerptHeaderPaint)
+      canvas.drawText(counterText, right - innerPad, headerY, excerptCounterPaint)
 
       val dividerY = headerY + w * 0.022f
       canvas.drawLine(padX + innerPad, dividerY, right - innerPad, dividerY, borderPaint)
@@ -546,24 +659,33 @@ class EInkWallpaperService : WallpaperService() {
       val bodyTop = dividerY + w * 0.025f
       val bodyMaxH = (bottom - innerPad - bodyTop).coerceAtLeast(20f)
       val bodyWidth = ((right - innerPad) - (padX + innerPad)).toInt().coerceAtLeast(40)
-      val bodyPaint =
-        TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-          color = fgColor
-          textSize = w * 0.037f
-          typeface = Typeface.SERIF
-        }
-      val layout =
-        StaticLayout.Builder
-          .obtain(lockState.currentSnippet, 0, lockState.currentSnippet.length, bodyPaint, bodyWidth)
-          .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-          .setLineSpacing(0f, 1.25f)
-          .build()
+      val layout = resolveExcerptLayout(lockState.currentSnippet, bodyWidth, w, fgColor)
 
       canvas.save()
       canvas.clipRect(padX + innerPad, bodyTop, right - innerPad, bodyTop + bodyMaxH)
       canvas.translate(padX + innerPad, bodyTop)
       layout.draw(canvas)
       canvas.restore()
+    }
+
+    private fun resolveExcerptLayout(
+      snippet: String,
+      bodyWidth: Int,
+      widthPx: Float,
+      fgColor: Int,
+    ): StaticLayout {
+      val key = WallpaperExcerptLayoutKey(snippet, bodyWidth, widthPx, fgColor)
+      val existing = cachedExcerptLayout
+      if (key == cachedExcerptKey && existing != null) return existing
+      val built =
+        StaticLayout.Builder
+          .obtain(snippet, 0, snippet.length, excerptBodyPaint, bodyWidth)
+          .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+          .setLineSpacing(0f, 1.25f)
+          .build()
+      cachedExcerptKey = key
+      cachedExcerptLayout = built
+      return built
     }
 
     private fun readBatteryPercent(context: Context): Int {

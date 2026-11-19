@@ -84,6 +84,7 @@ fun MainNavigation() {
             currentLanguage = settings.appLanguage,
             onChangeLanguage = { lang ->
               container.settings.update { it.copy(appLanguage = lang) }
+              com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(context)
               (context as? android.app.Activity)?.recreate()
             },
             writeError = writeError,

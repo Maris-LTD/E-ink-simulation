@@ -79,7 +79,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`
 - [x] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
 - [x] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
-- [ ] 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main
+- [x] 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main
 - [ ] 57. L30 + L31 — `docs/privacy-policy.md` bổ sung (snippet trên màn khoá, nút "Dịch ngoài", device-transfer, giới hạn text từ điển); `.gitignore` chặn `*.jks`/`*.keystore`
 
 ### 5F — Nghiệm thu
@@ -1240,3 +1240,28 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 56 — L28 + L29: Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main.
+
+
+### 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync & cache render cho Wallpaper — 2026-11-19
+**Nguyên nhân:**
+- **L28 (INC #16):** `EInkReadingWidgetProvider` chỉ đăng ký `APPWIDGET_UPDATE`, không nhận broadcast khi qua ngày mới / đổi giờ / đổi múi giờ / đổi ngôn ngữ, không đặt alarm qua nửa đêm, và không được gọi refresh sau khi đổi ngôn ngữ trong app hoặc sau khi `GoogleDriveSyncManager` merge dữ liệu từ cloud.
+- **L29 (INC #20):** `EInkWallpaperService.Engine.renderWallpaper()` tạo mới `LocaleHelper.wrap()`, `DateTimeFormatter`, `ReadingGamification.rankFor()`, 3 `Paint`/`TextPaint` + `Typeface.create(...)` + `StaticLayout` ở mỗi frame; `onDestroy()` không gọi `handler.removeCallbacks(drawTask)`; `loadCachedCover()` gọi `BitmapFactory.decodeFile()` đồng bộ trên main thread.
+
+**Đã sửa:**
+- `AndroidManifest.xml` & `system/EInkReadingWidgetProvider.kt` (**L28**):
+  - Đăng ký các action `DATE_CHANGED`, `TIME_SET`, `TIMEZONE_CHANGED`, `LOCALE_CHANGED` và `com.example.emptyapp.ACTION_WIDGET_MIDNIGHT_REFRESH` trong `<receiver>` của `EInkReadingWidgetProvider`.
+  - Xử lý `onReceive` (kèm `goAsync()` khi container chưa load xong), `onEnabled`, `onDisabled`; đặt alarm `AlarmManager.RTC` (không dùng `_WAKEUP`) cho `00:00:05` ngày hôm sau qua hàm thuần Kotlin `nextMidnightRefreshMillis` khi có widget đang gắn, và huỷ alarm trong `onDisabled` hoặc khi không còn widget.
+- `Navigation.kt` & `data/sync/GoogleDriveSyncManager.kt` (**L28**):
+  - Gọi `EInkReadingWidgetProvider.refreshAll(...)` ngay khi đổi `appLanguage` và sau khi `syncOnceWithToken` merge dữ liệu remote.
+- `system/EInkWallpaperService.kt` & `system/EInkWallpaperCacheKeys.kt` (**L29**):
+  - Cache `localizedContext` (theo `WallpaperLocaleKey`), `dateFormatter` & `clockFormatter` (theo `WallpaperFormatterKey`), `ReaderRankInfo` (theo `WallpaperRankKey`), `excerptHeaderPaint`/`excerptCounterPaint`/`excerptBodyPaint` trong `ensurePaints`, và `StaticLayout` (theo `WallpaperExcerptLayoutKey`).
+  - Gọi `handler.removeCallbacks(drawTask)` và `coverLoadJob?.cancel()` trong `onDestroy()`.
+  - Chuyển decode ảnh bìa sang `Dispatchers.IO` trong `resolveCoverBitmap`, cập nhật cache và vẽ lại trên main khi hoàn tất.
+- `test/.../system/EInkReadingWidgetProviderTest.kt` & `test/.../system/EInkWallpaperCacheKeysTest.kt`:
+  - Thêm unit test cho `nextMidnightRefreshMillis` (trước nửa đêm, sau nửa đêm, đổi múi giờ / DST) và cache keys của wallpaper.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass (`BUILD SUCCESSFUL`, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 57 — L30 + L31: `docs/privacy-policy.md` bổ sung; `.gitignore` chặn `*.jks`/`*.keystore`.
