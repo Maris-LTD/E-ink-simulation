@@ -39,6 +39,8 @@ internal class PdfRendererHolder(
     pages.forEach { analysisCache[it.pageIndex] = it }
   }
 
+  fun cachedCropRect(index: Int): NormalizedCropRect? = cropCache[index]
+
   suspend fun prefetchAdjacent(
     centerIndex: Int,
     maxWidth: Int,

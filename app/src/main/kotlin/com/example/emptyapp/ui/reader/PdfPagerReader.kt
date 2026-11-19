@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -32,6 +33,7 @@ import androidx.compose.foundation.pager.PagerSnapDistance
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -593,7 +595,12 @@ fun PdfPagerReader(
       ) { pageIndex ->
         var scale by remember(pageIndex, readingMode) { mutableFloatStateOf(1f) }
         var offset by remember(pageIndex, readingMode) { mutableStateOf(Offset.Zero) }
-        val renderMultiplier = if (scale > 1.35f || readingMode == PdfReadingMode.GUIDED_COLUMN) 2 else 1
+        val renderMultiplier =
+          when {
+            scale > 2.4f -> 3
+            scale > 1.35f || readingMode == PdfReadingMode.GUIDED_COLUMN -> 2
+            else -> 1
+          }
         val autoCrop = settings.pdfAutoCrop && readingMode != PdfReadingMode.GUIDED_COLUMN
         val pageAnalysis by
           produceState<PdfPageAnalysis?>(
@@ -615,9 +622,11 @@ fun PdfPagerReader(
             }
           }
         var guidedRegionIndex by remember(pageIndex, readingMode) { mutableIntStateOf(0) }
-        var bitmap by remember(holder, pageIndex, targetWidthPx, targetHeightPx, renderMultiplier, autoCrop) {
+        var bitmap by remember(holder, pageIndex, autoCrop) {
           mutableStateOf<ImageBitmap?>(null)
         }
+        var renderFailed by remember(holder, pageIndex, autoCrop) { mutableStateOf(false) }
+        var retryNonce by remember(pageIndex) { mutableIntStateOf(0) }
 
         val guidedRegions =
           remember(pageAnalysis, targetWidthPx, targetHeightPx, readingMode) {
@@ -711,14 +720,20 @@ fun PdfPagerReader(
           }
         }
 
-        LaunchedEffect(holder, pageIndex, targetWidthPx, targetHeightPx, renderMultiplier, autoCrop) {
-          bitmap =
+        LaunchedEffect(holder, pageIndex, targetWidthPx, targetHeightPx, renderMultiplier, autoCrop, retryNonce) {
+          renderFailed = false
+          val rendered =
             holder.renderPage(
               index = pageIndex,
               maxWidth = targetWidthPx * renderMultiplier,
               maxHeight = targetHeightPx * renderMultiplier,
               autoCrop = autoCrop,
             )
+          if (rendered != null) {
+            bitmap = rendered
+          } else if (bitmap == null) {
+            renderFailed = true
+          }
         }
 
         Box(
@@ -735,14 +750,17 @@ fun PdfPagerReader(
                     } else {
                       val currentBmp = bitmap
                       val tapRegion =
-                        if (currentBmp != null && !autoCrop) {
+                        if (currentBmp != null && pageAnalysis != null) {
                           val fitScale = minOf(targetWidthPx.toFloat() / currentBmp.width, targetHeightPx.toFloat() / currentBmp.height)
                           val dispW = currentBmp.width * fitScale
                           val dispH = currentBmp.height * fitScale
                           val imgLeft = (targetWidthPx - dispW) / 2f
                           val imgTop = (targetHeightPx - dispH) / 2f
-                          val normX = ((tapOffset.x - imgLeft) / dispW).coerceIn(0f, 1f)
-                          val normY = ((tapOffset.y - imgTop) / dispH).coerceIn(0f, 1f)
+                          val rawNormX = ((tapOffset.x - imgLeft) / dispW).coerceIn(0f, 1f)
+                          val rawNormY = ((tapOffset.y - imgTop) / dispH).coerceIn(0f, 1f)
+                          val crop = if (autoCrop) holder.cachedCropRect(pageIndex) else null
+                          val normX = if (crop != null) (crop.left + rawNormX * crop.width).coerceIn(0f, 1f) else rawNormX
+                          val normY = if (crop != null) (crop.top + rawNormY * crop.height).coerceIn(0f, 1f) else rawNormY
                           PdfRegionNavigator.findTapTargetRect(pageAnalysis, normX, normY)
                         } else {
                           null
@@ -773,15 +791,11 @@ fun PdfPagerReader(
                     }
                   },
                   onTap = { tapOffset ->
-                    if (readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f) {
-                      onCenterTap()
-                    } else {
-                      val width = size.width.toFloat().coerceAtLeast(1f)
-                      when {
-                        tapOffset.x < width * 0.25f -> controller.goBackward()
-                        tapOffset.x > width * 0.75f -> controller.goForward()
-                        else -> onCenterTap()
-                      }
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    when {
+                      tapOffset.x < width * 0.25f -> controller.goBackward()
+                      tapOffset.x > width * 0.75f -> controller.goForward()
+                      else -> onCenterTap()
                     }
                   },
                 )
@@ -814,13 +828,20 @@ fun PdfPagerReader(
                       }
                     } else if (pointerCount > 1 || (readingMode != PdfReadingMode.GUIDED_COLUMN && scale > 1.01f)) {
                       val zoom = event.calculateZoom()
+                      val centroid = event.calculateCentroid(useCurrent = false)
                       val rawPan = event.calculatePan()
                       val (lockedX, lockedY) = PdfRegionNavigator.applyHorizontalLock(rawPan.x, rawPan.y)
                       val pan = Offset(lockedX, lockedY)
                       val newScale = (scale * zoom).coerceIn(1f, 4.5f)
+                      val zoomFactor = if (scale > 0f) newScale / scale else 1f
+                      val center = Offset(targetWidthPx / 2f, targetHeightPx / 2f)
+                      val centroidDelta =
+                        if (centroid.x.isFinite() && centroid.y.isFinite()) (centroid - center) * (1f - zoomFactor)
+                        else Offset.Zero
+                      val rawOffset = offset * zoomFactor + centroidDelta + pan
                       val newOffset =
                         if (newScale <= 1.01f) Offset.Zero
-                        else clampOffset(offset + pan, newScale, targetWidthPx, targetHeightPx)
+                        else clampOffset(rawOffset, newScale, targetWidthPx, targetHeightPx)
                       val changed = abs(newScale - scale) > 0.001f || newOffset != offset
                       scale = if (newScale <= 1.01f) 1f else newScale
                       offset = newOffset
@@ -848,6 +869,22 @@ fun PdfPagerReader(
                   translationY = offset.y
                 },
             )
+          } else if (renderFailed) {
+            Column(
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              Text(
+                text = stringResource(R.string.pdf_page_render_error),
+                color = Color(settings.tone.text),
+                style = MaterialTheme.typography.bodyLarge,
+              )
+              OutlinedButton(onClick = { retryNonce += 1 }) {
+                Text(text = stringResource(R.string.action_retry))
+              }
+            }
+          } else {
+            CircularProgressIndicator(color = Color(settings.tone.text))
           }
           if (readingMode == PdfReadingMode.GUIDED_COLUMN && guidedRegions.size > 1) {
             val bgColor = Color(settings.tone.background)

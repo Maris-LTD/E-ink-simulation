@@ -6,6 +6,7 @@
 
     <!-- Common actions -->
     <string name="action_close">Đóng</string>
+    <string name="action_retry">Thử lại</string>
     <string name="action_cancel">Hủy</string>
     <string name="action_save">Lưu</string>
     <string name="action_delete">Xóa</string>
@@ -100,6 +101,7 @@
     <string name="reader_book_not_found">Không tìm thấy sách</string>
     <string name="reader_cannot_open_book">Không mở được sách</string>
     <string name="pdf_load_error">Không mở được PDF</string>
+    <string name="pdf_page_render_error">Không tải được trang này</string>
     <string name="highlight_note_title">Ghi chú Highlight</string>
     <string name="highlight_note_placeholder">Nhập ghi chú (tùy chọn)...</string>
 

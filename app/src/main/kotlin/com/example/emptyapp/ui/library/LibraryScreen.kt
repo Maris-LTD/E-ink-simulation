@@ -131,9 +131,9 @@ fun LibraryScreen(
   val importing by viewModel.importing.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
-  var selectedTab by remember { mutableStateOf(LibraryTab.ALL) }
-  var selectedAuthor by remember { mutableStateOf<String?>(null) }
-  var query by remember { mutableStateOf("") }
+  var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.ALL) }
+  var selectedAuthor by rememberSaveable { mutableStateOf<String?>(null) }
+  var query by rememberSaveable { mutableStateOf("") }
   var pendingDeleteBook by remember { mutableStateOf<BookEntry?>(null) }
   var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.LIST) }
   val picker =

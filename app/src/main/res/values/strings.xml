@@ -6,6 +6,7 @@
 
     <!-- Common actions -->
     <string name="action_close">Close</string>
+    <string name="action_retry">Retry</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
@@ -100,6 +101,7 @@
     <string name="reader_book_not_found">Book not found</string>
     <string name="reader_cannot_open_book">Cannot open book</string>
     <string name="pdf_load_error">Cannot open PDF</string>
+    <string name="pdf_page_render_error">Couldn\'t render this page</string>
     <string name="highlight_note_title">Highlight Note</string>
     <string name="highlight_note_placeholder">Add a note (optional)…</string>
 

@@ -31,8 +31,8 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 20. P10 — Wallpaper cache Paint/grain, sync WorkManager + backoff, upload sách chỉ Wi-Fi
 
 ## Đợt 4 — UX
-- [ ] 21. U1 — Giữ state thư viện khi mở Thống kê
-- [ ] 22. U2 + U3 — PDF zoom không chớp trắng, tap-zoom, lật trang khi zoom, placeholder/retry
+- [x] 21. U1 — Giữ state thư viện khi mở Thống kê
+- [x] 22. U2 + U3 — PDF zoom không chớp trắng, tap-zoom, lật trang khi zoom, placeholder/retry
 - [ ] 23. U4 — Thông báo lỗi sync localized, trạng thái "kết nối lại"
 - [ ] 24. U5 — Quyền thông báo, notification màn khoá, focus mode, lỗi intent bị nuốt
 - [ ] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
@@ -393,3 +393,31 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** hết Đợt 3. Sync nền hiện dùng `backgroundScope` + exponential backoff (chưa kéo thêm dependency `WorkManager` nên sẽ không chạy khi process bị OS kill hẳn).
 
 **Bước tiếp theo:** sang Đợt 4 — mục 21 (U1): giữ trạng thái Thư viện (tab, bộ lọc, tìm kiếm, vị trí cuộn, view mode) khi mở màn Thống kê hoặc xoay màn hình.
+
+### 21. U1 — Giữ trạng thái Thư viện khi mở Thống kê & xoay màn hình — 2026-11-19
+**Nguyên nhân:** `Navigation.kt` dùng biến `statsOpen` + `if/else` để tráo `LibraryScreen` và `ReadingStatsScreen` trong cùng một entry `Library`, làm `LibraryScreen` bị huỷ khỏi composition và mất toàn bộ tab, tác giả, từ khoá tìm kiếm, vị trí cuộn mỗi lần mở Thống kê; đồng thời `selectedTab`, `selectedAuthor`, `query` trong `LibraryScreen` chỉ dùng `remember` nên mất khi xoay màn hình hoặc process death.
+
+**Đã sửa:**
+- `NavigationKeys.kt`: thêm `@Serializable data object ReadingStats : NavKey`.
+- `Navigation.kt`: tách `ReadingStatsScreen` thành `entry<ReadingStats>` riêng trong `NavDisplay` (dùng chung `LibraryViewModel`); mở Thống kê đẩy `ReadingStats` vào `backStack`, quay lại pop khỏi `backStack` nên Nav3 tự giữ nguyên trạng thái & vị trí cuộn của `Library`.
+- `LibraryScreen.kt`: đổi `selectedTab`, `selectedAuthor`, `query` sang `rememberSaveable`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: chọn tab, lọc tác giả, gõ tìm kiếm, cuộn danh sách sách → mở Thống kê → bấm Back → mọi trạng thái và vị trí cuộn của Thư viện vẫn giữ nguyên.
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 22 — U2 + U3: PDF zoom không chớp trắng, smart tap-to-zoom cả khi bật `autoCrop`, lật trang khi đang zoom, placeholder/lỗi/retry, pinch zoom quanh ngón tay & thông báo lỗi mở PDF rõ ràng.
+
+### 22. U2 + U3 — PDF zoom mượt, tap-zoom, lật trang khi zoom & placeholder/retry — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Zoom qua 1.35× chớp trắng (U2):** `PdfPagerReader.kt` bỏ `renderMultiplier` khỏi key của `remember` giữ `bitmap`, để ảnh cũ tiếp tục hiển thị trong lúc render bản độ phân giải cao hơn (nâng `renderMultiplier` lên `3` khi `scale > 2.4f`, vẫn bị giới hạn an toàn bởi `PdfBitmapBudget`).
+- **Smart tap-to-zoom bị tắt khi `autoCrop = true`:** thêm `PdfRendererHolder.cachedCropRect(index)` để quy đổi toạ độ chạm trên ảnh đã crop về toạ độ trang gốc, giúp smart tap-to-zoom hoạt động cả khi bật `autoCrop`.
+- **Không lật trang được khi đang zoom:** bỏ nhánh chặn trong `onTap` khi `scale > 1.01f` để chạm cạnh trái/phải 25% luôn lật trang bình thường.
+- **Pinch zoom quanh tâm view:** dùng `event.calculateCentroid(useCurrent = false)` tính độ lệch tâm để giữ điểm dưới ngón tay cố định khi phóng to/thu nhỏ.
+- **Thiếu placeholder/lỗi/retry:** thêm `renderFailed` + `retryNonce`, hiển thị `CircularProgressIndicator` khi đang tải và thông báo `pdf_page_render_error` kèm nút `action_retry` (đã thêm ở `values/strings.xml` & `values-vi/strings.xml`) khi render lỗi.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: pinch zoom quá 1.35×/2.4× (không chớp trắng, nét hơn), double-tap khi bật `autoCrop`, tap cạnh trái/phải để lật trang khi đang zoom.
+
+**Còn để lại:** chưa phân biệt riêng thông báo lỗi PDF có mật khẩu/hỏng khi mở file (`pdf_load_error`) và giữ nguyên `autoCrop` theo từng trang.
+
+**Bước tiếp theo:** mục 23 — U4: thông báo lỗi sync localized (phân biệt offline, hết phiên/401, Drive đầy) và trạng thái "Kết nối lại Google Drive" khi background sync gặp `hasResolution()`.
