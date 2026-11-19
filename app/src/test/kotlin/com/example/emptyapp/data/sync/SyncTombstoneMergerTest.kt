@@ -57,6 +57,41 @@ class SyncTombstoneMergerTest {
   }
 
   @Test
+  fun upsertCreatesRestoreTombstoneWhenAbsentAndBeatsOlderRemoteDeletion() {
+    val localAfterImport =
+      SyncTombstoneMerger.upsert(
+        existing = emptyList(),
+        keys = listOf("book-x"),
+        deleted = false,
+        now = 200L,
+      )
+    val remoteDeletion = listOf(SyncTombstone("book-x", changedAt = 100L, deleted = true))
+
+    val merged = SyncTombstoneMerger.merge(localAfterImport, remoteDeletion, now = 300L)
+
+    assertEquals(listOf(SyncTombstone("book-x", changedAt = 200L, deleted = false)), merged)
+    assertEquals(emptySet<String>(), SyncTombstoneMerger.deletedKeys(merged))
+  }
+
+  @Test
+  fun upsertRefreshesRestoreTimestampWhenAlreadyNotDeleted() {
+    val existing = listOf(SyncTombstone("book-x", changedAt = 50L, deleted = false))
+
+    val localAfterReimport =
+      SyncTombstoneMerger.upsert(
+        existing = existing,
+        keys = listOf("book-x"),
+        deleted = false,
+        now = 200L,
+      )
+    val remoteDeletion = listOf(SyncTombstone("book-x", changedAt = 100L, deleted = true))
+    val merged = SyncTombstoneMerger.merge(localAfterReimport, remoteDeletion, now = 300L)
+
+    assertEquals(listOf(SyncTombstone("book-x", changedAt = 200L, deleted = false)), merged)
+    assertEquals(emptySet<String>(), SyncTombstoneMerger.deletedKeys(merged))
+  }
+
+  @Test
   fun withoutDeletedRemovesBooksAndAnnotations() {
     val payload =
       SyncPayload(

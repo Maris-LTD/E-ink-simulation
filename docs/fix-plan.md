@@ -51,7 +51,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 
 ### 5B — Đồng bộ Google Drive & an toàn dữ liệu
 - [x] 33. H2 — `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần (cân nhắc nâng `play-services-auth` ≥ 21.4.0: `clearToken` / `revokeAccess`)
-- [ ] 34. M3 + M4 — Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi
+- [x] 34. M3 + M4 — Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi
 - [ ] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
 - [ ] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
 - [ ] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
@@ -663,3 +663,26 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** đồng bộ kiểm tra email/`sub` trước khi ghi và dọn logic `signOut`/`wipe` giữ `mutex` trước `Identity.signOut` sẽ xử lý tiếp ở mục 34 (M3 + M4) và mục 35 (M5 + L4).
 
 **Bước tiếp theo:** mục 34 — M3 + M4: Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi.
+
+### 34. M3 + M4 — Import luôn ghi tombstone khôi phục & dừng sync khi không xác định được email/`sub` — 2026-11-19
+**Nguyên nhân:**
+- **M3:** `GoogleDriveSyncManager.unmarkDeletedHash` chỉ gọi `tombstones.markBooks(..., deleted = false)` khi `contentHash in tombstones.deletedBookHashes()`. Khi máy B chưa đồng bộ kể từ lúc máy A xoá sách khỏi cloud, `contentHash` chưa có trong tombstone local của B → import lại sách không ghi dấu khôi phục; lần sync tiếp theo gộp tombstone xoá từ cloud khiến sách bị coi là đã xoá và bị lọc bỏ. Ngoài ra `SyncTombstoneMerger.upsert` không cập nhật `changedAt` khi `key` đã tồn tại với `deleted = false` (ví dụ nhập lại sau một mốc khôi phục cũ hơn dấu xoá trên cloud).
+- **M4:** Trong `syncOnceWithToken`, khi `state.value.email` đang trống, `fetchUserProfile(token)` bị bọc trong `runCatching` (nuốt lỗi HTTP/mạng/401) và bỏ qua luôn bước `tombstones.bindToAccount(...)` nếu `email` vẫn `null` (hoặc khi JSON `/oauth2/v3/userinfo` không có `email` dù có `sub`). Kết quả là tombstone của tài khoản A cũ còn lưu trên máy vẫn bị áp lên token của tài khoản B mới — có thể xoá nhầm `book_<hash>` trên Drive B và upload tombstone A lên B. Tương tự ở `deleteBookWithToken` nếu chưa bind tài khoản.
+
+**Đã sửa:**
+- `data/sync/GoogleDriveSyncManager.kt`:
+  - `unmarkDeletedHash(contentHash)`: bỏ điều kiện `if (contentHash in tombstones.deletedBookHashes())`, luôn gọi `tombstones.markBooks(listOf(contentHash), deleted = false)` khi `contentHash` hợp lệ.
+  - Thay `fetchUserProfile` + `runCatching` bằng `resolveAndBindAccount(token)` gọi qua `SyncAccountResolver.resolveAndBindAccount`, đặt ở đầu cả `syncOnceWithToken` và `deleteBookWithToken` trước mọi thao tác đọc/merge/ghi/xoá Drive. Nếu chưa có `email`/`accountId` đã lưu thì bắt buộc gọi `/oauth2/v3/userinfo` (lan truyền 401 cho `DriveAuthRetry`, lỗi mạng/HTTP hoặc thiếu cả `email` lẫn `sub` sẽ ném `DriveRemoteReadException("userinfo")` / exception tương ứng và dừng sync ngay); khi xác định được `accountId` (`email` hoặc fallback `sub`) thì gọi `tombstones.bindToAccount(accountId)` trước khi chạm dữ liệu Drive.
+- `data/sync/SyncTombstoneMerger.kt`:
+  - Cập nhật `upsert` để khi `deleted = false`: luôn tạo mới `SyncTombstone(key, now, deleted = false)` nếu chưa có trong `existing`, hoặc làm mới `changedAt = now` nếu bản ghi hiện tại có `changedAt < now` (vẫn giữ nguyên hành vi không đổi danh sách khi `deleted = true` đã tồn tại).
+- Mới `data/sync/SyncAccountResolver.kt`:
+  - `parseUserProfile(rawJson)` đọc `email` (fallback `sub`) và `name` bằng `kotlinx.serialization.json`; `resolveAndBindAccount(...)` kiểm tra/lấy định danh tài khoản và luôn bind tombstone trước khi tiếp tục.
+- `test/.../data/sync/SyncTombstoneMergerTest.kt` & mới `test/.../data/sync/SyncAccountResolverTest.kt`:
+  - Thêm 2 test trong `SyncTombstoneMergerTest` (import khi chưa có tombstone local thắng tombstone xoá cũ trên cloud; re-import làm mới timestamp `deleted = false`).
+  - Thêm 8 test trong `SyncAccountResolverTest` bao phủ parse `email`/`sub`, dừng trước bind/ghi Drive khi userinfo lỗi hoặc thiếu định danh, giữ nguyên tombstone cũ khi lỗi, truyền 401 qua `DriveAuthRetry`, reset tombstone tài khoản A khi chuyển sang tài khoản B, và test tích hợp `SyncTombstoneStore` cho kịch bản M3.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **103/103 pass**, gồm **8/8** trong `SyncTombstoneMergerTest` và **8/8** trong `SyncAccountResolverTest`; `lintDebug`: **0 errors**).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 35 — M5 + L4: "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock.

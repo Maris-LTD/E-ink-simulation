@@ -108,9 +108,7 @@ class GoogleDriveSyncManager(
   fun unmarkDeletedHash(contentHash: String?) {
     if (contentHash.isNullOrBlank()) return
     backgroundScope.launch {
-      if (contentHash in tombstones.deletedBookHashes()) {
-        tombstones.markBooks(listOf(contentHash), deleted = false)
-      }
+      tombstones.markBooks(listOf(contentHash), deleted = false)
     }
   }
 
@@ -345,6 +343,8 @@ class GoogleDriveSyncManager(
     token: String,
     contentHash: String,
   ): List<SyncedBookProgress>? {
+    resolveAndBindAccount(token)
+    tombstones.markBooks(listOf(contentHash), deleted = true)
     val appDataFiles = listAppDataFiles(token)
     for ((name, fileId) in appDataFiles) {
       if (name.startsWith("book_${contentHash}.")) {
@@ -455,10 +455,7 @@ class GoogleDriveSyncManager(
     token: String,
     allowBookFiles: Boolean,
   ): SyncRunSummary {
-    if (state.value.email.isNullOrBlank()) {
-      runCatching { fetchUserProfile(token) }
-    }
-    state.value.email?.let(tombstones::bindToAccount)
+    resolveAndBindAccount(token)
     library.ensureContentHashes()
 
     val rawAppDataFiles = listAppDataFiles(token)
@@ -668,15 +665,23 @@ class GoogleDriveSyncManager(
     revokeClientAccess(authResult, accountEmail)
   }
 
-  private fun fetchUserProfile(token: String) {
-    val result = httpGet("https://www.googleapis.com/oauth2/v3/userinfo", token)
-    val obj = runCatching { JSONObject(result) }.getOrNull() ?: return
-    val email = obj.optString("email").takeIf { it.isNotBlank() }
-    val name = obj.optString("name").takeIf { it.isNotBlank() }
-    if (email != null) {
-      prefs.edit().putString(KEY_EMAIL, email).putString(KEY_NAME, name).apply()
-      state.update { it.copy(email = email, displayName = name) }
-    }
+  private suspend fun resolveAndBindAccount(token: String): String {
+    val cachedAccountId =
+      state.value.email?.takeIf { it.isNotBlank() }
+        ?: prefs.getString(KEY_EMAIL, null)?.takeIf { it.isNotBlank() }
+    return SyncAccountResolver.resolveAndBindAccount(
+      cachedAccountId = cachedAccountId,
+      fetchUserInfoJson = { httpGet("https://www.googleapis.com/oauth2/v3/userinfo", token) },
+      onProfileResolved = { profile ->
+        prefs.edit()
+          .putString(KEY_EMAIL, profile.accountId)
+          .putString(KEY_NAME, profile.displayName)
+          .apply()
+        state.update { it.copy(email = profile.accountId, displayName = profile.displayName) }
+      },
+      bindToAccount = tombstones::bindToAccount,
+      onUnresolvedAccount = { remoteReadError("userinfo") },
+    )
   }
 
   private suspend fun mergeRemoteIntoLocal(remote: SyncPayload) {

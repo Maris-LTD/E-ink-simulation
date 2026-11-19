@@ -25,8 +25,13 @@ object SyncTombstoneMerger {
     deleted: Boolean,
     now: Long,
   ): List<SyncTombstone> {
-    val currentState = existing.associate { it.key to it.deleted }
-    val changedKeys = keys.filter { currentState[it] != deleted }.toSet()
+    if (keys.isEmpty()) return existing
+    val currentByKey = existing.associateBy { it.key }
+    val changedKeys =
+      keys.filterTo(LinkedHashSet()) { key ->
+        val current = currentByKey[key]
+        current == null || current.deleted != deleted || (!deleted && current.changedAt < now)
+      }
     if (changedKeys.isEmpty()) return existing
     return existing.filterNot { it.key in changedKeys } +
       changedKeys.map { SyncTombstone(key = it, changedAt = now, deleted = deleted) }
