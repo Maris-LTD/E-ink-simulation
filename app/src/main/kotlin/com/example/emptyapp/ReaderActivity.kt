@@ -407,6 +407,14 @@ class ReaderActivity : FragmentActivity() {
     EpubNavigatorFactory(ready.publication).createFragmentFactory(
       initialLocator = initialLocator,
       initialPreferences = EInkPreferencesMapper.toEpub(viewModel.settings.value),
+      paginationListener =
+        object : EpubNavigatorFragment.PaginationListener {
+          override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
+            viewModel.onEpubPageChanged(totalPages, locator)
+          }
+
+          override fun onPageLoaded() = Unit
+        },
       configuration =
         EpubNavigatorFragment.Configuration(
           servedAssets = listOf("fonts/.*"),

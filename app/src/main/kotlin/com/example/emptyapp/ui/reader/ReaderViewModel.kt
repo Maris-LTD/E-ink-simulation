@@ -33,13 +33,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.epub.EpubLayout
+import org.readium.r2.shared.publication.presentation.presentation
 import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.isSearchable
@@ -102,6 +103,8 @@ class ReaderViewModel(
   private var lastPositionKey: String? = null
   private var currentLocator: Locator? = null
   private val currentLocatorFlow = MutableStateFlow<Locator?>(null)
+  private val bookmarkMatchModeFlow = MutableStateFlow(BookmarkMatchMode.POSITION_BASED)
+  private val epubPageWindowFlow = MutableStateFlow<EpubPageWindow?>(null)
   private var currentBookTitle: String = ""
 
   private val mutableState = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
@@ -142,8 +145,13 @@ class ReaderViewModel(
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
   val isCurrentPageBookmarked: StateFlow<Boolean> =
-    combine(parsedBookmarks, currentLocatorFlow) { list, loc ->
-      findMatchingBookmarkParsed(list, loc) != null
+    combine(
+      parsedBookmarks,
+      currentLocatorFlow,
+      bookmarkMatchModeFlow,
+      epubPageWindowFlow,
+    ) { list, loc, mode, pageWindow ->
+      findMatchingBookmarkParsed(list, loc, mode, pageWindow) != null
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
   init {
@@ -191,6 +199,19 @@ class ReaderViewModel(
   }
 
   fun currentLocatorSnapshot(): Locator? = currentLocator
+
+  fun onEpubPageChanged(totalPages: Int, locator: Locator) {
+    epubPageWindowFlow.value =
+      if (totalPages > 0) {
+        EpubPageWindow(
+          href = locator.href.toString(),
+          progression = locator.locations.progression,
+          totalPages = totalPages,
+        )
+      } else {
+        null
+      }
+  }
 
   fun onLocatorChanged(locator: Locator) {
     notifyUserInteraction()
@@ -294,35 +315,46 @@ class ReaderViewModel(
 
   private fun findMatchingBookmark(list: List<BookmarkEntry>, locator: Locator?): BookmarkEntry? {
     val cached = parsedBookmarks.value
-    if (cached.size == list.size) {
-      return findMatchingBookmarkParsed(cached, locator)
-    }
-    return findMatchingBookmarkParsed(list.map { it to parseLocator(it.locatorJson) }, locator)
+    val parsedList =
+      if (cached.size == list.size && cached.indices.all { cached[it].first.id == list[it].id }) {
+        cached
+      } else {
+        list.map { it to parseLocator(it.locatorJson) }
+      }
+    return findMatchingBookmarkParsed(
+      list = parsedList,
+      locator = locator,
+      mode = bookmarkMatchModeFlow.value,
+      pageWindow = epubPageWindowFlow.value,
+    )
   }
 
   private fun findMatchingBookmarkParsed(
     list: List<Pair<BookmarkEntry, Locator?>>,
     locator: Locator?,
+    mode: BookmarkMatchMode,
+    pageWindow: EpubPageWindow?,
   ): BookmarkEntry? {
     if (locator == null) return null
-    val locPos = locator.locations.position
-    val locProg = locator.locations.progression
-    val locTotal = (locator.locations.totalProgression ?: 0.0).toFloat()
+    val current = locator.toBookmarkLocation()
     return list.firstOrNull { (entry, parsed) ->
-      if (parsed != null) {
-        val sameHref = parsed.href == locator.href
-        val entryPos = parsed.locations.position
-        val entryProg = parsed.locations.progression
-        when {
-          locPos != null && entryPos != null -> sameHref && locPos == entryPos
-          locProg != null && entryProg != null -> sameHref && abs(locProg - entryProg) < 0.002
-          else -> sameHref && abs(entry.progress - locTotal) < 0.002f
-        }
-      } else {
-        abs(entry.progress - locTotal) < 0.002f
-      }
+      BookmarkMatcher.matches(
+        mode = mode,
+        current = current,
+        entryLocation = parsed?.toBookmarkLocation(),
+        entryProgress = entry.progress,
+        pageWindow = pageWindow,
+      )
     }?.first
   }
+
+  private fun Locator.toBookmarkLocation(): BookmarkLocation =
+    BookmarkLocation(
+      href = href.toString(),
+      position = locations.position,
+      progression = locations.progression,
+      totalProgression = (locations.totalProgression ?: 0.0).toFloat(),
+    )
 
   fun removeBookmark(id: String) {
     viewModelScope.launch { annotations.removeBookmark(id) }
@@ -447,6 +479,12 @@ class ReaderViewModel(
       .open(file)
       .onSuccess { pub ->
         publication = pub
+        bookmarkMatchModeFlow.value =
+          BookmarkMatcher.matchModeFor(
+            format = book.format,
+            isFixedLayout = pub.metadata.presentation.layout == EpubLayout.FIXED,
+          )
+        epubPageWindowFlow.value = null
         mutableProgress.value = book.progress
         val useOverride =
           overrideLocatorJson != null &&

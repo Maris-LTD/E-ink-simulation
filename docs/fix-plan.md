@@ -45,7 +45,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 
 ### 5A — Chặn đọc sách / sai vị trí / build gate
 - [x] 29. H1 — PDF Reflow kẹt spinner: fallback trang gốc (hoặc lỗi + nút "Về trang gốc") khi phân tích rỗng, tap giữa mở toolbar trên 2 màn spinner, `analyzeAllPages` bắt lỗi theo từng trang
-- [ ] 30. H3 — Bookmark EPUB so theo `href` + khoảng progression của trang hiện tại (dùng `PaginationListener`), chỉ so `position` cho PDF/CBZ/fixed-layout
+- [x] 30. H3 — Bookmark EPUB so theo `href` + khoảng progression của trang hiện tại (dùng `PaginationListener`), chỉ so `position` cho PDF/CBZ/fixed-layout
 - [ ] 31. M1 + M2 + L3 — Notification màn khoá: `deleteIntent`/PREV/NEXT dùng intent tường minh; snippet rỗng không giữ session cũ; lưu `capturedAt` làm `EXTRA_LOCATOR_CREATED_AT`; `stepSnippet` trả `null` khi không đổi; `LockScreenReadingStore` ghi tuần tự (`limitedParallelism(1)`, `_state.update`)
 - [ ] 32. Lint gate — sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission` (`areNotificationsEnabled`); `bundle.language.enableSplit = false`; kiểm `bcpkix` TrustAll có còn trong APK release; `HardcodedText` "‹ ›", `SmallSp` widget, dọn `UnusedResources` → `lintDebug` xanh
 
@@ -573,3 +573,21 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 30 — H3: Bookmark EPUB so theo `href` + khoảng progression của trang hiện tại (dùng `PaginationListener`), chỉ so `position` cho PDF/CBZ/fixed-layout.
+
+### 30. H3 — Bookmark EPUB khớp chính xác theo khoảng progression của trang hiện tại — 2026-11-19
+**Nguyên nhân:** `ReaderViewModel.findMatchingBookmarkParsed` kiểm tra nhánh `locPos != null && entryPos != null -> locPos == entryPos` trước nhánh `progression`. Locator EPUB của Readium luôn có `position` (mỗi `position` = 1024 byte nén, tương ứng ~2–4 trang màn hình) nên nhánh `progression` không bao giờ chạy; biểu tượng bookmark sáng trên nhiều trang liên tiếp và bấm ở trang kề xoá nhầm bookmark của trang khác.
+
+**Đã sửa:**
+- Mới `ui/reader/BookmarkMatcher.kt` (thuần Kotlin, kèm `BookmarkMatchMode`, `BookmarkLocation`, `EpubPageWindow`):
+  - `matchModeFor(format, isFixedLayout)`: chỉ dùng `REFLOWABLE_EPUB` khi `format == BookFormat.EPUB && !isFixedLayout`; dùng `POSITION_BASED` cho PDF, CBZ và EPUB fixed-layout (`EpubLayout.FIXED`).
+  - Với `REFLOWABLE_EPUB`: khớp theo `href` + khoảng `progression` của trang hiện tại `[start, start + 1 / totalPages)` (dựa trên `totalPages` từ `PaginationListener.onPageChanged`, tính kèm epsilon biên `min(1e-6, pageSpan * 0.01)` để tránh sai số dấu phẩy động ở ranh giới trang kế và đóng khoảng `[start, 1.0]` ở trang cuối chương). Nếu chưa có thông tin trang (`totalPages <= 0` hoặc `pageWindow` chưa khớp locator hiện tại), fallback về dung sai `0.002` trên `progression` (không dùng `position`).
+  - Với `POSITION_BASED` (PDF, CBZ, EPUB fixed-layout): ưu tiên khớp `sameHref && locPos == entryPos`, fallback `progression` (`< 0.002`) / `totalProgression` (`< 0.002f`).
+- `ReaderActivity.kt`: gắn `EpubNavigatorFragment.PaginationListener` vào `EpubNavigatorFactory.createFragmentFactory` trong `epubFragmentFactory`, chuyển `(totalPages, locator)` sang `viewModel.onEpubPageChanged(totalPages, locator)`.
+- `ui/reader/ReaderViewModel.kt`: xác định `bookmarkMatchModeFlow` theo `book.format` và `pub.metadata.presentation.layout == EpubLayout.FIXED` trong `load()`; lưu `epubPageWindowFlow` từ `onEpubPageChanged`, kết hợp vào `isCurrentPageBookmarked` và `findMatchingBookmark`, và dùng `BookmarkMatcher.matches(...)`.
+- Mới `test/.../ui/reader/BookmarkMatcherTest.kt`: 8 unit test bao phủ chọn chế độ matching, EPUB reflowable không khớp nhầm trang kề cùng `position`, khớp bookmark nằm giữa khoảng trang sau khi đổi cỡ chữ, trang cuối chương, khác `href`, fallback khi thiếu/lệch thông tin trang, và `POSITION_BASED` cho PDF/CBZ/EPUB fixed-layout.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (79/79 tests pass, gồm 8/8 test trong `BookmarkMatcherTest`). Kiểm tra tay: mở EPUB cỡ chữ lớn, đặt bookmark trang N → lật sang N+1/N+2 icon không sáng và bấm bookmark ở N+1 tạo bookmark mới thay vì xoá bookmark trang N.
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 31 — M1 + M2 + L3: Notification màn khoá (`deleteIntent`/PREV/NEXT tường minh, snippet rỗng, `capturedAt`, `stepSnippet`, `LockScreenReadingStore` tuần tự).
