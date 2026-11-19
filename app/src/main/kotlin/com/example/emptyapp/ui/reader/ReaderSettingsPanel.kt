@@ -130,6 +130,9 @@ fun ReaderSettingsPanel(
     SwitchRow(stringResource(R.string.settings_ghosting), settings.ghosting) { on -> onChange { it.copy(ghosting = on) } }
     SwitchRow(stringResource(R.string.settings_reader_footer), settings.readerFooter) { on -> onChange { it.copy(readerFooter = on) } }
     SwitchRow(stringResource(R.string.settings_focus_mode), settings.focusMode) { on -> onToggleFocusMode(on) }
+    SwitchRow(stringResource(R.string.settings_volume_turn_pages), settings.volumeButtonsTurnPages) { on ->
+      onChange { it.copy(volumeButtonsTurnPages = on) }
+    }
     SwitchRow(stringResource(R.string.settings_lockscreen_reader), settings.lockScreenReader) { on ->
       onChange { it.copy(lockScreenReader = on) }
     }

@@ -53,6 +53,7 @@ class EInkSettingsStore(context: Context) {
       lockScreenReader = prefs.getBoolean(KEY_LOCK_SCREEN_READER, defaults.lockScreenReader),
       focusMode = prefs.getBoolean(KEY_FOCUS_MODE, defaults.focusMode),
       pdfAutoCrop = prefs.getBoolean(KEY_PDF_AUTO_CROP, defaults.pdfAutoCrop),
+      volumeButtonsTurnPages = prefs.getBoolean(KEY_VOLUME_TURN_PAGES, defaults.volumeButtonsTurnPages),
       appLanguage = enumOf(prefs.getString(KEY_APP_LANGUAGE, null), defaults.appLanguage),
     )
   }
@@ -82,6 +83,7 @@ class EInkSettingsStore(context: Context) {
       .putBoolean(KEY_LOCK_SCREEN_READER, value.lockScreenReader)
       .putBoolean(KEY_FOCUS_MODE, value.focusMode)
       .putBoolean(KEY_PDF_AUTO_CROP, value.pdfAutoCrop)
+      .putBoolean(KEY_VOLUME_TURN_PAGES, value.volumeButtonsTurnPages)
       .putString(KEY_APP_LANGUAGE, value.appLanguage.name)
       .apply()
   }
@@ -113,6 +115,7 @@ class EInkSettingsStore(context: Context) {
     const val KEY_LOCK_SCREEN_READER = "lock_screen_reader"
     const val KEY_FOCUS_MODE = "focus_mode"
     const val KEY_PDF_AUTO_CROP = "pdf_auto_crop"
+    const val KEY_VOLUME_TURN_PAGES = "volume_turn_pages"
     const val KEY_APP_LANGUAGE = "app_language"
   }
 }

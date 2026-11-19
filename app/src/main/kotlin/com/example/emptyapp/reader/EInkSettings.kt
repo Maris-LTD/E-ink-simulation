@@ -36,5 +36,6 @@ data class EInkSettings(
   val lockScreenReader: Boolean = true,
   val focusMode: Boolean = false,
   val pdfAutoCrop: Boolean = true,
+  val volumeButtonsTurnPages: Boolean = true,
   val appLanguage: AppLanguage = AppLanguage.SYSTEM,
 )

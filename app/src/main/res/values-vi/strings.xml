@@ -151,6 +151,7 @@
     <string name="settings_reader_footer">Thanh tiến độ E-Reader</string>
     <string name="settings_focus_mode">Chế độ Tập trung (Focus)</string>
     <string name="settings_lockscreen_reader">Đọc trên màn hình khóa</string>
+    <string name="settings_volume_turn_pages">Phím âm lượng lật trang</string>
     <string name="settings_orientation">Hướng màn hình</string>
     <string name="orientation_auto">Tự động</string>
     <string name="orientation_portrait">Dọc</string>
@@ -187,6 +188,10 @@
     <string name="lib_bookmark_deleted">Đã xóa dấu trang</string>
     <string name="lib_highlight_deleted">Đã xóa highlight</string>
     <string name="lib_view_list">Danh sách</string>
+    <string name="lib_import_first_book">+ Nhập sách</string>
+    <string name="lib_sort_recent">Sắp xếp: Gần đây</string>
+    <string name="lib_sort_title">Sắp xếp: Tên sách</string>
+    <string name="lib_sort_progress">Sắp xếp: Tiến độ</string>
     <string name="lib_view_grid_2">Lưới 2</string>
     <string name="lib_view_grid_3">Lưới 3</string>
     <string name="lib_view_grid_4">Lưới 4</string>

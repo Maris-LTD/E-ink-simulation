@@ -99,6 +99,7 @@ fun ReaderScreen(
   title: String,
   toc: List<Link>,
   positions: List<Locator>,
+  isSearchable: Boolean = true,
   pendingNoteLocator: Locator?,
   onSaveNote: (Locator, String) -> Unit,
   onDismissNote: () -> Unit,
@@ -310,7 +311,7 @@ fun ReaderScreen(
         showFontControls =
           bookFormat == BookFormat.EPUB ||
             (bookFormat == BookFormat.PDF && effectivePdfMode == PdfReadingMode.HYBRID_REFLOW),
-        showSearch = bookFormat != BookFormat.CBZ,
+        showSearch = bookFormat != BookFormat.CBZ && isSearchable,
         isBookmarked = isBookmarked,
         pdfModeLabel = pdfModeLabel,
         onTogglePdfMode =
@@ -521,19 +522,8 @@ fun ReaderScreen(
         modifier =
           Modifier.align(Alignment.CenterStart)
             .fillMaxHeight()
-            .width(24.dp)
+            .width(14.dp)
             .onSizeChanged { edgeStripHeightPx = it.height.coerceAtLeast(1).toFloat() }
-            .pointerInput(bookFormat, navigator, pdfController) {
-              detectTapGestures(
-                onTap = {
-                  if (bookFormat == BookFormat.PDF) {
-                    pdfController.goBackward()
-                  } else {
-                    (navigator as? OverflowableNavigator)?.goBackward(animated = false)
-                  }
-                },
-              )
-            }
             .pointerInput(Unit) {
               var dragBrightness = 0.5f
               detectVerticalDragGestures(

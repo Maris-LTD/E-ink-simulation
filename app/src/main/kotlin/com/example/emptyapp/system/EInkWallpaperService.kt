@@ -284,7 +284,10 @@ class EInkWallpaperService : WallpaperService() {
         h * 0.14f,
         statusPaint,
       )
-      canvas.drawText(now.format(timeFormatter), w / 2f, h * 0.29f, clockPaint)
+      val clockPattern =
+        if (android.text.format.DateFormat.is24HourFormat(applicationContext)) "HH:mm" else "h:mm a"
+      val dynamicTimeFormatter = DateTimeFormatter.ofPattern(clockPattern, Locale.getDefault())
+      canvas.drawText(now.format(dynamicTimeFormatter), w / 2f, h * 0.29f, clockPaint)
       canvas.drawText(now.format(localizedDateFormatter), w / 2f, h * 0.34f, datePaint)
 
       // Lock-screen reading excerpt panel pushed to the bottom to stay clear of notifications

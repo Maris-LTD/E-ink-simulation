@@ -25,10 +25,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
+import android.text.format.DateFormat
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.delay
 
 @Composable
@@ -38,11 +38,14 @@ fun ReaderFooterBar(
   inkColor: Color,
   modifier: Modifier = Modifier,
 ) {
-  var clockText by remember { mutableStateOf(formatClock()) }
-  LaunchedEffect(Unit) {
+  val context = LocalContext.current
+  var clockText by remember(context) { mutableStateOf(formatClock(context)) }
+  LaunchedEffect(context) {
     while (true) {
-      delay(30_000L)
-      clockText = formatClock()
+      clockText = formatClock(context)
+      val nowMs = System.currentTimeMillis()
+      val delayToNextMinute = (60_000L - (nowMs % 60_000L) + 50L).coerceIn(1_000L, 60_000L)
+      delay(delayToNextMinute)
     }
   }
 
@@ -81,4 +84,5 @@ fun ReaderFooterBar(
   }
 }
 
-private fun formatClock(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+private fun formatClock(context: android.content.Context): String =
+  DateFormat.getTimeFormat(context).format(Date())

@@ -69,6 +69,7 @@ import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.publication.services.search.isSearchable
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderActivity : FragmentActivity() {
@@ -371,6 +372,7 @@ class ReaderActivity : FragmentActivity() {
             title = current.book.title,
             toc = current.toc,
             positions = current.positions,
+            isSearchable = current.publication.isSearchable,
             pendingNoteLocator = noteLocator,
             onSaveNote = { locator, note ->
               viewModel.addHighlight(locator, note)
@@ -473,6 +475,12 @@ class ReaderActivity : FragmentActivity() {
   }
 
   override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+    val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
+    if (!isVolumeKey) return super.onKeyDown(keyCode, event)
+    val modalOpen = pendingNoteLocator.value != null || viewModel.dictionaryState.value != null
+    if (!viewModel.settings.value.volumeButtonsTurnPages || modalOpen) {
+      return super.onKeyDown(keyCode, event)
+    }
     val ready = viewModel.state.value as? ReaderUiState.Ready
     if (ready?.book?.format == BookFormat.PDF) {
       return when (keyCode) {
@@ -489,12 +497,15 @@ class ReaderActivity : FragmentActivity() {
     }
   }
 
-  override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
-    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+  override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+    val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
+    val modalOpen = pendingNoteLocator.value != null || viewModel.dictionaryState.value != null
+    return if (isVolumeKey && viewModel.settings.value.volumeButtonsTurnPages && !modalOpen) {
       true
     } else {
       super.onKeyUp(keyCode, event)
     }
+  }
 
   private fun selectionCallback(): ActionMode.Callback =
     object : ActionMode.Callback {

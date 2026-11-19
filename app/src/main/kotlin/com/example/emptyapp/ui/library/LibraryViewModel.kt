@@ -55,17 +55,17 @@ class LibraryViewModel(
           }
           .onFailure {
             val localized = context?.let(LocaleHelper::wrap)
-            val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "tệp không hợp lệ"
+            val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "invalid file"
             val reason = it.message ?: fallbackInvalid
-            val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Không nhập được sách: $reason"
+            val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Could not import book: $reason"
             messageChannel.send(msg)
           }
       } catch (e: Throwable) {
         if (e is CancellationException) throw e
         val localized = context?.let(LocaleHelper::wrap)
-        val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "tệp không hợp lệ"
+        val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "invalid file"
         val reason = e.message ?: fallbackInvalid
-        val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Không nhập được sách: $reason"
+        val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Could not import book: $reason"
         messageChannel.send(msg)
       } finally {
         mutableImporting.value = false

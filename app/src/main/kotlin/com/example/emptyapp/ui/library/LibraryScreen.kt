@@ -92,6 +92,14 @@ private enum class LibraryTab(val labelRes: Int) {
   HIGHLIGHTS(com.example.emptyapp.R.string.lib_tab_highlights),
 }
 
+private enum class LibrarySort(val labelRes: Int) {
+  RECENT(com.example.emptyapp.R.string.lib_sort_recent),
+  TITLE(com.example.emptyapp.R.string.lib_sort_title),
+  PROGRESS(com.example.emptyapp.R.string.lib_sort_progress);
+
+  fun next(): LibrarySort = entries[(ordinal + 1) % entries.size]
+}
+
 private enum class LibraryViewMode(val labelRes: Int, val columns: Int) {
   LIST(com.example.emptyapp.R.string.lib_view_list, 1),
   GRID_2(com.example.emptyapp.R.string.lib_view_grid_2, 2),
@@ -137,6 +145,7 @@ fun LibraryScreen(
   val scope = rememberCoroutineScope()
   var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.ALL) }
   var selectedAuthor by rememberSaveable { mutableStateOf<String?>(null) }
+  var sortMode by rememberSaveable { mutableStateOf(LibrarySort.RECENT) }
   var query by rememberSaveable { mutableStateOf("") }
   var pendingDeleteBook by remember { mutableStateOf<BookEntry?>(null) }
   var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.LIST) }
@@ -160,15 +169,21 @@ fun LibraryScreen(
     }
 
   val filteredBooks =
-    remember(tabBooks, selectedTab, selectedAuthor, query) {
-      tabBooks.filter { book ->
-        val authorMatch = selectedAuthor == null || book.author == selectedAuthor
-        val queryMatch =
-          query.isBlank() ||
-            book.title.contains(query, ignoreCase = true) ||
-            book.author.contains(query, ignoreCase = true)
-        authorMatch && queryMatch
-      }.sortedByDescending { it.updatedAt }
+    remember(tabBooks, selectedTab, selectedAuthor, query, sortMode) {
+      val matching =
+        tabBooks.filter { book ->
+          val authorMatch = selectedAuthor == null || book.author == selectedAuthor
+          val queryMatch =
+            query.isBlank() ||
+              book.title.contains(query, ignoreCase = true) ||
+              book.author.contains(query, ignoreCase = true)
+          authorMatch && queryMatch
+        }
+      when (sortMode) {
+        LibrarySort.RECENT -> matching.sortedByDescending { it.updatedAt }
+        LibrarySort.TITLE -> matching.sortedBy { it.title.lowercase() }
+        LibrarySort.PROGRESS -> matching.sortedByDescending { it.progress }
+      }
     }
   val authors = remember(tabBooks) { tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct() }
   LaunchedEffect(authors) {
@@ -245,11 +260,13 @@ fun LibraryScreen(
         HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
       }
       EInkTabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
-      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && authors.isNotEmpty()) {
+      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && (authors.isNotEmpty() || tabBooks.isNotEmpty())) {
         AuthorFilterRow(
           totalCount = tabBooks.size,
           authors = authors,
           selectedAuthor = selectedAuthor,
+          sortMode = sortMode,
+          onCycleSort = { sortMode = sortMode.next() },
           onSelect = { selectedAuthor = it },
         )
         HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
@@ -323,7 +340,10 @@ fun LibraryScreen(
             },
           )
         } else if (filteredBooks.isEmpty()) {
-          EmptyLibrary(hasAnyBooks = books.isNotEmpty())
+          EmptyLibrary(
+            hasAnyBooks = books.isNotEmpty(),
+            onImportBook = { picker.launch(SUPPORTED_MIMES) },
+          )
         } else if (viewMode == LibraryViewMode.LIST) {
           BookList(
             books = filteredBooks,
@@ -675,6 +695,8 @@ private fun AuthorFilterRow(
   totalCount: Int,
   authors: List<String>,
   selectedAuthor: String?,
+  sortMode: LibrarySort,
+  onCycleSort: () -> Unit,
   onSelect: (String?) -> Unit,
 ) {
   Row(
@@ -684,6 +706,11 @@ private fun AuthorFilterRow(
         .padding(horizontal = 16.dp, vertical = 12.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
+    FilterPill(
+      label = stringResource(sortMode.labelRes),
+      active = false,
+      onClick = onCycleSort,
+    )
     FilterPill(
       label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
       active = selectedAuthor == null,
@@ -719,15 +746,28 @@ private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmptyLibrary(hasAnyBooks: Boolean) {
-  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-    EInkText(
-      text =
-        if (hasAnyBooks) stringResource(com.example.emptyapp.R.string.lib_empty_filtered)
-        else stringResource(com.example.emptyapp.R.string.lib_empty_all),
-      style = MaterialTheme.typography.titleSmall,
-      color = MaterialTheme.colorScheme.secondary,
-    )
+private fun EmptyLibrary(
+  hasAnyBooks: Boolean,
+  onImportBook: () -> Unit,
+) {
+  Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      EInkText(
+        text =
+          if (hasAnyBooks) stringResource(com.example.emptyapp.R.string.lib_empty_filtered)
+          else stringResource(com.example.emptyapp.R.string.lib_empty_all),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.secondary,
+      )
+      if (!hasAnyBooks) {
+        androidx.compose.material3.OutlinedButton(onClick = onImportBook) {
+          EInkText(stringResource(com.example.emptyapp.R.string.lib_import_first_book))
+        }
+      }
+    }
   }
 }
 

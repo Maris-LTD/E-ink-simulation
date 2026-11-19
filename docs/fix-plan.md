@@ -37,7 +37,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 24. U5 — Quyền thông báo, notification màn khoá, focus mode, lỗi intent bị nuốt
 - [x] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
 - [x] 26. U7 — Accessibility (contentDescription, 48dp, semantics)
-- [ ] 27. U8 + U9 — Launcher pins, empty state, sort, cạnh trái ẩn, phím âm lượng, đồng hồ 12h
+- [x] 27. U8 + U9 — Launcher pins, empty state, sort, cạnh trái ẩn, phím âm lượng, đồng hồ 12h
 - [ ] 28. U10 + U11 — Chuỗi cứng, plurals, privacy policy
 
 ---
@@ -479,3 +479,19 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** chưa thêm `semantics` mô tả dữ liệu chi tiết cho biểu đồ cột/heatmap và custom action lật trang cho tap zone PDF.
 
 **Bước tiếp theo:** mục 27 — U8 + U9: Launcher pins, empty state có nút Import, sort thư viện, xử lý dải 24dp cạnh trái Reader, phím âm lượng tôn trọng dialog & setting tắt/bật, đồng hồ 12h/24h.
+
+### 27. U8 + U9 — Launcher pins, Thư viện empty/sort & tinh chỉnh Reader — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Launcher pins bị cắt ở 4 app đầu (`LauncherActivity.kt`):** bỏ `pinnedApps.take(4)`, hiển thị toàn bộ app đã ghim theo từng hàng 4 ô (`pinnedApps.chunked(4)`).
+- **Empty state Thư viện & Sort (`LibraryScreen.kt`):** thêm nút `lib_import_first_book` ("+ Nhập sách") ở `EmptyLibrary` khi chưa có sách; thêm `LibrarySort` (`RECENT`, `TITLE`, `PROGRESS`) lưu bằng `rememberSaveable` và nút chuyển ở thanh lọc.
+- **Fallback tiếng Việt cứng (`LibraryViewModel.kt`):** đổi chuỗi fallback khi `context == null` sang tiếng Anh trung tính.
+- **Dải 24dp cạnh trái Reader (`ReaderScreen.kt`):** thu hẹp xuống `14.dp` và bỏ `detectTapGestures` khỏi dải này để không cướp thao tác chạm/chọn chữ (vẫn giữ kéo dọc chỉnh độ sáng).
+- **Phím âm lượng (`EInkSettings.kt`, `EInkSettingsStore.kt`, `ReaderSettingsPanel.kt`, `ReaderActivity.kt`):** thêm tuỳ chọn `volumeButtonsTurnPages` (mặc định bật) trong Cài đặt Reader; `onKeyDown` / `onKeyUp` không lật trang khi setting tắt hoặc khi đang mở dialog ghi chú / từ điển.
+- **Nút Search PDF (`ReaderActivity.kt`, `ReaderScreen.kt`):** truyền `isSearchable = current.publication.isSearchable` để ẩn nút tìm kiếm khi tài liệu không hỗ trợ.
+- **Đồng hồ 12h/24h (`ReaderFooterBar.kt`, `EInkWallpaperService.kt`):** dùng `DateFormat.getTimeFormat` / `DateFormat.is24HourFormat` theo cài đặt hệ thống và căn `delay` footer theo đầu phút kế tiếp.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: ghim > 4 app ở Launcher, đổi sort thư viện, tắt phím âm lượng hoặc mở dialog từ điển rồi bấm volume, đổi định dạng 12h/24h hệ thống.
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 28 — U10 + U11 (mục cuối): xử lý chuỗi cứng còn sót, thêm `<plurals>` cho streak/active days và cập nhật `docs/privacy-policy.md` khớp với code.

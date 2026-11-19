@@ -151,6 +151,7 @@
     <string name="settings_reader_footer">E-Reader progress bar</string>
     <string name="settings_focus_mode">Focus Mode</string>
     <string name="settings_lockscreen_reader">Lock screen reading</string>
+    <string name="settings_volume_turn_pages">Volume buttons turn pages</string>
     <string name="settings_orientation">Orientation</string>
     <string name="orientation_auto">Auto</string>
     <string name="orientation_portrait">Portrait</string>
@@ -187,6 +188,10 @@
     <string name="lib_bookmark_deleted">Bookmark deleted</string>
     <string name="lib_highlight_deleted">Highlight deleted</string>
     <string name="lib_view_list">List</string>
+    <string name="lib_import_first_book">+ Import book</string>
+    <string name="lib_sort_recent">Sort: Recent</string>
+    <string name="lib_sort_title">Sort: Title</string>
+    <string name="lib_sort_progress">Sort: Progress</string>
     <string name="lib_view_grid_2">2 Columns</string>
     <string name="lib_view_grid_3">3 Columns</string>
     <string name="lib_view_grid_4">4 Columns</string>

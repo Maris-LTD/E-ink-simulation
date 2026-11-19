@@ -477,17 +477,24 @@ private fun MinimalistHomePage(
           color = MaterialTheme.colorScheme.secondary,
         )
       } else {
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-          pinnedApps.take(4).forEach { app ->
-            PinnedAppTile(
-              app = app,
-              onClick = { onLaunchApp(app.packageName) },
-              onLongClick = { onUnpinApp(app) },
-              modifier = Modifier.weight(1f),
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          pinnedApps.chunked(4).forEach { rowApps ->
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              rowApps.forEach { app ->
+                PinnedAppTile(
+                  app = app,
+                  onClick = { onLaunchApp(app.packageName) },
+                  onLongClick = { onUnpinApp(app) },
+                  modifier = Modifier.weight(1f),
+                )
+              }
+              repeat(4 - rowApps.size) {
+                Spacer(modifier = Modifier.weight(1f))
+              }
+            }
           }
         }
       }
