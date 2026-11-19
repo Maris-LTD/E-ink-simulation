@@ -144,4 +144,5 @@ dependencies {
   implementation(libs.readium.adapter.pdfium)
   implementation(libs.play.services.auth)
   implementation(libs.pdfbox.android)
+  implementation(libs.billing.ktx)
 }

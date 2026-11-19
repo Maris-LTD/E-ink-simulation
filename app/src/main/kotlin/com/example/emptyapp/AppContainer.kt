@@ -2,6 +2,9 @@ package com.example.emptyapp
 
 import android.content.Context
 import com.example.emptyapp.data.annotation.AnnotationRepository
+import com.example.emptyapp.data.billing.EntitlementStore
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
@@ -35,6 +38,9 @@ class AppContainer(context: Context) {
     GoogleDriveSyncManager(appContext, library, annotations, stats, syncTombstones, appScope)
   }
   val lockScreenReading: LockScreenReadingStore by lazy { LockScreenReadingStore(appContext) }
+  val entitlements: EntitlementStore by lazy { EntitlementStore(appContext.filesDir) }
+  val proGate: ProFeatureGate by lazy { ProFeatureGate(entitlements) }
+  val billing: PlayBillingManager by lazy { PlayBillingManager(appContext, proGate, appScope) }
 
   fun warmUpForUiAsync() {
     appScope.launch(Dispatchers.IO) { settings }
@@ -44,6 +50,8 @@ class AppContainer(context: Context) {
     appScope.launch(Dispatchers.IO) { annotations }
     appScope.launch(Dispatchers.IO) { stats }
     appScope.launch(Dispatchers.IO) { lockScreenReading }
+    appScope.launch(Dispatchers.IO) { proGate }
+    appScope.launch(Dispatchers.IO) { billing.startConnection() }
     appScope.launch(Dispatchers.IO) { sync }
   }
 }
