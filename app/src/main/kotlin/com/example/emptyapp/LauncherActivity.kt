@@ -235,6 +235,9 @@ private fun EInkHomePager(
     mutableStateOf(DrawerViewMode.entries.firstOrNull { it.name == saved } ?: DrawerViewMode.GRID_3)
   }
 
+  val pinnedToastFmt = stringResource(R.string.launcher_pinned_toast)
+  val unpinnedToastFmt = stringResource(R.string.launcher_unpinned_toast)
+
   fun togglePin(app: LaunchableApp) {
     val current = pinnedPackages.orEmpty()
     val next =
@@ -243,8 +246,10 @@ private fun EInkHomePager(
     pinnedPackages = next
     prefs.edit().putStringSet("pinned_packages", next).apply()
     val msg =
-      if (app.packageName in next) context.getString(R.string.launcher_pinned_toast, app.label)
-      else context.getString(R.string.launcher_unpinned_toast, app.label)
+      String.format(
+        if (app.packageName in next) pinnedToastFmt else unpinnedToastFmt,
+        app.label,
+      )
     scope.launch { snackbarHostState.showSnackbar(msg) }
   }
 

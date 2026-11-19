@@ -1191,7 +1191,10 @@ private fun PrivacyPolicyCard() {
 @Composable
 private fun ContactCard() {
   val context = LocalContext.current
-  val email = context.getString(R.string.contact_email)
+  val email = stringResource(R.string.contact_email)
+  val emailSubject = stringResource(R.string.stats_email_subject)
+  val noEmailAppMsg = stringResource(R.string.stats_no_email_app)
+  val copiedEmailMsg = stringResource(R.string.stats_copied_email, email)
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -1213,14 +1216,13 @@ private fun ContactCard() {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       OutlinedButton(
         onClick = {
-          val subject = context.getString(R.string.stats_email_subject)
           val intent =
             Intent(Intent.ACTION_SENDTO).apply {
-              data = Uri.parse("mailto:$email?subject=${Uri.encode(subject)}")
+              data = Uri.parse("mailto:$email?subject=${Uri.encode(emailSubject)}")
             }
           val launched = runCatching { context.startActivity(intent) }.isSuccess
           if (!launched) {
-            Toast.makeText(context, context.getString(R.string.stats_no_email_app), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, noEmailAppMsg, Toast.LENGTH_SHORT).show()
           }
         },
       ) {
@@ -1230,7 +1232,7 @@ private fun ContactCard() {
         onClick = {
           val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
           clipboard.setPrimaryClip(ClipData.newPlainText("Email", email))
-          Toast.makeText(context, context.getString(R.string.stats_copied_email, email), Toast.LENGTH_SHORT).show()
+          Toast.makeText(context, copiedEmailMsg, Toast.LENGTH_SHORT).show()
         },
       ) {
         EInkText(stringResource(R.string.stats_copy), color = MaterialTheme.colorScheme.secondary)

@@ -25,10 +25,11 @@
     <!-- Lock screen notification -->
     <string name="lockscreen_channel_name">Lock screen reading</string>
     <string name="lockscreen_reading_text">Reading · %1$d%% — Tap to resume</string>
+    <string name="lockscreen_nav_prev_symbol">‹</string>
+    <string name="lockscreen_nav_next_symbol">›</string>
 
     <!-- Wallpaper -->
     <string name="wallpaper_no_book">No book in progress</string>
-    <string name="wallpaper_streak">Streak: %1$d days</string>
     <string name="wallpaper_status_format">Battery %1$d%% · Streak %2$dd · %3$s</string>
     <string name="wallpaper_rank_format">Lv %1$d · %2$s</string>
     <string name="wallpaper_daily_goal">TODAY\'S GOAL</string>
@@ -74,7 +75,6 @@
     <string name="dict_open_external">Google Translate</string>
 
     <!-- Language settings -->
-    <string name="settings_language">Language</string>
     <string name="language_system">System</string>
     <string name="language_vi">Tiếng Việt</string>
     <string name="language_en">English</string>
@@ -215,7 +215,6 @@
     <string name="sync_no_token">Could not get access token from Google</string>
     <string name="sync_cancelled">Google sign-in cancelled</string>
     <string name="sync_verifying">Verifying…</string>
-    <string name="sync_auth_failed">Google authentication failed</string>
     <string name="sync_no_drive_permission">Google Drive permission not granted</string>
     <string name="sync_syncing_drive">Syncing with Drive…</string>
     <string name="sync_success">Synced successfully</string>
@@ -245,48 +244,14 @@
     <string name="notif_rationale_later">Not now</string>
 
     <!-- Tutorial -->
-    <string name="tutorial_header">User Guide</string>
     <string name="tutorial_skip">Skip</string>
     <string name="tutorial_prev">‹ Prev</string>
     <string name="tutorial_next">Next ›</string>
     <string name="tutorial_start">Start Reading</string>
-    <string name="tutorial_s1_tag">STEP 1 / 4 · LIBRARY</string>
-    <string name="tutorial_s1_title">Import Books from Device &amp; Drive</string>
-    <string name="tutorial_s1_b1_t">Quick Import</string>
-    <string name="tutorial_s1_b1_d">Tap the (+) button at the bottom right to import EPUB, PDF, or CBZ files from your device.</string>
-    <string name="tutorial_s1_b2_t">Open from Google Drive</string>
-    <string name="tutorial_s1_b2_d">In the file picker, open the top-left menu ≡ → select Drive to download books for offline reading.</string>
-    <string name="tutorial_s1_b3_t">Filter &amp; Layout</string>
-    <string name="tutorial_s1_b3_d">Switch between List or 2–4 Column Grid views, filter by author, or browse Bookmarks &amp; Highlights.</string>
-    <string name="tutorial_s2_tag">STEP 2 / 4 · READING</string>
-    <string name="tutorial_s2_title">Reading Gestures &amp; Focus Mode</string>
-    <string name="tutorial_s2_b1_t">Page Turns &amp; Controls</string>
-    <string name="tutorial_s2_b1_d">Tap left/right edges (or volume keys) to turn pages; tap the center to toggle toolbars.</string>
-    <string name="tutorial_s2_b2_t">Brightness &amp; Lookup</string>
-    <string name="tutorial_s2_b2_d">Swipe vertically along the left edge to adjust brightness; long-press text to Highlight, Note, or Translate.</string>
-    <string name="tutorial_s2_b3_t">Focus Mode</string>
-    <string name="tutorial_s2_b3_d">Tap Focus on the bottom bar to hide system bars, keep screen on, and enable Do Not Disturb.</string>
-    <string name="tutorial_s3_tag">STEP 3 / 4 · E-INK SYSTEM</string>
-    <string name="tutorial_s3_title">Launcher, Lock Screen &amp; Wallpaper</string>
-    <string name="tutorial_s3_b1_t">E-Ink Launcher</string>
-    <string name="tutorial_s3_b1_d">Set the app as your default Home Launcher for a minimalist monochrome home; swipe right for the App Drawer.</string>
-    <string name="tutorial_s3_b2_t">Pinning &amp; View Modes</string>
-    <string name="tutorial_s3_b2_d">In the App Drawer, switch between List / 3–4 Grid / Text Only and long-press apps to pin to Home.</string>
-    <string name="tutorial_s3_b3_t">Lock Screen &amp; Wallpaper</string>
-    <string name="tutorial_s3_b3_d">Enable Lock Screen Reading in Reader Settings, or set the E-Ink Live Wallpaper in Stats &amp; Profile.</string>
-    <string name="tutorial_s4_tag">STEP 4 / 4 · SYNC</string>
-    <string name="tutorial_s4_title">Google Sign-In &amp; Multi-Device Sync</string>
-    <string name="tutorial_s4_b1_t">Open Stats &amp; Profile</string>
-    <string name="tutorial_s4_b1_d">Tap the Profile icon at the top right (or swipe right from the Library).</string>
-    <string name="tutorial_s4_b2_t">Google Sign-In (Free)</string>
-    <string name="tutorial_s4_b2_d">Tap Sign in with Google to back up reading progress, bookmarks, highlights, and streaks to Drive AppData.</string>
-    <string name="tutorial_s4_b3_t">Full Library Sync</string>
-    <string name="tutorial_s4_b3_d">Enable Sync book files so signing in on another device automatically restores your books and last page.</string>
 
     <!-- Reading Stats & Profile -->
     <string name="stats_title">Profile &amp; Stats</string>
     <string name="stats_rank_format">Lv %1$d · %2$s</string>
-    <string name="stats_xp_streak_format">%1$d XP · Streak: %2$d days (Best: %3$d)</string>
     <plurals name="stats_xp_streak_plurals">
         <item quantity="one">%1$d XP · Streak: %2$d day (Best: %3$d)</item>
         <item quantity="other">%1$d XP · Streak: %2$d days (Best: %3$d)</item>
@@ -373,8 +338,6 @@
     <string name="launcher_drawer_hint">Mode: %1$s · Long-press to pin/unpin to Home</string>
     <string name="launcher_back_home">‹ Home</string>
     <string name="launcher_pinned_badge">Pinned</string>
-    <string name="lockscreen_action_prev">‹ Prev</string>
-    <string name="lockscreen_action_next">Next ›</string>
     <string name="lockscreen_snippet_counter">Excerpt %1$d/%2$d · %3$d%%</string>
 
     <!-- Action-oriented E-Ink Onboarding -->
@@ -388,7 +351,6 @@
     <string name="onboard_tone_paper">Warm Paper</string>
     <string name="onboard_tone_gray">Soft Gray</string>
     <string name="onboard_toggle_flash">E-Ink Refresh Flash</string>
-    <string name="onboard_toggle_volume">Volume-Key Page Turn</string>
 
     <string name="onboard_s2_tag">STEP 2 / 4 · LOCK SCREEN</string>
     <string name="onboard_s2_title">Read Right on the Lock Screen</string>

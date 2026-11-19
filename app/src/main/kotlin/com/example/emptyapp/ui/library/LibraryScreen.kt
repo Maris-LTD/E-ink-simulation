@@ -273,6 +273,8 @@ fun LibraryScreen(
       }
       Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         if (selectedTab == LibraryTab.BOOKMARKS) {
+          val bookmarkDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_bookmark_deleted)
+          val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
           val bookTitlesById = remember(books) { books.associate { it.id to it.title } }
           val filteredBookmarks =
             remember(bookmarks, bookTitlesById, query) {
@@ -295,8 +297,8 @@ fun LibraryScreen(
                 scope.launch {
                   val res =
                     snackbarHostState.showSnackbar(
-                      message = context.getString(com.example.emptyapp.R.string.lib_bookmark_deleted),
-                      actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                      message = bookmarkDeletedMsg,
+                      actionLabel = undoActionLabel,
                       duration = SnackbarDuration.Short,
                     )
                   if (res == SnackbarResult.ActionPerformed) {
@@ -307,6 +309,8 @@ fun LibraryScreen(
             },
           )
         } else if (selectedTab == LibraryTab.HIGHLIGHTS) {
+          val highlightDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_highlight_deleted)
+          val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
           val filteredHighlights =
             remember(highlights, query) {
               if (query.isBlank()) highlights
@@ -328,8 +332,8 @@ fun LibraryScreen(
                 scope.launch {
                   val res =
                     snackbarHostState.showSnackbar(
-                      message = context.getString(com.example.emptyapp.R.string.lib_highlight_deleted),
-                      actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                      message = highlightDeletedMsg,
+                      actionLabel = undoActionLabel,
                       duration = SnackbarDuration.Short,
                     )
                   if (res == SnackbarResult.ActionPerformed) {

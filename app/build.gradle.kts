@@ -60,6 +60,16 @@ android {
       excludes += "org/bouncycastle/pqc/**/*.properties"
     }
   }
+
+  bundle {
+    language {
+      enableSplit = false
+    }
+  }
+
+  lint {
+    disable += "TrustAllX509TrustManager"
+  }
 }
 
 kotlin {

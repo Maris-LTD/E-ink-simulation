@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -202,6 +203,18 @@ fun ReaderScreen(
     }
   }
 
+  val focusEnabledMsg = stringResource(com.example.emptyapp.R.string.reader_focus_enabled)
+  val focusNeedsDndMsg = stringResource(com.example.emptyapp.R.string.reader_focus_needs_dnd)
+  val grantPermissionLabel = stringResource(com.example.emptyapp.R.string.action_grant_permission)
+  val focusDisabledMsg = stringResource(com.example.emptyapp.R.string.reader_focus_disabled)
+  val reflowLockedScanMsg = stringResource(com.example.emptyapp.R.string.pdf_reflow_locked_scan)
+  val bookmarkSavedMsg = stringResource(com.example.emptyapp.R.string.reader_bookmark_saved)
+  val bookmarkRemovedMsg = stringResource(com.example.emptyapp.R.string.reader_bookmark_removed)
+  val libBookmarkDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_bookmark_deleted)
+  val libHighlightDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_highlight_deleted)
+  val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
+  val openBrowserErrorMsg = stringResource(com.example.emptyapp.R.string.error_open_browser)
+
   fun handleToggleFocusMode(next: Boolean) {
     viewModel.updateSettings { it.copy(focusMode = next) }
     if (next) {
@@ -210,14 +223,14 @@ fun ReaderScreen(
       scope.launch {
         if (hasDndPermission()) {
           snackbarHostState.showSnackbar(
-            context.getString(com.example.emptyapp.R.string.reader_focus_enabled),
+            focusEnabledMsg,
             duration = SnackbarDuration.Short,
           )
         } else {
           val res =
             snackbarHostState.showSnackbar(
-              message = context.getString(com.example.emptyapp.R.string.reader_focus_needs_dnd),
-              actionLabel = context.getString(com.example.emptyapp.R.string.action_grant_permission),
+              message = focusNeedsDndMsg,
+              actionLabel = grantPermissionLabel,
               duration = SnackbarDuration.Long,
             )
           if (res == SnackbarResult.ActionPerformed) {
@@ -228,7 +241,7 @@ fun ReaderScreen(
     } else {
       scope.launch {
         snackbarHostState.showSnackbar(
-          context.getString(com.example.emptyapp.R.string.reader_focus_disabled),
+          focusDisabledMsg,
           duration = SnackbarDuration.Short,
         )
       }
@@ -299,9 +312,9 @@ fun ReaderScreen(
       val pdfModeLabel =
         if (bookFormat == BookFormat.PDF) {
           when (effectivePdfMode) {
-            PdfReadingMode.SMART_ORIGINAL -> context.getString(com.example.emptyapp.R.string.pdf_mode_original)
-            PdfReadingMode.GUIDED_COLUMN -> context.getString(com.example.emptyapp.R.string.pdf_mode_column)
-            PdfReadingMode.HYBRID_REFLOW -> context.getString(com.example.emptyapp.R.string.pdf_mode_reflow)
+            PdfReadingMode.SMART_ORIGINAL -> stringResource(com.example.emptyapp.R.string.pdf_mode_original)
+            PdfReadingMode.GUIDED_COLUMN -> stringResource(com.example.emptyapp.R.string.pdf_mode_column)
+            PdfReadingMode.HYBRID_REFLOW -> stringResource(com.example.emptyapp.R.string.pdf_mode_reflow)
           }
         } else {
           null
@@ -320,7 +333,7 @@ fun ReaderScreen(
               if (!pdfConfig.reflowAllowed) {
                 scope.launch {
                   snackbarHostState.showSnackbar(
-                    context.getString(com.example.emptyapp.R.string.pdf_reflow_locked_scan),
+                    reflowLockedScanMsg,
                     duration = SnackbarDuration.Short,
                   )
                 }
@@ -343,12 +356,10 @@ fun ReaderScreen(
         onBookmark = {
           val saved = viewModel.toggleBookmark()
           if (saved != null) {
-            val msgRes =
-              if (saved) com.example.emptyapp.R.string.reader_bookmark_saved
-              else com.example.emptyapp.R.string.reader_bookmark_removed
+            val msg = if (saved) bookmarkSavedMsg else bookmarkRemovedMsg
             scope.launch {
               snackbarHostState.currentSnackbarData?.dismiss()
-              snackbarHostState.showSnackbar(context.getString(msgRes), duration = SnackbarDuration.Short)
+              snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
             }
           }
         },
@@ -440,8 +451,8 @@ fun ReaderScreen(
             scope.launch {
               val res =
                 snackbarHostState.showSnackbar(
-                  message = context.getString(com.example.emptyapp.R.string.lib_bookmark_deleted),
-                  actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                  message = libBookmarkDeletedMsg,
+                  actionLabel = undoActionLabel,
                   duration = SnackbarDuration.Short,
                 )
               if (res == SnackbarResult.ActionPerformed) {
@@ -457,8 +468,8 @@ fun ReaderScreen(
             scope.launch {
               val res =
                 snackbarHostState.showSnackbar(
-                  message = context.getString(com.example.emptyapp.R.string.lib_highlight_deleted),
-                  actionLabel = context.getString(com.example.emptyapp.R.string.action_undo),
+                  message = libHighlightDeletedMsg,
+                  actionLabel = undoActionLabel,
                   duration = SnackbarDuration.Short,
                 )
               if (res == SnackbarResult.ActionPerformed) {
@@ -508,7 +519,7 @@ fun ReaderScreen(
           if (runCatching { context.startActivity(intent) }.isFailure) {
             scope.launch {
               snackbarHostState.showSnackbar(
-                context.getString(com.example.emptyapp.R.string.error_open_browser),
+                openBrowserErrorMsg,
                 duration = SnackbarDuration.Short,
               )
             }

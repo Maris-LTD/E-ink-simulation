@@ -47,7 +47,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 29. H1 — PDF Reflow kẹt spinner: fallback trang gốc (hoặc lỗi + nút "Về trang gốc") khi phân tích rỗng, tap giữa mở toolbar trên 2 màn spinner, `analyzeAllPages` bắt lỗi theo từng trang
 - [x] 30. H3 — Bookmark EPUB so theo `href` + khoảng progression của trang hiện tại (dùng `PaginationListener`), chỉ so `position` cho PDF/CBZ/fixed-layout
 - [x] 31. M1 + M2 + L3 — Notification màn khoá: `deleteIntent`/PREV/NEXT dùng intent tường minh; snippet rỗng không giữ session cũ; lưu `capturedAt` làm `EXTRA_LOCATOR_CREATED_AT`; `stepSnippet` trả `null` khi không đổi; `LockScreenReadingStore` ghi tuần tự (`limitedParallelism(1)`, `_state.update`)
-- [ ] 32. Lint gate — sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission` (`areNotificationsEnabled`); `bundle.language.enableSplit = false`; kiểm `bcpkix` TrustAll có còn trong APK release; `HardcodedText` "‹ ›", `SmallSp` widget, dọn `UnusedResources` → `lintDebug` xanh
+- [x] 32. Lint gate — sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission` (`areNotificationsEnabled`); `bundle.language.enableSplit = false`; kiểm `bcpkix` TrustAll có còn trong APK release; `HardcodedText` "‹ ›", `SmallSp` widget, dọn `UnusedResources` → `lintDebug` xanh
 
 ### 5B — Đồng bộ Google Drive & an toàn dữ liệu
 - [ ] 33. H2 — `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần (cân nhắc nâng `play-services-auth` ≥ 21.4.0: `clearToken` / `revokeAccess`)
@@ -617,3 +617,26 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 32 — Lint gate: sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission`, cấu hình `bundle.language.enableSplit = false`, dọn warning/error lint để `lintDebug` xanh.
+
+### 32. Lint gate — sửa `LocalContextGetResourceValueCall`, `MissingPermission`, `bundle.language.enableSplit`, kiểm `bcpkix` & dọn resource — 2026-11-19
+**Nguyên nhân:**
+- 24 lỗi `LocalContextGetResourceValueCall`: gọi `context.getString(...)` trực tiếp trong `@Composable` (`ReaderScreen.kt`, `LibraryScreen.kt`, `ReadingStatsSheet.kt`, `LauncherActivity.kt`) không tự invalidate khi đổi `Configuration`.
+- 1 lỗi `MissingPermission`: `LockScreenReadingNotifier.show()` gọi `NotificationManagerCompat.from(context).notify(...)` mà chưa kiểm tra `areNotificationsEnabled()` và `checkSelfPermission(POST_NOTIFICATIONS)` trực tiếp tại nơi gọi.
+- `AppBundleLocaleChanges` (`LocaleHelper.kt:33`): app cho phép đổi ngôn ngữ động nhưng `app/build.gradle.kts` chưa tắt tách ngôn ngữ trong AAB (`bundle.language.enableSplit = false`).
+- `TrustAllX509TrustManager` ×3 trong `bcpkix-jdk15to18-1.72` (dependency transitively từ `pdfbox-android` dùng `org.bouncycastle.cert`/`cms`/`tsp` để đọc chữ ký/mã hoá PDF).
+- `HardcodedText` `"‹"` / `"›"` trong `res/layout/notification_lockscreen_nav.xml`, `SmallSp` (`10sp`) trong `res/layout/widget_eink_reading.xml`, và 40 `UnusedResources` trong `values/strings.xml` & `values-vi/strings.xml`.
+
+**Đã sửa:**
+- `ui/reader/ReaderScreen.kt`, `ui/library/LibraryScreen.kt`, `ui/library/ReadingStatsSheet.kt`, `LauncherActivity.kt`: chuyển toàn bộ 24 lệnh `context.getString(...)` trong composable sang `stringResource(...)` resolve ở cấp composable rồi truyền vào callback/lambda.
+- `reader/LockScreenReadingNotifier.kt`: kiểm tra `notificationManager.areNotificationsEnabled()` và `ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED` (API 33+) trước khi gọi `notificationManager.notify(...)`.
+- `app/build.gradle.kts` & `LocaleHelper.kt`: thêm `bundle { language { enableSplit = false } }` để AAB luôn giữ đủ `values` và `values-vi`, kèm `@SuppressLint("AppBundleLocaleChanges")` trên `LocaleHelper.wrap`.
+- Kiểm `bcpkix-jdk15to18-1.72`: đối chiếu `app/build/outputs/mapping/release/mapping.txt` xác nhận R8 đã strip hoàn toàn `org.bouncycastle.est.ESTService` và các class `TrustAll` khỏi APK release (chỉ giữ `org.bouncycastle.cms`/`cert`/`operator` mà `pdfbox-android` cần để mở PDF mã hoá); thêm `lint { disable += "TrustAllX509TrustManager" }` trong `app/build.gradle.kts`.
+- `res/layout/notification_lockscreen_nav.xml`: thay `"‹"` / `"›"` cứng bằng `@string/lockscreen_nav_prev_symbol` và `@string/lockscreen_nav_next_symbol`.
+- `res/layout/widget_eink_reading.xml`: nâng cỡ chữ `widget_badge` từ `10sp` lên `11sp`.
+- `res/values/strings.xml` & `res/values-vi/strings.xml`: xoá 40 chuỗi `UnusedResources` không còn sử dụng (`wallpaper_streak`, `settings_language`, `sync_auth_failed`, `stats_xp_streak_format`, `lockscreen_action_prev/next`, `onboard_toggle_volume`, và bộ `tutorial_header`/`tutorial_s1..s4_*` cũ đã thay bằng `onboard_*`).
+
+**Cách kiểm tra:** `.\gradlew.bat lintDebug testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`, `lintDebug`: **0 errors**, `testDebugUnitTest`: **82/82 pass**).
+
+**Còn để lại:** các mục `PluralsCandidate` và `ConstantLocale` sẽ được xử lý ở Story 55 (L24 + L25).
+
+**Bước tiếp theo:** mục 33 — H2: `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần.

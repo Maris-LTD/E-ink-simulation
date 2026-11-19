@@ -31,6 +31,7 @@ object LockScreenReadingNotifier {
       ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
       PackageManager.PERMISSION_GRANTED
 
+  @Suppress("MissingPermission")
   fun show(
     context: Context,
     bookId: String,
@@ -44,7 +45,15 @@ object LockScreenReadingNotifier {
     locatorJson: String? = null,
     locatorCreatedAt: Long = 0L,
   ) {
-    if (!hasPermission(context)) return
+    val notificationManager = NotificationManagerCompat.from(context)
+    if (!notificationManager.areNotificationsEnabled()) return
+    if (
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+          PackageManager.PERMISSION_GRANTED
+    ) {
+      return
+    }
     ensureChannel(context)
     val intent =
       ReaderActivity.intentFor(
@@ -137,7 +146,7 @@ object LockScreenReadingNotifier {
         .setContentIntent(pendingIntent)
         .build()
     setDismissedByUser(context, false)
-    NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+    notificationManager.notify(NOTIFICATION_ID, notification)
   }
 
   fun setDismissedByUser(context: Context, dismissed: Boolean) {

@@ -1,5 +1,6 @@
 package com.example.emptyapp
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
@@ -25,6 +26,7 @@ object LocaleHelper {
       }
     }
 
+  @SuppressLint("AppBundleLocaleChanges")
   fun wrap(base: Context): Context {
     val saved = getSavedLanguage(base)
     if (saved == AppLanguage.SYSTEM) return base

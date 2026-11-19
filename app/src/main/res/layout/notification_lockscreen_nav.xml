@@ -16,7 +16,7 @@
         android:background="#FFEEEEEE"
         android:contentDescription="@string/cd_prev_snippet"
         android:gravity="center"
-        android:text="‹"
+        android:text="@string/lockscreen_nav_prev_symbol"
         android:textColor="#FF111111"
         android:textSize="22sp"
         android:textStyle="bold" />
@@ -42,7 +42,7 @@
         android:background="#FFEEEEEE"
         android:contentDescription="@string/cd_next_snippet"
         android:gravity="center"
-        android:text="›"
+        android:text="@string/lockscreen_nav_next_symbol"
         android:textColor="#FF111111"
         android:textSize="22sp"
         android:textStyle="bold" />
