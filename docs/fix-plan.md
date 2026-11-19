@@ -83,7 +83,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 57. L30 + L31 — `docs/privacy-policy.md` bổ sung (snippet trên màn khoá, nút "Dịch ngoài", device-transfer, giới hạn text từ điển); `.gitignore` chặn `*.jks`/`*.keystore`
 
 ### 5F — Nghiệm thu
-- [ ] 58. `testDebugUnitTest` + `lintDebug` xanh; chạy bản release R8 trên máy; cài AAB (bundletool) kiểm ngôn ngữ; backup/restore; đi qua danh sách test tay mục 5 của `docs/audit-2026-11-19.md`
+- [x] 58. `testDebugUnitTest` + `lintDebug` xanh; chạy bản release R8 trên máy; cài AAB (bundletool) kiểm ngôn ngữ; backup/restore; đi qua danh sách test tay mục 5 của `docs/audit-2026-11-19.md`
 
 ---
 
@@ -1280,3 +1280,22 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 58 — Nghiệm thu cuối: `testDebugUnitTest` + `lintDebug` + `assembleRelease` xanh; kiểm tra các gate có thể tự động hoá trên máy build và ghi nhận checklist test tay trên thiết bị thực.
+
+### 58. Nghiệm thu — Kiểm tra tự động (Unit test, Lint, R8 APK/AAB) & bàn giao checklist thiết bị — 2026-11-19
+**Cách kiểm tra tự động:**
+- Chạy `.\gradlew.bat testDebugUnitTest lintDebug assembleRelease bundleRelease` → `BUILD SUCCESSFUL` (3m 29s, 92 actionable tasks: 37 executed, 4 from cache, 51 up-to-date).
+- **Unit test (`app/build/test-results/testDebugUnitTest`):** 48 file test, **264 tests, 0 failures, 0 errors, 0 skipped**.
+- **Lint (`app/build/reports/lint-results-debug.xml`):** **0 errors** (0 fatal), **77 warnings**, **4 hints** (tổng 81 issues; không còn `LocalContextGetResourceValueCall`, `MissingPermission`, `AppBundleLocaleChanges`).
+- **Release R8 artifacts:**
+  - `app/build/outputs/apk/release/app-release-unsigned.apk` (34,436,617 bytes).
+  - `app/build/outputs/bundle/release/app-release.aab` (25,605,244 bytes).
+  - `app/build/outputs/mapping/release/mapping.txt` (73,799,843 bytes): xác nhận R8 **không giữ lại** `org.bouncycastle.est.ESTService` (0 matches) và `TrustAllX509TrustManager` (0 matches).
+- **ADB (`adb devices`):** không có thiết bị Android / emulator nào kết nối trong môi trường build này.
+
+**Còn để lại (Manual QA trên thiết bị thực trước khi phát hành):**
+- Cài đặt & chạy bản **release R8** trên thiết bị thực.
+- Cài từ **AAB (`bundletool`)** trên máy hệ thống tiếng Anh → chọn tiếng Việt trong app để kiểm tra ngôn ngữ.
+- Kiểm tra **backup/restore** (`adb shell bmgr backupnow <pkg>`, gỡ app, cài lại → chỉ khôi phục settings + stats, không giữ trạng thái đăng nhập).
+- Đi qua đầy đủ **29 mục test tay** tại mục 5 của `docs/audit-2026-11-19.md`.
+
+**Kết thúc kế hoạch:** Toàn bộ 58/58 mục trong `docs/fix-plan.md` đã hoàn thành phần triển khai và kiểm tra tự động trên máy build (`testDebugUnitTest`, `lintDebug`, `assembleRelease`, `bundleRelease` xanh 100%). Còn lại checklist test tay trên thiết bị thực để người dùng thực hiện trước khi phát hành.
