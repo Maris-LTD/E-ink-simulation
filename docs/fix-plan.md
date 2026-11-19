@@ -61,7 +61,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 
 ### 5C — PDF
 - [x] 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder (bỏ code chết `seedAnalyses`/`analysisCache` nếu không dùng), prefetch trang kề; GUIDED chặn lật khi chưa có regions và giữ `pendingBackwardLandingPage`; smart tap-zoom ở SMART phân tích trang hiện tại; trích chữ bằng 1 lần `getText` + `startPage/endPage`
-- [ ] 42. M12 + L13 — Tap-zoom khi autoCrop đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị
+- [x] 42. M12 + L13 — Tap-zoom khi autoCrop đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị
 - [ ] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
 - [ ] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
 - [ ] 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file
@@ -882,3 +882,25 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 42 — M12 + L13: Tap-zoom khi `autoCrop` đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị.
+
+### 42. M12 + L13 — Tap-zoom khi `autoCrop` đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị — 2026-11-19
+**Nguyên nhân:**
+- **M12:** Trong `computeDoubleTapCamera` (`PdfPagerReader.kt`), khi `autoCrop` bật, toạ độ chạm trên bitmap đã crop được đổi sang hệ toạ độ trang gốc để gọi `PdfRegionNavigator.findTapTargetRect`, nhưng `PdfRect` trả về vẫn ở hệ toạ độ trang gốc (0..1 của trang đầy đủ) rồi đưa thẳng vào `computeCameraTransform` — nơi hiểu `region` theo không gian của bitmap đã crop đang hiển thị → tâm và tỉ lệ zoom của cột/khối chữ bị lệch ~170 px và cắt mép cột.
+- **L13:** `clampOffset` (`PdfPagerReader.kt`) và `computeCameraTransform` (`PdfRegionNavigator.kt`) tính biên pan `maxX = containerWidth * (scale - 1f) / 2f`, `maxY = containerHeight * (scale - 1f) / 2f` theo kích thước container thay vì kích thước ảnh thực tế hiển thị với `ContentScale.Fit` (`dispW`, `dispH`), cho phép pan vào vùng dải trống (letterbox) ở chiều ảnh chưa vượt quá container.
+
+**Đã sửa:**
+- `reader/pdf/PdfRegionNavigator.kt`:
+  - Thêm `mapPageRectToCropSpace(rect: PdfRect, crop: PdfRect): PdfRect` quy đổi `rect` từ hệ toạ độ trang gốc sang hệ toạ độ `[0, 1]` của bitmap đã crop (`(rect.left - crop.left) / crop.width`, v.v., kèm fallback an toàn về `rect` nếu `crop` suy biến hoặc vùng sau khi kẹp quá hẹp `< 0.02f`).
+  - Thêm `clampOffsetForFitContent(offsetX, offsetY, scale, containerWidth, containerHeight, bitmapWidth, bitmapHeight)` tính kích thước hiển thị thực tế `(dispW, dispH)` theo `ContentScale.Fit` (fallback về kích thước container khi chưa có kích thước bitmap) và kẹp theo `maxX = ((dispW * scale - containerWidth) / 2f).coerceAtLeast(0f)`, `maxY = ((dispH * scale - containerHeight) / 2f).coerceAtLeast(0f)`.
+  - Cập nhật `computeCameraTransform` dùng `clampOffsetForFitContent` để biên dịch chuyển camera của cả tap-zoom lẫn `GUIDED_COLUMN` luôn bám sát mép ảnh hiển thị.
+- `ui/reader/PdfPagerReader.kt`:
+  - Trong `computeDoubleTapCamera`: khi có `cropRect` hợp lệ (`cropRect.width > 0f && cropRect.height > 0f`), quy đổi `pageRect` qua `PdfRegionNavigator.mapPageRectToCropSpace` trước khi gọi `computeCameraTransform`.
+  - Cập nhật `clampOffset` uỷ quyền qua `PdfRegionNavigator.clampOffsetForFitContent` và truyền kích thước bitmap hiện tại ở mọi điểm gọi (gesture pinch/pan trang PDF, fallback double-tap 2.2×, và `PdfReflowImageZoomOverlay` trừ phần padding 32 dp).
+- `test/.../reader/pdf/PdfRegionNavigatorTest.kt`:
+  - Thêm 4 unit test mới kiểm tra `mapPageRectToCropSpace` trên trang 2 cột có `autoCrop`, fallback khi `crop` suy biến/không giao nhau, và `clampOffsetForFitContent` chặn pan vào dải trống letterbox cũng như fallback khi chưa có bitmap.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **200/200 pass**, gồm **4/4** test mới trong `PdfRegionNavigatorTest`; `lintDebug`: **0 errors**).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 43 — M13 + M14: Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash).

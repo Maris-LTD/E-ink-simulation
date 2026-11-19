@@ -876,9 +876,20 @@ fun PdfPagerReader(
                         if (centroid.x.isFinite() && centroid.y.isFinite()) (centroid - center) * (1f - zoomFactor)
                         else Offset.Zero
                       val rawOffset = offset * zoomFactor + centroidDelta + pan
+                      val currentBmp = latestBitmap
                       val newOffset =
-                        if (newScale <= 1.01f) Offset.Zero
-                        else clampOffset(rawOffset, newScale, targetWidthPx, targetHeightPx)
+                        if (newScale <= 1.01f) {
+                          Offset.Zero
+                        } else {
+                          clampOffset(
+                            offset = rawOffset,
+                            scale = newScale,
+                            widthPx = targetWidthPx,
+                            heightPx = targetHeightPx,
+                            bitmapWidthPx = currentBmp?.width ?: 0,
+                            bitmapHeightPx = currentBmp?.height ?: 0,
+                          )
+                        }
                       val changed = abs(newScale - scale) > 0.001f || newOffset != offset
                       scale = if (newScale <= 1.01f) 1f else newScale
                       offset = newOffset
@@ -1076,6 +1087,8 @@ private fun PdfReflowImageZoomOverlay(
   var scale by remember { mutableFloatStateOf(1f) }
   var offset by remember { mutableStateOf(Offset.Zero) }
   var containerSize by remember { mutableStateOf(IntSize.Zero) }
+  val latestBitmap by rememberUpdatedState(bitmap)
+  val paddingPx = with(LocalDensity.current) { 32.dp.roundToPx() }
 
   val bgColor = Color(settings.tone.background)
   val inkColor = Color(settings.tone.text)
@@ -1106,9 +1119,19 @@ private fun PdfReflowImageZoomOverlay(
         .pointerInput(Unit) {
           detectTransformGestures { _, pan, zoom, _ ->
             val newScale = (scale * zoom).coerceIn(1f, 5f)
+            val currentBmp = latestBitmap
+            val availW = (containerSize.width - paddingPx).coerceAtLeast(1)
+            val availH = (containerSize.height - paddingPx).coerceAtLeast(1)
             val newOffset =
               if (newScale > 1f) {
-                clampOffset(offset + pan, newScale, containerSize.width, containerSize.height)
+                clampOffset(
+                  offset = offset + pan,
+                  scale = newScale,
+                  widthPx = availW,
+                  heightPx = availH,
+                  bitmapWidthPx = currentBmp?.width ?: 0,
+                  bitmapHeightPx = currentBmp?.height ?: 0,
+                )
               } else {
                 Offset.Zero
               }
@@ -1177,7 +1200,15 @@ private fun computeDoubleTapCamera(
       val rawNormY = ((tapOffset.y - imgTop) / dispH).coerceIn(0f, 1f)
       val normX = if (cropRect != null) (cropRect.left + rawNormX * cropRect.width).coerceIn(0f, 1f) else rawNormX
       val normY = if (cropRect != null) (cropRect.top + rawNormY * cropRect.height).coerceIn(0f, 1f) else rawNormY
-      PdfRegionNavigator.findTapTargetRect(pageAnalysis, normX, normY)
+      val pageRect = PdfRegionNavigator.findTapTargetRect(pageAnalysis, normX, normY)
+      if (pageRect != null && cropRect != null && cropRect.width > 0f && cropRect.height > 0f) {
+        PdfRegionNavigator.mapPageRectToCropSpace(
+          rect = pageRect,
+          crop = PdfRect(cropRect.left, cropRect.top, cropRect.right, cropRect.bottom),
+        )
+      } else {
+        pageRect
+      }
     } else {
       null
     }
@@ -1198,17 +1229,37 @@ private fun computeDoubleTapCamera(
       x = (centerX - tapOffset.x) * (targetScale - 1f),
       y = (centerY - tapOffset.y) * (targetScale - 1f),
     )
-  val clamped = clampOffset(rawOffset, targetScale, targetWidthPx, targetHeightPx)
+  val clamped =
+    clampOffset(
+      offset = rawOffset,
+      scale = targetScale,
+      widthPx = targetWidthPx,
+      heightPx = targetHeightPx,
+      bitmapWidthPx = bitmap?.width ?: 0,
+      bitmapHeightPx = bitmap?.height ?: 0,
+    )
   return CameraTransform(targetScale, clamped.x, clamped.y)
 }
 
-private fun clampOffset(offset: Offset, scale: Float, widthPx: Int, heightPx: Int): Offset {
-  val maxX = ((widthPx * (scale - 1f)) / 2f).coerceAtLeast(0f)
-  val maxY = ((heightPx * (scale - 1f)) / 2f).coerceAtLeast(0f)
-  return Offset(
-    x = offset.x.coerceIn(-maxX, maxX),
-    y = offset.y.coerceIn(-maxY, maxY),
-  )
+internal fun clampOffset(
+  offset: Offset,
+  scale: Float,
+  widthPx: Int,
+  heightPx: Int,
+  bitmapWidthPx: Int = 0,
+  bitmapHeightPx: Int = 0,
+): Offset {
+  val (clampedX, clampedY) =
+    PdfRegionNavigator.clampOffsetForFitContent(
+      offsetX = offset.x,
+      offsetY = offset.y,
+      scale = scale,
+      containerWidth = widthPx.toFloat(),
+      containerHeight = heightPx.toFloat(),
+      bitmapWidth = bitmapWidthPx.toFloat(),
+      bitmapHeight = bitmapHeightPx.toFloat(),
+    )
+  return Offset(x = clampedX, y = clampedY)
 }
 
 private suspend fun buildReflowMetas(analyses: List<PdfPageAnalysis>): List<ReflowPageMeta> {
