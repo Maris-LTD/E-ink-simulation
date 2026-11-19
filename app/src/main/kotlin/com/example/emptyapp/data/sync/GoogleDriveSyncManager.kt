@@ -1,5 +1,6 @@
 package com.example.emptyapp.data.sync
 
+import android.accounts.Account
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -11,9 +12,12 @@ import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.stats.ReadingStatsRepository
+import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.ClearTokenRequest
 import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.auth.api.identity.RevokeAccessRequest
 import com.google.android.gms.common.api.Scope
 import com.google.android.gms.tasks.Task
 import java.io.ByteArrayOutputStream
@@ -25,6 +29,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,7 +56,10 @@ sealed interface SyncActionResult {
   data class Error(val message: String) : SyncActionResult
 }
 
-class DriveRemoteReadException(message: String) : Exception(message)
+class DriveRemoteReadException(
+  message: String,
+  val statusCode: Int? = null,
+) : Exception(message)
 
 class DriveHttpException(val statusCode: Int, message: String) : Exception(message)
 
@@ -127,7 +135,11 @@ class GoogleDriveSyncManager(
   suspend fun signInAndSync(): SyncActionResult {
     state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_connecting)) }
     val authResult =
-      runCatching { authorizeScopes() }.getOrElse { err ->
+      try {
+        authorizeScopes()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (err: Throwable) {
         val msg = formatSyncError(err)
         state.update { it.copy(syncing = false, statusMessage = msg) }
         return SyncActionResult.Error(msg)
@@ -205,11 +217,13 @@ class GoogleDriveSyncManager(
 
   private suspend fun runBackgroundSyncOnce() {
     if (!state.value.isSignedIn) return
+    var needsReconnectUpdate = false
     val result =
-      runCatching {
+      try {
         val authResult = authorizeScopes()
         val token = authResult.accessToken
         if (authResult.hasResolution()) {
+          needsReconnectUpdate = true
           state.update {
             it.copy(
               needsReconnect = true,
@@ -218,14 +232,22 @@ class GoogleDriveSyncManager(
           }
           null
         } else if (!token.isNullOrBlank()) {
-          completeSyncWithToken(token, allowBookFiles = isUnmeteredNetwork())
+          completeSyncWithToken(
+            token = token,
+            allowBookFiles = isUnmeteredNetwork(),
+            isBackground = true,
+          )
         } else {
           null
         }
-      }.getOrNull()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+        null
+      }
     if (result is SyncActionResult.Synced) {
       consecutiveBackgroundFailures = 0
-    } else if (result is SyncActionResult.Error) {
+    } else if (needsReconnectUpdate || result is SyncActionResult.Error || result is SyncActionResult.NeedsConsent) {
       consecutiveBackgroundFailures = (consecutiveBackgroundFailures + 1).coerceAtMost(5)
     }
   }
@@ -237,13 +259,24 @@ class GoogleDriveSyncManager(
 
   fun signOut() {
     val wasSignedIn = state.value.isSignedIn
+    val accountEmail = state.value.email
     clearAccountState(statusMessage = null)
     if (!wasSignedIn) return
     backgroundScope.launch {
-      runCatching {
-        val authResult = authorizeScopes()
-        val token = authResult.accessToken
-        if (!authResult.hasResolution() && !token.isNullOrBlank()) revokeToken(token)
+      val authResult =
+        try {
+          authorizeScopes()
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Throwable) {
+          null
+        }
+      val token = authResult?.accessToken
+      if (authResult != null && !authResult.hasResolution() && !token.isNullOrBlank()) {
+        revokeAndClearSession(token, authResult, accountEmail)
+      } else {
+        if (!token.isNullOrBlank()) clearCachedAccessToken(token)
+        revokeClientAccess(authResult, accountEmail)
       }
     }
   }
@@ -280,191 +313,359 @@ class GoogleDriveSyncManager(
             statusMessage = str(R.string.sync_deleting_cloud),
           )
         }
-        runCatching {
-          val authResult = authorizeScopes()
-          val token = authResult.accessToken
-          if (authResult.hasResolution() || token.isNullOrBlank()) {
-            error(str(R.string.sync_no_token))
+        val initial =
+          when (val auth = authorizeForSignedInOperation()) {
+            is SignedInAuth.Ready -> auth
+            is SignedInAuth.EarlyReturn -> return@withContext auth.result
           }
-          val appDataFiles = listAppDataFiles(token)
-          for ((name, fileId) in appDataFiles) {
-            if (name.startsWith("book_${contentHash}.")) {
-              httpDeleteFile(token, fileId)
-            }
+        val outcome =
+          DriveAuthRetry.executeWithSingle401Retry(
+            initialToken = initial.token,
+            clearToken = ::clearCachedAccessToken,
+            authorize = { authorizeScopes().toTokenResponse() },
+          ) { activeToken ->
+            deleteBookWithToken(activeToken, contentHash)
           }
-          val syncFileId = appDataFiles[SYNC_FILE_NAME]
-          if (syncFileId != null) {
-            val remote = downloadSyncPayload(token, syncFileId)
-            tombstones.mergeRemote(remote.bookTombstones, remote.annotationTombstones)
-            val tombstoneSnapshot = tombstones.snapshot()
-            val updatedPayload =
-              SyncTombstoneMerger.withoutDeleted(
-                payload = remote,
-                deletedBookHashes = tombstones.deletedBookHashes(),
-                deletedAnnotationIds = tombstones.deletedAnnotationIds(),
-              ).copy(
-                updatedAt = System.currentTimeMillis(),
-                bookTombstones = tombstoneSnapshot.books,
-                annotationTombstones = tombstoneSnapshot.annotations,
-              )
-            val encoded = json.encodeToString(SyncPayload.serializer(), updatedPayload)
-            uploadSyncJson(token, syncFileId, encoded)
-            saveCloudBooks(updatedPayload.books)
-            state.update { it.copy(cloudBooks = updatedPayload.books) }
-          }
+        finishRetryOutcome(outcome) { updatedBooks, _ ->
           val label = title?.takeIf { it.isNotBlank() } ?: contentHash.take(8)
           val doneMsg = str(R.string.sync_book_deleted_cloud, label)
-          state.update { it.copy(syncing = false, statusMessage = doneMsg) }
-          SyncActionResult.Synced
-        }.getOrElse { err ->
-          val msg = formatSyncError(err)
           state.update {
             it.copy(
               syncing = false,
-              needsReconnect = it.needsReconnect || isAuthExpiredError(err),
-              statusMessage = msg,
+              needsReconnect = false,
+              cloudBooks = updatedBooks ?: it.cloudBooks,
+              statusMessage = doneMsg,
             )
           }
-          SyncActionResult.Error(msg)
         }
       }
     }
+
+  private suspend fun deleteBookWithToken(
+    token: String,
+    contentHash: String,
+  ): List<SyncedBookProgress>? {
+    val appDataFiles = listAppDataFiles(token)
+    for ((name, fileId) in appDataFiles) {
+      if (name.startsWith("book_${contentHash}.")) {
+        httpDeleteFile(token, fileId)
+      }
+    }
+    val syncFileId = appDataFiles[SYNC_FILE_NAME] ?: return null
+    val remote = downloadSyncPayload(token, syncFileId)
+    tombstones.mergeRemote(remote.bookTombstones, remote.annotationTombstones)
+    val tombstoneSnapshot = tombstones.snapshot()
+    val updatedPayload =
+      SyncTombstoneMerger.withoutDeleted(
+        payload = remote,
+        deletedBookHashes = tombstones.deletedBookHashes(),
+        deletedAnnotationIds = tombstones.deletedAnnotationIds(),
+      ).copy(
+        updatedAt = System.currentTimeMillis(),
+        bookTombstones = tombstoneSnapshot.books,
+        annotationTombstones = tombstoneSnapshot.annotations,
+      )
+    val encoded = json.encodeToString(SyncPayload.serializer(), updatedPayload)
+    uploadSyncJson(token, syncFileId, encoded)
+    saveCloudBooks(updatedPayload.books)
+    return updatedPayload.books
+  }
 
   suspend fun deleteAllCloudData(): SyncActionResult =
     mutex.withLock {
       withContext(Dispatchers.IO) {
         state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_deleting_cloud)) }
-        runCatching {
-          val authResult = authorizeScopes()
-          val token = authResult.accessToken
-          if (authResult.hasResolution() || token.isNullOrBlank()) {
-            error(str(R.string.sync_no_token))
+        val initial =
+          when (val auth = authorizeForSignedInOperation()) {
+            is SignedInAuth.Ready -> auth
+            is SignedInAuth.EarlyReturn -> return@withContext auth.result
           }
-          repeat(5) {
-            val files = listAppDataFiles(token)
-            if (files.isEmpty()) return@repeat
-            for ((_, fileId) in files) {
-              httpDeleteFile(token, fileId)
+        val accountEmail = state.value.email
+        var latestAuthResult = initial.authResult
+        val outcome =
+          DriveAuthRetry.executeWithSingle401Retry(
+            initialToken = initial.token,
+            clearToken = ::clearCachedAccessToken,
+            authorize = {
+              val auth = authorizeScopes()
+              latestAuthResult = auth
+              auth.toTokenResponse()
+            },
+          ) { activeToken ->
+            repeat(5) {
+              val files = listAppDataFiles(activeToken)
+              if (files.isEmpty()) return@repeat
+              for ((_, fileId) in files) {
+                httpDeleteFile(activeToken, fileId)
+              }
             }
           }
+        finishRetryOutcome(outcome) { _, usedToken ->
           tombstones.clear()
-          runCatching { revokeToken(token) }
+          revokeAndClearSession(usedToken, latestAuthResult, accountEmail)
           clearAccountState(statusMessage = str(R.string.sync_all_cloud_deleted))
-          SyncActionResult.Synced
-        }.getOrElse { err ->
-          val msg = formatSyncError(err)
-          state.update {
-            it.copy(
-              syncing = false,
-              needsReconnect = it.needsReconnect || isAuthExpiredError(err),
-              statusMessage = msg,
-            )
-          }
-          SyncActionResult.Error(msg)
         }
       }
     }
 
+  private data class SyncRunSummary(
+    val books: List<SyncedBookProgress>,
+    val failedBookUploads: Int,
+  )
+
   private suspend fun completeSyncWithToken(
     token: String,
     allowBookFiles: Boolean = true,
+    isBackground: Boolean = false,
   ): SyncActionResult =
     mutex.withLock {
       withContext(Dispatchers.IO) {
-        runCatching {
-          state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_syncing_drive)) }
-          if (state.value.email.isNullOrBlank()) {
-            runCatching { fetchUserProfile(token) }
+        state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_syncing_drive)) }
+        val outcome =
+          DriveAuthRetry.executeWithSingle401Retry(
+            initialToken = token,
+            clearToken = ::clearCachedAccessToken,
+            authorize = { authorizeScopes().toTokenResponse() },
+          ) { activeToken ->
+            syncOnceWithToken(activeToken, allowBookFiles)
           }
-          state.value.email?.let(tombstones::bindToAccount)
-          library.ensureContentHashes()
-
-          val rawAppDataFiles = listAppDataFiles(token)
-          val syncFileId = rawAppDataFiles[SYNC_FILE_NAME]
-          val rawRemote = syncFileId?.let { downloadSyncPayload(token, it) }
-          if (rawRemote != null) {
-            tombstones.mergeRemote(rawRemote.bookTombstones, rawRemote.annotationTombstones)
-          }
-          val deletedHashes = tombstones.deletedBookHashes()
-          val deletedAnnotationIds = tombstones.deletedAnnotationIds()
-          annotations.dropDeleted(deletedAnnotationIds)
-
-          for ((name, fileId) in rawAppDataFiles) {
-            if (deletedHashes.any { hash -> name.startsWith("book_${hash}.") }) {
-              httpDeleteFile(token, fileId)
-            }
-          }
-          val appDataFiles =
-            rawAppDataFiles.filterKeys { name ->
-              deletedHashes.none { hash -> name.startsWith("book_${hash}.") }
-            }
-          val remote =
-            rawRemote?.let { SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds) }
-
-          var failedBookUploads = 0
-          if (state.value.syncBookFiles && allowBookFiles) {
-            if (remote != null) {
-              downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes)
-            }
-            failedBookUploads = uploadMissingBooks(token, appDataFiles, deletedHashes)
-          }
-
-          if (remote != null) {
-            mergeRemoteIntoLocal(remote)
-          }
-
-          val mergedPayload = buildLocalPayload(remote, deletedHashes, deletedAnnotationIds)
-          val needsUpload =
-            syncFileId == null ||
-              remote == null ||
-              mergedPayload.copy(updatedAt = 0L) != remote.copy(updatedAt = 0L)
-          if (needsUpload) {
-            val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
-            uploadSyncJson(token, syncFileId, encoded)
-          }
-          saveCloudBooks(mergedPayload.books)
-          consecutiveBackgroundFailures = 0
-
+        finishRetryOutcome(outcome, isBackground = isBackground) { summary, _ ->
           val now = System.currentTimeMillis()
           prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
           val doneStatus =
-            if (failedBookUploads > 0) str(R.string.sync_partial_book_upload_failed, failedBookUploads)
-            else str(R.string.sync_success)
+            if (summary.failedBookUploads > 0) {
+              str(R.string.sync_partial_book_upload_failed, summary.failedBookUploads)
+            } else {
+              str(R.string.sync_success)
+            }
           state.update {
             it.copy(
               syncing = false,
               needsReconnect = false,
               lastSyncedAt = now,
-              cloudBooks = mergedPayload.books,
+              cloudBooks = summary.books,
               statusMessage = doneStatus,
             )
           }
-          SyncActionResult.Synced
-        }.getOrElse { err ->
-          val msg = formatSyncError(err)
-          state.update {
-            it.copy(
-              syncing = false,
-              needsReconnect = it.needsReconnect || isAuthExpiredError(err),
-              statusMessage = msg,
-            )
-          }
-          SyncActionResult.Error(msg)
         }
       }
     }
 
+  private suspend fun syncOnceWithToken(
+    token: String,
+    allowBookFiles: Boolean,
+  ): SyncRunSummary {
+    if (state.value.email.isNullOrBlank()) {
+      runCatching { fetchUserProfile(token) }
+    }
+    state.value.email?.let(tombstones::bindToAccount)
+    library.ensureContentHashes()
+
+    val rawAppDataFiles = listAppDataFiles(token)
+    val syncFileId = rawAppDataFiles[SYNC_FILE_NAME]
+    val rawRemote = syncFileId?.let { downloadSyncPayload(token, it) }
+    if (rawRemote != null) {
+      tombstones.mergeRemote(rawRemote.bookTombstones, rawRemote.annotationTombstones)
+    }
+    val deletedHashes = tombstones.deletedBookHashes()
+    val deletedAnnotationIds = tombstones.deletedAnnotationIds()
+    annotations.dropDeleted(deletedAnnotationIds)
+
+    for ((name, fileId) in rawAppDataFiles) {
+      if (deletedHashes.any { hash -> name.startsWith("book_${hash}.") }) {
+        httpDeleteFile(token, fileId)
+      }
+    }
+    val appDataFiles =
+      rawAppDataFiles.filterKeys { name ->
+        deletedHashes.none { hash -> name.startsWith("book_${hash}.") }
+      }
+    val remote =
+      rawRemote?.let { SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds) }
+
+    var failedBookUploads = 0
+    if (state.value.syncBookFiles && allowBookFiles) {
+      if (remote != null) {
+        downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes)
+      }
+      failedBookUploads = uploadMissingBooks(token, appDataFiles, deletedHashes)
+    }
+
+    if (remote != null) {
+      mergeRemoteIntoLocal(remote)
+    }
+
+    val mergedPayload = buildLocalPayload(remote, deletedHashes, deletedAnnotationIds)
+    val needsUpload =
+      syncFileId == null ||
+        remote == null ||
+        mergedPayload.copy(updatedAt = 0L) != remote.copy(updatedAt = 0L)
+    if (needsUpload) {
+      val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
+      uploadSyncJson(token, syncFileId, encoded)
+    }
+    saveCloudBooks(mergedPayload.books)
+    consecutiveBackgroundFailures = 0
+    return SyncRunSummary(books = mergedPayload.books, failedBookUploads = failedBookUploads)
+  }
+
+  private sealed interface SignedInAuth {
+    data class Ready(val authResult: AuthorizationResult, val token: String) : SignedInAuth
+    data class EarlyReturn(val result: SyncActionResult) : SignedInAuth
+  }
+
+  private suspend fun authorizeForSignedInOperation(): SignedInAuth {
+    val authResult =
+      try {
+        authorizeScopes()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (err: Throwable) {
+        val msg = formatSyncError(err)
+        state.update {
+          it.copy(
+            syncing = false,
+            needsReconnect = it.needsReconnect || isAuthExpiredError(err),
+            statusMessage = msg,
+          )
+        }
+        return SignedInAuth.EarlyReturn(SyncActionResult.Error(msg))
+      }
+
+    if (authResult.hasResolution()) {
+      val msg = str(R.string.sync_needs_reconnect)
+      state.update { it.copy(syncing = false, needsReconnect = true, statusMessage = msg) }
+      val early =
+        authResult.pendingIntent?.let(SyncActionResult::NeedsConsent)
+          ?: SyncActionResult.Error(msg)
+      return SignedInAuth.EarlyReturn(early)
+    }
+
+    val token = authResult.accessToken
+    if (token.isNullOrBlank()) {
+      val msg = str(R.string.sync_no_token)
+      state.update { it.copy(syncing = false, statusMessage = msg) }
+      return SignedInAuth.EarlyReturn(SyncActionResult.Error(msg))
+    }
+
+    return SignedInAuth.Ready(authResult, token)
+  }
+
+  private suspend fun <T> finishRetryOutcome(
+    outcome: TokenRetryOutcome<T, PendingIntent>,
+    isBackground: Boolean = false,
+    onSuccess: suspend (T, String) -> Unit,
+  ): SyncActionResult =
+    when (outcome) {
+      is TokenRetryOutcome.Succeeded -> {
+        onSuccess(outcome.value, outcome.tokenUsed)
+        SyncActionResult.Synced
+      }
+      is TokenRetryOutcome.NeedsResolution -> {
+        val msg = str(R.string.sync_needs_reconnect)
+        state.update {
+          it.copy(
+            syncing = false,
+            needsReconnect = true,
+            statusMessage = msg,
+          )
+        }
+        outcome.resolution?.let(SyncActionResult::NeedsConsent) ?: SyncActionResult.Error(msg)
+      }
+      is TokenRetryOutcome.Failed -> {
+        val msg =
+          if (isBackground && outcome.authExpired) str(R.string.sync_needs_reconnect)
+          else formatSyncError(outcome.error)
+        state.update {
+          it.copy(
+            syncing = false,
+            needsReconnect = it.needsReconnect || outcome.authExpired,
+            statusMessage = msg,
+          )
+        }
+        SyncActionResult.Error(msg)
+      }
+    }
+
+  private fun requestedScopes(): List<Scope> =
+    listOf(
+      Scope(SCOPE_DRIVE_APPDATA),
+      Scope(SCOPE_EMAIL),
+    )
+
   private suspend fun authorizeScopes(): AuthorizationResult {
     val request =
       AuthorizationRequest.builder()
-        .setRequestedScopes(
-          listOf(
-            Scope(SCOPE_DRIVE_APPDATA),
-            Scope(SCOPE_EMAIL),
-          ),
-        )
+        .setRequestedScopes(requestedScopes())
         .build()
     return Identity.getAuthorizationClient(appContext).authorize(request).await()
+  }
+
+  private fun AuthorizationResult.toTokenResponse(): AuthTokenResponse<PendingIntent> =
+    AuthTokenResponse(
+      accessToken = accessToken,
+      hasResolution = hasResolution(),
+      resolution = pendingIntent,
+    )
+
+  private suspend fun clearCachedAccessToken(token: String) {
+    if (token.isBlank()) return
+    withContext(Dispatchers.IO) {
+      try {
+        Identity.getAuthorizationClient(appContext)
+          .clearToken(ClearTokenRequest.builder().setToken(token).build())
+          .await()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+      }
+      try {
+        GoogleAuthUtil.clearToken(appContext, token)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+      }
+    }
+  }
+
+  private suspend fun revokeClientAccess(
+    authResult: AuthorizationResult?,
+    accountEmail: String?,
+  ) {
+    val account =
+      authResult?.toGoogleSignInAccount()?.account
+        ?: accountEmail?.takeIf { it.isNotBlank() }?.let { Account(it, GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE) }
+        ?: return
+    withContext(Dispatchers.IO) {
+      try {
+        val request =
+          RevokeAccessRequest.builder()
+            .setScopes(requestedScopes())
+            .setAccount(account)
+            .build()
+        Identity.getAuthorizationClient(appContext).revokeAccess(request).await()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+      }
+    }
+  }
+
+  private suspend fun revokeAndClearSession(
+    token: String,
+    authResult: AuthorizationResult?,
+    accountEmail: String?,
+  ) {
+    if (token.isNotBlank()) {
+      try {
+        revokeToken(token)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+      }
+      clearCachedAccessToken(token)
+    }
+    revokeClientAccess(authResult, accountEmail)
   }
 
   private fun fetchUserProfile(token: String) {
@@ -642,21 +843,24 @@ class GoogleDriveSyncManager(
       val driveFileId = appDataFiles[driveFileName] ?: continue
       state.update { it.copy(statusMessage = str(R.string.sync_downloading_book, remoteBook.title)) }
       val tempFile = File(appContext.cacheDir, "sync_${remoteBook.contentHash}.tmp")
-      val downloaded = downloadFileTo(token, driveFileId, tempFile)
-      if (downloaded) {
-        library.importFromSyncedFile(
-          tempFile = tempFile,
-          title = remoteBook.title,
-          author = remoteBook.author,
-          format = remoteBook.format,
-          contentHash = remoteBook.contentHash,
-          progress = remoteBook.progress,
-          lastLocatorJson = remoteBook.lastLocatorJson,
-          updatedAt = remoteBook.updatedAt,
-        )
-        localHashes += remoteBook.contentHash
+      try {
+        val downloaded = downloadFileTo(token, driveFileId, tempFile)
+        if (downloaded) {
+          library.importFromSyncedFile(
+            tempFile = tempFile,
+            title = remoteBook.title,
+            author = remoteBook.author,
+            format = remoteBook.format,
+            contentHash = remoteBook.contentHash,
+            progress = remoteBook.progress,
+            lastLocatorJson = remoteBook.lastLocatorJson,
+            updatedAt = remoteBook.updatedAt,
+          )
+          localHashes += remoteBook.contentHash
+        }
+      } finally {
+        tempFile.delete()
       }
-      tempFile.delete()
     }
   }
 
@@ -676,8 +880,11 @@ class GoogleDriveSyncManager(
         continue
       }
       state.update { it.copy(statusMessage = str(R.string.sync_uploading_book, book.title)) }
-      val uploaded = runCatching { uploadBinaryFileToAppData(token, driveFileName, localFile) }.isSuccess
-      if (!uploaded) failedCount++
+      val uploadErr = runCatching { uploadBinaryFileToAppData(token, driveFileName, localFile) }.exceptionOrNull()
+      if (uploadErr != null) {
+        if (isAuthExpiredError(uploadErr)) throw uploadErr
+        failedCount++
+      }
     }
     return failedCount
   }
@@ -691,11 +898,15 @@ class GoogleDriveSyncManager(
         setRequestProperty("Authorization", "Bearer $token")
       }
     return try {
-      if (conn.responseCode !in 200..299) return false
+      val code = conn.responseCode
+      if (code == 401) throw DriveHttpException(401, "HTTP 401")
+      if (code !in 200..299) return false
       conn.inputStream.use { input ->
         target.outputStream().use { output -> input.copyTo(output) }
       }
       true
+    } catch (e: DriveHttpException) {
+      throw e
     } catch (_: Exception) {
       false
     } finally {
@@ -745,8 +956,8 @@ class GoogleDriveSyncManager(
       .getOrElse { throw remoteReadError("parse") }
   }
 
-  private fun remoteReadError(reason: String): DriveRemoteReadException =
-    DriveRemoteReadException(str(R.string.sync_remote_read_failed, reason))
+  private fun remoteReadError(reason: String, statusCode: Int? = null): DriveRemoteReadException =
+    DriveRemoteReadException(str(R.string.sync_remote_read_failed, reason), statusCode)
 
   private fun uploadSyncJson(token: String, existingFileId: String?, jsonBody: String) {
     if (existingFileId == null) {
@@ -802,7 +1013,11 @@ class GoogleDriveSyncManager(
         setRequestProperty("Authorization", "Bearer $token")
       }
     return try {
-      conn.responseCode in 200..299 || conn.responseCode == 404
+      val code = conn.responseCode
+      if (code == 401) throw DriveHttpException(401, "HTTP 401")
+      code in 200..299 || code == 404
+    } catch (e: DriveHttpException) {
+      throw e
     } catch (_: Exception) {
       false
     } finally {
@@ -838,15 +1053,14 @@ class GoogleDriveSyncManager(
     return try {
       val code = conn.responseCode
       if (code == 401) throw DriveHttpException(401, "HTTP 401")
-      if (code !in 200..299) throw remoteReadError("HTTP $code")
+      if (code !in 200..299) throw remoteReadError("HTTP $code", statusCode = code)
       conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
     } finally {
       conn.disconnect()
     }
   }
 
-  private fun isAuthExpiredError(err: Throwable): Boolean =
-    err is DriveHttpException && err.statusCode == 401
+  private fun isAuthExpiredError(err: Throwable): Boolean = DriveAuthRetry.isAuthExpiredError(err)
 
   private fun formatSyncError(err: Throwable): String =
     when (err) {

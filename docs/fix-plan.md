@@ -50,7 +50,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 32. Lint gate — sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission` (`areNotificationsEnabled`); `bundle.language.enableSplit = false`; kiểm `bcpkix` TrustAll có còn trong APK release; `HardcodedText` "‹ ›", `SmallSp` widget, dọn `UnusedResources` → `lintDebug` xanh
 
 ### 5B — Đồng bộ Google Drive & an toàn dữ liệu
-- [ ] 33. H2 — `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần (cân nhắc nâng `play-services-auth` ≥ 21.4.0: `clearToken` / `revokeAccess`)
+- [x] 33. H2 — `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần (cân nhắc nâng `play-services-auth` ≥ 21.4.0: `clearToken` / `revokeAccess`)
 - [ ] 34. M3 + M4 — Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi
 - [ ] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
 - [ ] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
@@ -640,3 +640,26 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** các mục `PluralsCandidate` và `ConstantLocale` sẽ được xử lý ở Story 55 (L24 + L25).
 
 **Bước tiếp theo:** mục 33 — H2: `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần.
+
+### 33. H2 — `clearToken` sau revoke, phát hiện 401 & tự động `authorize()` lại 1 lần — 2026-11-19
+**Nguyên nhân:**
+- `signOut` và `deleteAllCloudData` chỉ thu hồi token qua HTTP POST tới `oauth2.googleapis.com/revoke` mà không xoá token khỏi cache cục bộ của Google Play Services (`clearToken` / `revokeAccess`). Khi đăng nhập lại, `AuthorizationClient.authorize()` tiếp tục trả về token đã chết từ cache mà không có `hasResolution()`, gây vòng lặp HTTP 401 → `needsReconnect` → "Kết nối lại" vẫn nhận lại chính token cũ.
+- Khi các thao tác Drive (`completeSyncWithToken`, `deleteBookFromCloud`, `deleteAllCloudData`, `runBackgroundSyncOnce`) gặp 401 — kể cả ở `httpDeleteFile`, `downloadFileTo`, hoặc `uploadBinaryFileToAppData` — app chưa xoá token chết và chưa thử `authorize()` lại để lấy token mới hoặc `pendingIntent` xin cấp quyền lại.
+
+**Đã sửa:**
+- `gradle/libs.versions.toml`: nâng `playServicesAuth` từ `21.3.0` lên `21.4.0` (bổ sung `AuthorizationClient.clearToken(ClearTokenRequest)` và `AuthorizationClient.revokeAccess(RevokeAccessRequest)`).
+- Mới `data/sync/DriveAuthRetry.kt`:
+  - `DriveAuthRetry.isAuthExpiredError`: nhận diện `DriveHttpException(401)` và `DriveRemoteReadException(statusCode = 401)` (gồm cả chuỗi `cause`), đồng thời giữ `statusCode` trên `DriveRemoteReadException`.
+  - `DriveAuthRetry.executeWithSingle401Retry`: khi thao tác gặp 401 thì gọi `clearToken` cho token lỗi, gọi `authorize()` lại đúng **1 lần**, trả về `NeedsResolution` nếu cần cấp quyền lại, từ chối retry nếu token mới rỗng hoặc trùng token cũ, và thử chạy lại thao tác với token mới tối đa **1 lần** (nếu lần 2 vẫn 401 thì xoá nốt token mới và báo `authExpired`).
+- `data/sync/GoogleDriveSyncManager.kt`:
+  - Thêm `clearCachedAccessToken(token)` (gọi `AuthorizationClient.clearToken(ClearTokenRequest)` kết hợp fallback `GoogleAuthUtil.clearToken(appContext, token)` trên `Dispatchers.IO`, bọc bắt lỗi giữ `CancellationException`), `revokeClientAccess` (`AuthorizationClient.revokeAccess` với `Account` và scopes đang dùng), và `revokeAndClearSession`.
+  - `signOut()` và `deleteAllCloudData()` sau khi revoke đều gọi `clearCachedAccessToken` và `revokeClientAccess` (đối với `deleteAllCloudData()`, thu hồi/xoá đúng `usedToken` vừa dùng nếu vừa retry 401 thành công).
+  - Áp dụng `executeWithSingle401Retry` cho `completeSyncWithToken` (cả foreground `signInAndSync`/`handleConsentResult` và `runBackgroundSyncOnce`), `deleteBookFromCloud`, `deleteAllCloudData`: khi `authorize()` trả về `hasResolution()` thì bật `needsReconnect = true`, đặt `statusMessage = sync_needs_reconnect` và trả `NeedsConsent(pendingIntent)` ở thao tác foreground; ở background sync đặt `needsReconnect = true`, `sync_needs_reconnect` và tăng backoff.
+  - Cập nhật `httpDeleteFile`, `downloadFileTo` (kèm `try/finally` dọn file tạm ở `downloadMissingBooks`) và `uploadMissingBooks` ném `DriveHttpException(401, ...)` / propagate 401 thay vì nuốt mất mã 401.
+- Mới `test/.../data/sync/DriveAuthRetryTest.kt`: 11 unit test bao phủ nhận diện 401 (`DriveHttpException`, `DriveRemoteReadException`, `cause`), không retry khi không phải 401, clear + `authorize()` + retry tối đa 1 lần, dừng ở lần 401 thứ hai, trả `NeedsResolution`, chặn retry khi token trùng/rỗng, xử lý lỗi `clearToken`/`authorize`, và rethrow `CancellationException`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **93/93 pass**, gồm **11/11** test mới trong `DriveAuthRetryTest`; `lintDebug`: **0 errors**). Kiểm tra tay đề nghị: đăng xuất rồi đăng nhập lại ngay và đồng bộ; thu hồi quyền tại `myaccount.google.com` rồi bấm Sync → hiện "Kết nối lại" và mở màn hình cấp quyền mới.
+
+**Còn để lại:** đồng bộ kiểm tra email/`sub` trước khi ghi và dọn logic `signOut`/`wipe` giữ `mutex` trước `Identity.signOut` sẽ xử lý tiếp ở mục 34 (M3 + M4) và mục 35 (M5 + L4).
+
+**Bước tiếp theo:** mục 34 — M3 + M4: Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi.
