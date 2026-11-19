@@ -151,42 +151,66 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
     progress: Float,
     lastLocatorJson: String?,
     updatedAt: Long,
-  ): Boolean {
-    if (state.value.any { it.contentHash == contentHash }) return false
-    val id = UUID.randomUUID().toString()
-    val fileName = "$id.${format.extension}"
-    val target = File(booksDir, fileName)
-    val coverName = "$id.jpg"
-    val coverFile = File(coversDir, coverName)
-    val hasCover =
-      withContext(Dispatchers.IO) {
-        booksDir.mkdirs()
-        tempFile.inputStream().use { input ->
-          target.outputStream().use { output -> input.copyTo(output) }
-        }
-        val pub = if (format == BookFormat.PDF) null else engine.open(target).getOrNull()
-        val extracted = CoverExtractor.extract(target, format, pub, coverFile)
-        pub?.close()
-        extracted
+  ): Boolean =
+    withContext(Dispatchers.IO) {
+      val result =
+        SyncedBookFileImporter.importSyncedBook(
+          sourceFile = tempFile,
+          booksDir = booksDir,
+          coversDir = coversDir,
+          title = title,
+          author = author,
+          format = format,
+          expectedContentHash = contentHash,
+          progress = progress,
+          lastLocatorJson = lastLocatorJson,
+          updatedAt = updatedAt,
+          isDuplicateHash = { hash ->
+            state.value.any { it.contentHash?.equals(hash, ignoreCase = true) == true }
+          },
+          verifyAndExtractCover = { bookFile, coverFile ->
+            val pub =
+              if (format == BookFormat.PDF) {
+                null
+              } else {
+                engine.open(bookFile).getOrThrow()
+              }
+            try {
+              try {
+                CoverExtractor.extract(bookFile, format, pub, coverFile)
+              } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+              } catch (_: Throwable) {
+                coverFile.delete()
+                false
+              }
+            } finally {
+              try {
+                pub?.close()
+              } catch (_: Throwable) {
+              }
+            }
+          },
+          commitEntry = { entry ->
+            var added = false
+            commit { list ->
+              val exists = list.any { it.contentHash?.equals(entry.contentHash, ignoreCase = true) == true }
+              if (exists) {
+                list
+              } else {
+                added = true
+                list + entry
+              }
+            }
+            added
+          },
+        )
+      when (result) {
+        is SyncedBookImportResult.Imported -> true
+        SyncedBookImportResult.Duplicate -> false
+        is SyncedBookImportResult.Failed -> throw result.error
       }
-    val entry =
-      BookEntry(
-        id = id,
-        title = title,
-        author = author,
-        fileName = fileName,
-        format = format,
-        coverFileName = if (hasCover) coverName else null,
-        lastLocatorJson = lastLocatorJson,
-        progress = progress,
-        contentHash = contentHash,
-        updatedAt = updatedAt,
-      )
-    commit { list ->
-      if (list.any { it.contentHash == contentHash }) list else list + entry
     }
-    return true
-  }
 
   private suspend fun commit(transform: (List<BookEntry>) -> List<BookEntry>) {
     writeMutex.withLock {

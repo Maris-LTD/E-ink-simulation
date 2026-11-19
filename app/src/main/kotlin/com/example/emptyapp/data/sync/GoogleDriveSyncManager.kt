@@ -589,6 +589,7 @@ class GoogleDriveSyncManager(
 
   private data class SyncRunSummary(
     val books: List<SyncedBookProgress>,
+    val failedBookDownloads: Int,
     val failedBookUploads: Int,
   )
 
@@ -628,9 +629,10 @@ class GoogleDriveSyncManager(
             if (!isSessionActive(expectedGeneration, requireSignedIn = isBackground)) return@finishRetryOutcome
             val now = System.currentTimeMillis()
             prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
+            val totalFailedBookFiles = summary.failedBookDownloads + summary.failedBookUploads
             val doneStatus =
-              if (summary.failedBookUploads > 0) {
-                str(R.string.sync_partial_book_upload_failed, summary.failedBookUploads)
+              if (totalFailedBookFiles > 0) {
+                str(R.string.sync_partial_book_upload_failed, totalFailedBookFiles)
               } else {
                 str(R.string.sync_success)
               }
@@ -704,10 +706,12 @@ class GoogleDriveSyncManager(
         SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds).canonicalized()
       }
 
+    var failedBookDownloads = 0
     var failedBookUploads = 0
     if (state.value.syncBookFiles && allowBookFiles) {
       if (remote != null) {
-        downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes, expectedGeneration, isBackground)
+        failedBookDownloads =
+          downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes, expectedGeneration, isBackground)
       }
       failedBookUploads = uploadMissingBooks(token, appDataFiles, deletedHashes, expectedGeneration, isBackground)
     }
@@ -750,7 +754,11 @@ class GoogleDriveSyncManager(
     ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     saveCloudBooks(uploadResult.payload.books)
     consecutiveBackgroundFailures = 0
-    return SyncRunSummary(books = uploadResult.payload.books, failedBookUploads = failedBookUploads)
+    return SyncRunSummary(
+      books = uploadResult.payload.books,
+      failedBookDownloads = failedBookDownloads,
+      failedBookUploads = failedBookUploads,
+    )
   }
 
   private fun isSessionActive(expectedGeneration: Long, requireSignedIn: Boolean): Boolean =
@@ -1180,21 +1188,23 @@ class GoogleDriveSyncManager(
     deletedHashes: Set<String>,
     expectedGeneration: Long,
     isBackground: Boolean,
-  ) {
-    val localHashes = library.books.value.mapNotNull { it.contentHash }.toHashSet()
-    for (remoteBook in remoteBooks) {
-      ensureSessionActive(expectedGeneration, isBackground)
-      if (remoteBook.contentHash in localHashes || remoteBook.contentHash in deletedHashes) continue
-      val driveFileName = bookDriveFileName(remoteBook.contentHash, remoteBook.format.extension)
-      val driveFileId = appDataFiles[driveFileName] ?: continue
-      updateStateIfActive(expectedGeneration, isBackground) {
-        it.copy(statusMessage = str(R.string.sync_downloading_book, remoteBook.title))
-      }
-      val tempFile = File(appContext.cacheDir, "sync_${remoteBook.contentHash}.tmp")
-      try {
-        val downloaded = downloadFileTo(token, driveFileId, tempFile)
-        if (downloaded) {
-          ensureSessionActive(expectedGeneration, isBackground)
+  ): Int {
+    val summary =
+      DriveBookDownloadCoordinator.downloadMissingBooks(
+        remoteBooks = remoteBooks,
+        appDataFiles = appDataFiles,
+        initialLocalHashes = library.books.value.mapNotNull { it.contentHash }.toSet(),
+        deletedHashes = deletedHashes,
+        tempDir = File(appContext.filesDir, "sync_tmp"),
+        bookDriveFileName = ::bookDriveFileName,
+        ensureSessionActive = { ensureSessionActive(expectedGeneration, isBackground) },
+        onBookStarting = { remoteBook ->
+          updateStateIfActive(expectedGeneration, isBackground) {
+            it.copy(statusMessage = str(R.string.sync_downloading_book, remoteBook.title))
+          }
+        },
+        downloadFileTo = { driveFileId, tempFile -> downloadFileTo(token, driveFileId, tempFile) },
+        importSyncedFile = { tempFile, remoteBook ->
           library.importFromSyncedFile(
             tempFile = tempFile,
             title = remoteBook.title,
@@ -1205,12 +1215,9 @@ class GoogleDriveSyncManager(
             lastLocatorJson = remoteBook.lastLocatorJson,
             updatedAt = remoteBook.updatedAt,
           )
-          localHashes += remoteBook.contentHash
-        }
-      } finally {
-        tempFile.delete()
-      }
-    }
+        },
+      )
+    return summary.failedCount
   }
 
   private fun uploadMissingBooks(

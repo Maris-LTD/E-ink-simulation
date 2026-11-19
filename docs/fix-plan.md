@@ -54,7 +54,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 34. M3 + M4 — Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi
 - [x] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
 - [x] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
-- [ ] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
+- [x] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
 - [ ] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
 - [ ] 39. M9 + L2 + L8 — Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`
 - [ ] 40. L5 + L7 + L9 + L22 (`updatedAt`) — Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ
@@ -738,3 +738,30 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 37 — M7: Tải/import sách từ cloud (`runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy).
+
+### 37. M7 — Tải/import sách từ cloud: cô lập lỗi từng sách, kiểm SHA-256, `renameTo` thay copy & dọn file rác trong `finally` — 2026-11-19
+**Nguyên nhân:**
+- Trong `GoogleDriveSyncManager.downloadMissingBooks`, `library.importFromSyncedFile` không được bọc cô lập theo từng sách: chỉ cần 1 sách tải về bị lỗi (đầy đĩa, file hỏng trên Drive, hoặc `OutOfMemoryError` khi trích xuất cover CBZ/PDF lớn) là thoát cả phiên sync trước khi merge tiến độ/annotation và upload `SyncPayload`; lần sync sau lại thử đúng cuốn đó gây kẹt vĩnh viễn.
+- `tempFile` đặt ở `cacheDir` (có thể khác mount/filesystem với `filesDir/books`) và `importFromSyncedFile` copy toàn bộ nội dung sang `books/<id>.<ext>` (tốn gấp đôi dung lượng đĩa trên file tới 100 MB).
+- `LibraryRepository.importFromSyncedFile` không kiểm tra SHA-256 của file tải về so với `contentHash` mong đợi, không dọn `target` (`books/<id>`) và `coverFile` (`covers/<id>.jpg`) trong `finally` khi mở sách/commit thất bại hoặc khi đụng trùng `contentHash` lúc commit, và lỗi trích xuất cover có thể làm hỏng cả việc import sách.
+
+**Đã sửa:**
+- Mới `data/book/SyncedBookFileImporter.kt`:
+  - `importSyncedBook(...)`: kiểm tra `sourceFile` tồn tại/không rỗng, kiểm tra trùng `contentHash` (không phân biệt hoa/thường) **trước** khi tạo `destFile` hoặc trích xuất cover, tính `BookImporter.sha256Hex(sourceFile)` và đối chiếu với `expectedContentHash` (nếu lệch thì trả `Failed(IOException("SHA-256 mismatch..."))` và xoá sạch `sourceFile`).
+  - `moveFileToTarget(sourceFile, targetFile)`: dùng `sourceFile.renameTo(targetFile)` để di chuyển atomic trên cùng filesystem, kèm fallback `copyTo` + `fd.sync()` + `sourceFile.delete()` nếu `renameTo` trả `false`.
+  - Trong khối `finally`: luôn xoá `sourceFile`, và nếu `!committed` (lỗi mở sách, lỗi commit, huỷ coroutine, hoặc phát hiện trùng hash ở bước commit cuối) thì luôn xoá sạch cả `targetFile` lẫn `coverFile` để không bao giờ để lại file mồ côi.
+- `data/book/LibraryRepository.kt`, `data/book/BookImporter.kt`, `data/book/CoverExtractor.kt`:
+  - `CoverExtractor.extract` bắt mọi `Throwable` (kể cả `OutOfMemoryError`, nhưng rethrow `CancellationException`), xoá `targetFile` dở dang và trả `false`.
+  - `LibraryRepository.importFromSyncedFile` uỷ quyền qua `SyncedBookFileImporter.importSyncedBook`: kiểm tra `engine.open(bookFile).getOrThrow()` với EPUB/CBZ để từ chối file hỏng, nhưng bọc riêng `CoverExtractor.extract` sao cho lỗi cover chỉ đặt `coverFileName = null` chứ không làm hỏng import sách.
+  - `BookImporter.import` cũng bọc riêng bước trích xuất cover để lỗi cover không làm thất bại việc nhập sách hợp lệ.
+- Mới `data/sync/DriveBookDownloadCoordinator.kt` & cập nhật `data/sync/GoogleDriveSyncManager.kt`, `res/xml/data_extraction_rules.xml`:
+  - Đặt `tempFile` trong `File(appContext.filesDir, "sync_tmp")` (cùng partition với `filesDir/books` để `renameTo` luôn atomic; thêm `exclude domain="file" path="sync_tmp/"` trong `data_extraction_rules.xml`).
+  - Bọc tải + kiểm SHA-256 + `importFromSyncedFile` của từng sách trong `try ... catch ... finally`: rethrow `CancellationException`, `SyncSessionInvalidatedException` và lỗi 401 (`DriveAuthRetry.isAuthExpiredError(err)`), đếm `failedCount` cho mọi lỗi tải/hash/import khác rồi tiếp tục các sách còn lại và hoàn tất merge/upload `SyncPayload`; luôn xoá `tempFile` trong `finally`.
+  - Gộp `failedBookDownloads + failedBookUploads` trong `SyncRunSummary` để hiển thị thông báo `sync_partial_book_upload_failed` khi có file sách tải hoặc tải lên thất bại.
+- Mới `test/.../data/book/SyncedBookFileImporterTest.kt` (7 tests) và `test/.../data/sync/DriveBookDownloadCoordinatorTest.kt` (5 tests): kiểm tra SHA-256 khớp/lệch, kiểm trùng trước khi tạo file, fallback `moveFileToTarget`, dọn sạch `tempFile`/`destFile`/`coverFile` khi lỗi mở sách hoặc trùng lúc commit, vẫn import được sách khi lỗi cover/OOM, cô lập lỗi từng sách trên cloud và rethrow 401/cancel/session invalidated.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **150/150 pass**, gồm **12/12** test mới trong `SyncedBookFileImporterTest` và `DriveBookDownloadCoordinatorTest`; `lintDebug`: **0 errors**).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 38 — M8 + L10: Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized, xoá cloud gặp `hasResolution()` bật `needsReconnect`.

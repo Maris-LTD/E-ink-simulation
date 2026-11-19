@@ -49,7 +49,15 @@ class BookImporter(
       val coverName = "$id.jpg"
       val coverFile = File(coversDir, coverName)
       try {
-        val hasCover = CoverExtractor.extract(target, format, publication, coverFile)
+        val hasCover =
+          try {
+            CoverExtractor.extract(target, format, publication, coverFile)
+          } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+          } catch (_: Throwable) {
+            coverFile.delete()
+            false
+          }
         val entry =
           BookEntry(
             id = id,
@@ -57,11 +65,15 @@ class BookImporter(
             author = publication.metadata.authors.joinToString { it.name },
             fileName = fileName,
             format = format,
-            coverFileName = if (hasCover) coverName else null,
+            coverFileName = if (hasCover && coverFile.exists()) coverName else null,
             contentHash = contentHash,
             updatedAt = System.currentTimeMillis(),
           )
         Result.success(entry)
+      } catch (e: kotlinx.coroutines.CancellationException) {
+        target.delete()
+        coverFile.delete()
+        throw e
       } catch (t: Throwable) {
         target.delete()
         coverFile.delete()
