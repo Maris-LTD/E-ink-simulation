@@ -76,6 +76,8 @@ class GoogleDriveSyncManager(
   private val appContext = context.applicationContext
   private fun str(resId: Int): String = LocaleHelper.wrap(appContext).getString(resId)
   private fun str(resId: Int, vararg args: Any): String = LocaleHelper.wrap(appContext).getString(resId, *args)
+  private fun plural(resId: Int, quantity: Int, vararg args: Any): String =
+    LocaleHelper.wrap(appContext).resources.getQuantityString(resId, quantity, *args)
   private val prefs = appContext.getSharedPreferences("eink_google_sync", Context.MODE_PRIVATE)
   private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private val mutex = Mutex()
@@ -694,7 +696,7 @@ class GoogleDriveSyncManager(
             val totalFailedBookFiles = summary.failedBookDownloads + summary.failedBookUploads
             val doneStatus =
               if (totalFailedBookFiles > 0) {
-                str(R.string.sync_partial_book_upload_failed, totalFailedBookFiles)
+                plural(R.plurals.sync_partial_book_upload_failed, totalFailedBookFiles, totalFailedBookFiles)
               } else {
                 str(R.string.sync_success)
               }

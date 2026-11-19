@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
 import com.example.emptyapp.reader.AppLanguage
+import java.text.Collator
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 object LocaleHelper {
@@ -25,6 +28,23 @@ object LocaleHelper {
         if (sysLocale.language.equals("vi", ignoreCase = true)) "vi" else "en"
       }
     }
+
+  fun effectiveLocale(context: Context): Locale =
+    if (effectiveLanguageCode(context) == "en") Locale.ENGLISH else Locale.forLanguageTag("vi-VN")
+
+  fun formatClockTime(
+    time: LocalDateTime,
+    is24Hour: Boolean,
+    locale: Locale,
+  ): String {
+    val pattern = if (is24Hour) "HH:mm" else "h:mm a"
+    return time.format(DateTimeFormatter.ofPattern(pattern, locale))
+  }
+
+  fun nameComparator(locale: Locale): Comparator<String> {
+    val collator = Collator.getInstance(locale).apply { strength = Collator.SECONDARY }
+    return Comparator { a, b -> collator.compare(a, b) }
+  }
 
   @SuppressLint("AppBundleLocaleChanges")
   fun wrap(base: Context): Context {

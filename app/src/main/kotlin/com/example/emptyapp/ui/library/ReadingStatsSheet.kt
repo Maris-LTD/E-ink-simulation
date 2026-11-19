@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -84,8 +85,8 @@ import com.example.emptyapp.data.sync.SyncedBookProgress
 import com.example.emptyapp.system.EInkWallpaperService
 import com.example.emptyapp.ui.eink.EInkText
 import java.text.SimpleDateFormat
-import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.format.TextStyle
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -607,14 +608,14 @@ internal fun buildSevenDayChartAccessibilityDescription(
   chartSubtitle: String,
   weekSeries: List<DailyReadingStat>,
   minUnit: String,
-  isEn: Boolean,
+  locale: Locale,
 ): String {
   val header = "$chartTitle. $chartSubtitle"
   if (weekSeries.isEmpty()) return header
   val dayEntries =
     weekSeries.joinToString(", ") { stat ->
       val minutes = stat.secondsRead / 60
-      val weekday = shortWeekdayLabel(stat.date, isEn)
+      val weekday = shortWeekdayLabel(stat.date, locale)
       "$weekday: $minutes$minUnit"
     }
   return "$header. $dayEntries"
@@ -641,18 +642,19 @@ private fun SevenDayBarChartCard(
   pagesPerHour: Int,
 ) {
   val maxMinutes = maxOf(goalMinutes, weekSeries.maxOfOrNull { it.secondsRead / 60 } ?: 0, 1)
-  val isEn = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(LocalContext.current) == "en"
-  val minUnit = if (isEn) "m" else "p"
+  val context = LocalContext.current
+  val appLocale = remember(context) { com.example.emptyapp.LocaleHelper.effectiveLocale(context) }
+  val minUnit = stringResource(R.string.stats_unit_minute_short)
   val chartTitle = stringResource(R.string.stats_chart_7d)
-  val chartSubtitle = stringResource(R.string.stats_chart_7d_sub, avgMinutes7d, pagesPerHour)
+  val chartSubtitle = pluralStringResource(R.plurals.stats_chart_7d_sub, pagesPerHour, avgMinutes7d, pagesPerHour)
   val chartA11yDesc =
-    remember(chartTitle, chartSubtitle, weekSeries, minUnit, isEn) {
+    remember(chartTitle, chartSubtitle, weekSeries, minUnit, appLocale) {
       buildSevenDayChartAccessibilityDescription(
         chartTitle = chartTitle,
         chartSubtitle = chartSubtitle,
         weekSeries = weekSeries,
         minUnit = minUnit,
-        isEn = isEn,
+        locale = appLocale,
       )
     }
   Column(
@@ -714,7 +716,7 @@ private fun SevenDayBarChartCard(
           }
           Spacer(modifier = Modifier.height(6.dp))
           EInkText(
-            text = shortWeekdayLabel(stat.date, isEn),
+            text = shortWeekdayLabel(stat.date, appLocale),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.secondary,
           )
@@ -735,7 +737,7 @@ private fun ReadingHeatmapCard(
   val border = MaterialTheme.colorScheme.outlineVariant
   val weeks = days.chunked(7)
   val heatmapTitle = stringResource(R.string.stats_heatmap_12w)
-  val activeDaysSummary = stringResource(R.string.stats_heatmap_days, activeDaysCount)
+  val activeDaysSummary = pluralStringResource(R.plurals.stats_heatmap_days, activeDaysCount, activeDaysCount)
   val heatmapA11yDesc =
     remember(heatmapTitle, activeDaysSummary, days, goalSeconds) {
       buildHeatmapAccessibilityDescription(
@@ -817,29 +819,9 @@ private fun heatmapCellColor(
   }
 }
 
-private fun shortWeekdayLabel(isoDate: String, isEn: Boolean = false): String {
+internal fun shortWeekdayLabel(isoDate: String, locale: Locale): String {
   val date = runCatching { LocalDate.parse(isoDate) }.getOrNull() ?: return isoDate
-  return if (isEn) {
-    when (date.dayOfWeek) {
-      DayOfWeek.MONDAY -> "Mon"
-      DayOfWeek.TUESDAY -> "Tue"
-      DayOfWeek.WEDNESDAY -> "Wed"
-      DayOfWeek.THURSDAY -> "Thu"
-      DayOfWeek.FRIDAY -> "Fri"
-      DayOfWeek.SATURDAY -> "Sat"
-      DayOfWeek.SUNDAY -> "Sun"
-    }
-  } else {
-    when (date.dayOfWeek) {
-      DayOfWeek.MONDAY -> "T2"
-      DayOfWeek.TUESDAY -> "T3"
-      DayOfWeek.WEDNESDAY -> "T4"
-      DayOfWeek.THURSDAY -> "T5"
-      DayOfWeek.FRIDAY -> "T6"
-      DayOfWeek.SATURDAY -> "T7"
-      DayOfWeek.SUNDAY -> "CN"
-    }
-  }
+  return date.dayOfWeek.getDisplayName(TextStyle.SHORT, locale)
 }
 
 @Composable
@@ -1434,8 +1416,7 @@ private fun formatDuration(totalSeconds: Long): String {
   val totalMinutes = totalSeconds / 60L
   val hours = totalMinutes / 60L
   val minutes = totalMinutes % 60L
-  val isEn = com.example.emptyapp.LocaleHelper.effectiveLanguageCode(LocalContext.current) == "en"
-  val hUnit = if (isEn) "h" else "g"
-  val mUnit = if (isEn) "m" else "p"
+  val hUnit = stringResource(R.string.stats_unit_hour_short)
+  val mUnit = stringResource(R.string.stats_unit_minute_short)
   return if (hours > 0L) "${hours}$hUnit ${minutes}$mUnit" else "${minutes}$mUnit"
 }

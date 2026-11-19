@@ -226,7 +226,10 @@
     <string name="sync_remote_read_failed">Couldn\'t read your Google Drive data (%1$s). Sync stopped so nothing gets overwritten.</string>
     <string name="sync_downloading_book">Downloading book: %1$s</string>
     <string name="sync_uploading_book">Uploading: %1$s</string>
-    <string name="sync_partial_book_upload_failed">Synced progress, but %1$d book file(s) failed to upload</string>
+    <plurals name="sync_partial_book_upload_failed">
+        <item quantity="one">Synced progress, but %1$d book file failed to upload</item>
+        <item quantity="other">Synced progress, but %1$d book files failed to upload</item>
+    </plurals>
     <string name="sync_needs_reconnect">Google Drive session expired. Tap to reconnect.</string>
     <string name="sync_reconnect_btn">Reconnect Google Drive</string>
     <string name="sync_error_offline">No internet connection</string>
@@ -281,9 +284,18 @@
     <string name="stats_set_wallpaper">Set E-Ink Live Wallpaper</string>
     <string name="stats_badges">Achievements</string>
     <string name="stats_chart_7d">7-Day Chart</string>
-    <string name="stats_chart_7d_sub">Avg %1$dm/day · %2$d pages/hr</string>
+    <plurals name="stats_chart_7d_sub">
+        <item quantity="one">Avg %1$dm/day · %2$d page/hr</item>
+        <item quantity="other">Avg %1$dm/day · %2$d pages/hr</item>
+    </plurals>
     <string name="stats_heatmap_12w">12-Week History</string>
-    <string name="stats_heatmap_days">%1$d active days</string>
+    <plurals name="stats_heatmap_days">
+        <item quantity="one">%1$d active day</item>
+        <item quantity="other">%1$d active days</item>
+    </plurals>
+    <string name="stats_unit_minute_short">m</string>
+    <string name="stats_unit_hour_short">h</string>
+    <string name="book_badge_label">BOOK</string>
     <string name="stats_less">Less</string>
     <string name="stats_more">More</string>
     <string name="stats_sync_header">GOOGLE DRIVE SYNC</string>

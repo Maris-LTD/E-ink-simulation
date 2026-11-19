@@ -1,6 +1,9 @@
 package com.example.emptyapp.ui.library
 
 import com.example.emptyapp.data.stats.DailyReadingStat
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -13,7 +16,7 @@ class ReadingStatsAccessibilityTest {
         chartSubtitle = "Avg 0m/day · 0 pages/hr",
         weekSeries = emptyList(),
         minUnit = "m",
-        isEn = true,
+        locale = Locale.ENGLISH,
       )
 
     assertEquals("7-Day Chart. Avg 0m/day · 0 pages/hr", result)
@@ -21,7 +24,7 @@ class ReadingStatsAccessibilityTest {
 
   @Test
   fun buildSevenDayChartAccessibilityDescriptionFormatsEntriesForEnglishAndVietnamese() {
-    // 2026-11-16 is Monday, 2026-11-22 is Sunday
+    // 2026-11-16 is Monday, 2026-11-17 is Tuesday, 2026-11-22 is Sunday
     val series =
       listOf(
         DailyReadingStat("2026-11-16", secondsRead = 900),
@@ -35,23 +38,27 @@ class ReadingStatsAccessibilityTest {
         chartSubtitle = "Avg 15m/day · 30 pages/hr",
         weekSeries = series,
         minUnit = "m",
-        isEn = true,
+        locale = Locale.ENGLISH,
       )
     assertEquals(
       "7-Day Chart. Avg 15m/day · 30 pages/hr. Mon: 15m, Tue: 0m, Sun: 30m",
       enDesc,
     )
 
+    val viLocale = Locale.forLanguageTag("vi-VN")
     val viDesc =
       buildSevenDayChartAccessibilityDescription(
         chartTitle = "Biểu đồ 7 ngày",
         chartSubtitle = "TB 15p/ngày · 30 trang/giờ",
         weekSeries = series,
         minUnit = "p",
-        isEn = false,
+        locale = viLocale,
       )
+    val monVi = DayOfWeek.MONDAY.getDisplayName(TextStyle.SHORT, viLocale)
+    val tueVi = DayOfWeek.TUESDAY.getDisplayName(TextStyle.SHORT, viLocale)
+    val sunVi = DayOfWeek.SUNDAY.getDisplayName(TextStyle.SHORT, viLocale)
     assertEquals(
-      "Biểu đồ 7 ngày. TB 15p/ngày · 30 trang/giờ. T2: 15p, T3: 0p, CN: 30p",
+      "Biểu đồ 7 ngày. TB 15p/ngày · 30 trang/giờ. $monVi: 15p, $tueVi: 0p, $sunVi: 30p",
       viDesc,
     )
   }

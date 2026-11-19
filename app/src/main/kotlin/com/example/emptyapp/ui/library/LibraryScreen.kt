@@ -186,8 +186,11 @@ fun LibraryScreen(
       }
     }
 
+  val appLocale = remember(context) { com.example.emptyapp.LocaleHelper.effectiveLocale(context) }
+  val nameComparator = remember(appLocale) { com.example.emptyapp.LocaleHelper.nameComparator(appLocale) }
+
   val filteredBooks =
-    remember(tabBooks, selectedTab, selectedAuthor, query, sortMode) {
+    remember(tabBooks, selectedTab, selectedAuthor, query, sortMode, nameComparator) {
       val matching =
         tabBooks.filter { book ->
           val authorMatch = selectedAuthor == null || book.author == selectedAuthor
@@ -199,11 +202,14 @@ fun LibraryScreen(
         }
       when (sortMode) {
         LibrarySort.RECENT -> matching.sortedByDescending { it.updatedAt }
-        LibrarySort.TITLE -> matching.sortedBy { it.title.lowercase() }
+        LibrarySort.TITLE -> matching.sortedWith { a, b -> nameComparator.compare(a.title, b.title) }
         LibrarySort.PROGRESS -> matching.sortedByDescending { it.progress }
       }
     }
-  val authors = remember(tabBooks) { tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct() }
+  val authors =
+    remember(tabBooks, nameComparator) {
+      tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct().sortedWith(nameComparator)
+    }
   LaunchedEffect(booksLoaded, authors) {
     if (booksLoaded && selectedAuthor != null && selectedAuthor !in authors) {
       selectedAuthor = null

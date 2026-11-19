@@ -226,7 +226,9 @@
     <string name="sync_remote_read_failed">Không đọc được dữ liệu trên Google Drive (%1$s). Đã dừng đồng bộ để không ghi đè dữ liệu.</string>
     <string name="sync_downloading_book">Đang tải sách: %1$s</string>
     <string name="sync_uploading_book">Đang tải lên: %1$s</string>
-    <string name="sync_partial_book_upload_failed">Đã đồng bộ tiến độ, nhưng %1$d file sách tải lên thất bại</string>
+    <plurals name="sync_partial_book_upload_failed">
+        <item quantity="other">Đã đồng bộ tiến độ, nhưng %1$d file sách tải lên thất bại</item>
+    </plurals>
     <string name="sync_needs_reconnect">Phiên Google Drive đã hết hạn. Nhấn để kết nối lại.</string>
     <string name="sync_reconnect_btn">Kết nối lại Google Drive</string>
     <string name="sync_error_offline">Không có kết nối mạng</string>
@@ -280,9 +282,16 @@
     <string name="stats_set_wallpaper">Đặt Hình nền động E-Ink</string>
     <string name="stats_badges">Huy hiệu thành tựu</string>
     <string name="stats_chart_7d">Biểu đồ 7 ngày</string>
-    <string name="stats_chart_7d_sub">TB %1$dp/ngày · %2$d trang/giờ</string>
+    <plurals name="stats_chart_7d_sub">
+        <item quantity="other">TB %1$dp/ngày · %2$d trang/giờ</item>
+    </plurals>
     <string name="stats_heatmap_12w">Lịch sử 12 tuần</string>
-    <string name="stats_heatmap_days">%1$d ngày đã đọc</string>
+    <plurals name="stats_heatmap_days">
+        <item quantity="other">%1$d ngày đã đọc</item>
+    </plurals>
+    <string name="stats_unit_minute_short">p</string>
+    <string name="stats_unit_hour_short">g</string>
+    <string name="book_badge_label">SÁCH</string>
     <string name="stats_less">Ít</string>
     <string name="stats_more">Nhiều</string>
     <string name="stats_sync_header">ĐỒNG BỘ GOOGLE DRIVE</string>

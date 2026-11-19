@@ -418,12 +418,12 @@ private fun MinimalistHomePage(
     }
   }
 
-  val timeText = remember(now) { now.format(LAUNCHER_TIME_FORMATTER) }
-  val langCode = remember(context) { LocaleHelper.effectiveLanguageCode(context) }
+  val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+  val appLocale = remember(context) { LocaleHelper.effectiveLocale(context) }
+  val timeText = remember(now, is24Hour, appLocale) { LocaleHelper.formatClockTime(now, is24Hour, appLocale) }
   val dateText =
-    remember(now, langCode) {
-      val dateLocale = if (langCode == "en") Locale.ENGLISH else Locale("vi", "VN")
-      now.format(DateTimeFormatter.ofPattern("EEEE, dd/MM", dateLocale))
+    remember(now, appLocale) {
+      now.format(DateTimeFormatter.ofPattern("EEEE, dd/MM", appLocale))
     }
   val currentBook = remember(books) { books.mostRecentlyReadBook() }
   val completedCount = remember(books) { books.count { it.progress >= 0.99f } }
@@ -699,7 +699,7 @@ private fun CurrentBookHeroCard(
         )
       } else {
         EInkText(
-          text = book?.format?.label ?: "BOOK",
+          text = book?.format?.label ?: stringResource(R.string.book_badge_label),
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.secondary,
         )
@@ -1010,12 +1010,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGridCells(
   }
 }
 
-private val LAUNCHER_TIME_FORMATTER: DateTimeFormatter =
-  DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
-
-private val LAUNCHER_DATE_FORMATTER: DateTimeFormatter =
-  DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale("vi", "VN"))
-
 private object LauncherAppCache {
   private val iconCache = LruCache<String, ImageBitmap>(256)
   @Volatile private var cachedApps: List<LaunchableApp>? = null
@@ -1068,6 +1062,7 @@ private fun readBatteryPercent(context: Context): Int {
 private fun queryLaunchableApps(context: Context): List<LaunchableApp> {
   val pm = context.packageManager
   val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+  val appComparator = LocaleHelper.nameComparator(LocaleHelper.effectiveLocale(context))
   return pm
     .queryIntentActivities(intent, 0)
     .asSequence()
@@ -1079,7 +1074,7 @@ private fun queryLaunchableApps(context: Context): List<LaunchableApp> {
       )
     }
     .distinctBy { it.packageName }
-    .sortedBy { it.label.lowercase(Locale.getDefault()) }
+    .sortedWith { a, b -> appComparator.compare(a.label, b.label) }
     .toList()
 }
 

@@ -50,8 +50,6 @@ class EInkWallpaperService : WallpaperService() {
     private var cachedCoverPath: String? = null
     private var cachedCoverBitmap: Bitmap? = null
 
-    private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
-    private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", Locale("vi", "VN"))
     private val monoFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
     private val baseTypeface: Typeface by lazy {
       ResourcesCompat.getFont(this@EInkWallpaperService, R.font.rubik) ?: Typeface.SANS_SERIF
@@ -275,9 +273,7 @@ class EInkWallpaperService : WallpaperService() {
       ensurePaints(w, fgColor)
 
       val rankText = rank?.let { localized.getString(com.example.emptyapp.R.string.wallpaper_rank_format, it.level, it.title) } ?: localized.getString(com.example.emptyapp.R.string.app_name)
-      val dateLocale =
-        if (com.example.emptyapp.LocaleHelper.effectiveLanguageCode(applicationContext) == "en") Locale.ENGLISH
-        else Locale("vi", "VN")
+      val dateLocale = com.example.emptyapp.LocaleHelper.effectiveLocale(applicationContext)
       val localizedDateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", dateLocale)
       canvas.drawText(
         localized.getString(com.example.emptyapp.R.string.wallpaper_status_format, batteryPct, streak, rankText),
@@ -285,10 +281,9 @@ class EInkWallpaperService : WallpaperService() {
         h * 0.14f,
         statusPaint,
       )
-      val clockPattern =
-        if (android.text.format.DateFormat.is24HourFormat(applicationContext)) "HH:mm" else "h:mm a"
-      val dynamicTimeFormatter = DateTimeFormatter.ofPattern(clockPattern, Locale.getDefault())
-      canvas.drawText(now.format(dynamicTimeFormatter), w / 2f, h * 0.29f, clockPaint)
+      val is24Hour = android.text.format.DateFormat.is24HourFormat(applicationContext)
+      val formattedTime = com.example.emptyapp.LocaleHelper.formatClockTime(now, is24Hour, dateLocale)
+      canvas.drawText(formattedTime, w / 2f, h * 0.29f, clockPaint)
       canvas.drawText(now.format(localizedDateFormatter), w / 2f, h * 0.34f, datePaint)
 
       // Lock-screen reading excerpt panel pushed to the bottom to stay clear of notifications
@@ -341,7 +336,7 @@ class EInkWallpaperService : WallpaperService() {
         canvas.drawBitmap(coverBmp, src, coverRect, imgPaint)
       } else {
         canvas.drawText(
-          currentBook?.format?.label ?: "BOOK",
+          currentBook?.format?.label ?: localized.getString(com.example.emptyapp.R.string.book_badge_label),
           coverRect.centerX(),
           coverRect.centerY() + w * 0.01f,
           badgePaint,

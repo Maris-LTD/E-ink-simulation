@@ -78,7 +78,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm"
 - [x] 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`
 - [x] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
-- [ ] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
+- [x] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
 - [ ] 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main
 - [ ] 57. L30 + L31 — `docs/privacy-policy.md` bổ sung (snippet trên màn khoá, nút "Dịch ngoài", device-transfer, giới hạn text từ điển); `.gitignore` chặn `*.jks`/`*.keystore`
 
@@ -1214,3 +1214,29 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 55 — L24 + L25: Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days`, bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`.
+
+### 55. L24 + L25 — Đồng hồ Launcher 12/24h, AM/PM wallpaper theo locale app, plurals & sort Collator — 2026-11-19
+**Nguyên nhân:**
+- **L24 (INC #27):** `LauncherActivity` dùng `LAUNCHER_TIME_FORMATTER` `"HH:mm"` cứng (và có thêm `LAUNCHER_DATE_FORMATTER` chết, kích hoạt cảnh báo `ConstantLocale`); `EInkWallpaperService` định dạng `"h:mm a"` bằng `Locale.getDefault()` (lệch AM/PM khi ngôn ngữ app khác ngôn ngữ máy) và giữ 2 formatter chết `timeFormatter`/`dateFormatter`.
+- **L25 (INC #28):** Còn 3 cảnh báo `PluralsCandidate` trong `values/strings.xml` (`stats_heatmap_days`, `stats_chart_7d_sub`, `sync_partial_book_upload_failed`); chuỗi `"BOOK"` cứng ở `LauncherActivity` và `EInkWallpaperService`; `ReadingStatsSheet` rẽ nhánh `isEn` cho thứ trong tuần (`shortWeekdayLabel`) và đơn vị `"m/h"`/`"p/g"`; `LibraryScreen` (tên sách, danh sách tác giả) và `LauncherActivity` (danh sách app) sort bằng `lowercase()` khiến chữ tiếng Việt có dấu (`Đ`, `Ă`, `Â`) bị đẩy ra sau `"Z"`.
+
+**Đã sửa:**
+- `LocaleHelper.kt` (**L24 + L25**):
+  - Thêm `effectiveLocale(context)`, `formatClockTime(time, is24Hour, locale)` và `nameComparator(locale)` dùng `Collator.getInstance(locale)` (`Collator.SECONDARY`).
+- `LauncherActivity.kt` & `system/EInkWallpaperService.kt` (**L24 + L25**):
+  - Đồng hồ Launcher và Wallpaper dùng `DateFormat.is24HourFormat(...)` + `LocaleHelper.formatClockTime(..., appLocale)` để hỗ trợ 12/24h theo hệ thống và AM/PM theo locale app; xoá các formatter chết (`LAUNCHER_TIME_FORMATTER`, `LAUNCHER_DATE_FORMATTER`, `timeFormatter`, `dateFormatter`).
+  - Thay `"BOOK"` cứng bằng `R.string.book_badge_label` (`BOOK` / `SÁCH`).
+  - `queryLaunchableApps` sort bằng `LocaleHelper.nameComparator(appLocale)`.
+- `res/values/strings.xml`, `res/values-vi/strings.xml`, `data/sync/GoogleDriveSyncManager.kt`, `ui/library/ReadingStatsSheet.kt` (**L25**):
+  - Chuyển `stats_heatmap_days`, `stats_chart_7d_sub`, `sync_partial_book_upload_failed` sang `<plurals>` ở cả `values` và `values-vi`, cập nhật call site dùng `pluralStringResource` / `resources.getQuantityString`.
+  - Thêm `stats_unit_minute_short` (`m`/`p`) và `stats_unit_hour_short` (`h`/`g`), bỏ nhánh `isEn` trong `ReadingStatsSheet.kt`; `shortWeekdayLabel` dùng `DayOfWeek.getDisplayName(TextStyle.SHORT, locale)`.
+- `ui/library/LibraryScreen.kt` (**L25**):
+  - Sort tiêu đề sách (`LibrarySort.TITLE`) và danh sách `authors` bằng `LocaleHelper.nameComparator(appLocale)`.
+- `test/.../LocaleHelperTest.kt` & `test/.../ui/library/ReadingStatsAccessibilityTest.kt`:
+  - Thêm unit test cho `formatClockTime` (12h/24h theo locale) và `nameComparator` (xếp `Đ`, `Ă`, `Â` đúng thứ tự tiếng Việt trước `Z`); cập nhật `ReadingStatsAccessibilityTest` theo `Locale`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **259/259 tests pass** qua 46 file test, `0 lint errors`, `0 PluralsCandidate`, `0 ConstantLocale`, `0 UnusedResources`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 56 — L28 + L29: Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main.
