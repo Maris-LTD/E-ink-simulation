@@ -120,6 +120,7 @@ class ReaderViewModel(
   private val mutablePagesSinceFlash = MutableStateFlow(0)
   private val mutableDictionaryState = MutableStateFlow<DictionaryUiState?>(null)
   private val mutableSearchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
+  private val mutableOverlayOpen = MutableStateFlow(false)
 
   val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
   val progress: StateFlow<Float> = mutableProgress.asStateFlow()
@@ -128,6 +129,7 @@ class ReaderViewModel(
   val pagesSinceFlash: StateFlow<Int> = mutablePagesSinceFlash.asStateFlow()
   val dictionaryState: StateFlow<DictionaryUiState?> = mutableDictionaryState.asStateFlow()
   val searchState: StateFlow<SearchUiState> = mutableSearchState.asStateFlow()
+  val overlayOpen: StateFlow<Boolean> = mutableOverlayOpen.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
   val writeError: StateFlow<Boolean> =
     combine(
@@ -464,6 +466,10 @@ class ReaderViewModel(
 
   fun dismissDictionary() {
     mutableDictionaryState.value = null
+  }
+
+  fun setOverlayOpen(open: Boolean) {
+    mutableOverlayOpen.value = open
   }
 
   fun searchInBook(rawQuery: String) {

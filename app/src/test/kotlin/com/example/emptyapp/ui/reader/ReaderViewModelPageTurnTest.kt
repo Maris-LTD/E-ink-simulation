@@ -13,6 +13,7 @@ import com.example.emptyapp.reader.pdf.PdfReflowPaginator
 import com.example.emptyapp.reader.pdf.ReflowItem
 import com.example.emptyapp.reader.pdf.ReflowPageMeta
 import com.example.emptyapp.reader.pdf.ReflowPageResult
+import com.example.emptyapp.shouldHandleVolumePageTurn
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -326,5 +329,99 @@ class ReaderViewModelPageTurnTest {
       vmRef?.onReaderForegroundChanged(false)
       dir.deleteRecursively()
     }
+  }
+
+  @Test
+  fun setOverlayOpenUpdatesOverlayStateFlowAndSuppressesVolumePageTurn() = runBlocking {
+    val dir = createTempDirectory("reader_vm_overlay_test").toFile()
+    var vmRef: ReaderViewModel? = null
+    try {
+      val (vm, _, _) =
+        createViewModel(
+          dir = dir,
+          initialSettings = EInkSettings(volumeButtonsTurnPages = true),
+          nowProvider = { 1_000L },
+        )
+      vmRef = vm
+
+      assertFalse(vm.overlayOpen.value)
+      assertTrue(
+        shouldHandleVolumePageTurn(
+          volumeButtonsTurnPages = vm.settings.value.volumeButtonsTurnPages,
+          pendingNoteOpen = false,
+          dictionaryOpen = false,
+          overlayOpen = vm.overlayOpen.value,
+        ),
+      )
+
+      vm.setOverlayOpen(true)
+      assertTrue(vm.overlayOpen.value)
+      assertFalse(
+        shouldHandleVolumePageTurn(
+          volumeButtonsTurnPages = vm.settings.value.volumeButtonsTurnPages,
+          pendingNoteOpen = false,
+          dictionaryOpen = false,
+          overlayOpen = vm.overlayOpen.value,
+        ),
+      )
+
+      vm.setOverlayOpen(false)
+      assertFalse(vm.overlayOpen.value)
+      assertTrue(
+        shouldHandleVolumePageTurn(
+          volumeButtonsTurnPages = vm.settings.value.volumeButtonsTurnPages,
+          pendingNoteOpen = false,
+          dictionaryOpen = false,
+          overlayOpen = vm.overlayOpen.value,
+        ),
+      )
+    } finally {
+      vmRef?.onReaderForegroundChanged(false)
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun shouldHandleVolumePageTurnBlocksWhenSettingDisabledOrAnyModalOrOverlayOpen() {
+    assertTrue(
+      shouldHandleVolumePageTurn(
+        volumeButtonsTurnPages = true,
+        pendingNoteOpen = false,
+        dictionaryOpen = false,
+        overlayOpen = false,
+      ),
+    )
+    assertFalse(
+      shouldHandleVolumePageTurn(
+        volumeButtonsTurnPages = false,
+        pendingNoteOpen = false,
+        dictionaryOpen = false,
+        overlayOpen = false,
+      ),
+    )
+    assertFalse(
+      shouldHandleVolumePageTurn(
+        volumeButtonsTurnPages = true,
+        pendingNoteOpen = true,
+        dictionaryOpen = false,
+        overlayOpen = false,
+      ),
+    )
+    assertFalse(
+      shouldHandleVolumePageTurn(
+        volumeButtonsTurnPages = true,
+        pendingNoteOpen = false,
+        dictionaryOpen = true,
+        overlayOpen = false,
+      ),
+    )
+    assertFalse(
+      shouldHandleVolumePageTurn(
+        volumeButtonsTurnPages = true,
+        pendingNoteOpen = false,
+        dictionaryOpen = false,
+        overlayOpen = true,
+      ),
+    )
   }
 }

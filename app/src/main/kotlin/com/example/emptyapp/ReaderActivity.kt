@@ -522,11 +522,19 @@ class ReaderActivity : FragmentActivity() {
     }
   }
 
-  override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+  private fun canTurnPageWithVolumeKey(keyCode: Int): Boolean {
     val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
-    if (!isVolumeKey) return super.onKeyDown(keyCode, event)
-    val modalOpen = pendingNoteLocator.value != null || viewModel.dictionaryState.value != null
-    if (!viewModel.settings.value.volumeButtonsTurnPages || modalOpen) {
+    return isVolumeKey &&
+      shouldHandleVolumePageTurn(
+        volumeButtonsTurnPages = viewModel.settings.value.volumeButtonsTurnPages,
+        pendingNoteOpen = pendingNoteLocator.value != null,
+        dictionaryOpen = viewModel.dictionaryState.value != null,
+        overlayOpen = viewModel.overlayOpen.value,
+      )
+  }
+
+  override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+    if (!canTurnPageWithVolumeKey(keyCode)) {
       return super.onKeyDown(keyCode, event)
     }
     val ready = viewModel.state.value as? ReaderUiState.Ready
@@ -546,9 +554,7 @@ class ReaderActivity : FragmentActivity() {
   }
 
   override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-    val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
-    val modalOpen = pendingNoteLocator.value != null || viewModel.dictionaryState.value != null
-    return if (isVolumeKey && viewModel.settings.value.volumeButtonsTurnPages && !modalOpen) {
+    return if (canTurnPageWithVolumeKey(keyCode)) {
       true
     } else {
       super.onKeyUp(keyCode, event)
@@ -636,6 +642,13 @@ class ReaderActivity : FragmentActivity() {
         }
   }
 }
+
+internal fun shouldHandleVolumePageTurn(
+  volumeButtonsTurnPages: Boolean,
+  pendingNoteOpen: Boolean,
+  dictionaryOpen: Boolean,
+  overlayOpen: Boolean,
+): Boolean = volumeButtonsTurnPages && !pendingNoteOpen && !dictionaryOpen && !overlayOpen
 
 internal class PdfSnippetMemoryCache(private val maxEntries: Int = 16) {
   private val lock = Any()

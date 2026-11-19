@@ -70,7 +70,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 ### 5D — Khởi động & Reader EPUB
 - [x] 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO
 - [x] 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s)
-- [ ] 49. L16 + L21 — Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM)
+- [x] 49. L16 + L21 — Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM)
 - [ ] 50. L17 + L18 — Dialog ghi chú: `dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống; quyền thông báo: xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo
 - [ ] 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle
 
@@ -1057,3 +1057,25 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 49 — L16 + L21: Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM).
+
+### 49. L16 + L21 — Dải cạnh trái chạm lùi trang & bỏ qua phím âm lượng khi mở overlay/toolbar trong Reader — 2026-11-19
+**Nguyên nhân:**
+- **L16:** Dải cạnh trái `14.dp` ở `ReaderScreen.kt` chỉ xử lý `detectVerticalDragGestures` để kéo chỉnh độ sáng, không xử lý `onTap` → vùng `14.dp` sát mép trái thành vùng chết khi chạm (chặn chạm lùi trang truyền xuống nội dung bên dưới).
+- **L21:** `ReaderActivity.onKeyDown`/`onKeyUp` chỉ kiểm tra `pendingNoteLocator.value != null || viewModel.dictionaryState.value != null`; khi đang mở Search sheet, Contents sheet, Settings panel hoặc thanh toolbar (`chromeVisible`), bấm phím âm lượng vẫn lật trang bên dưới thay vì điều chỉnh âm lượng hệ thống.
+
+**Đã sửa:**
+- `ui/reader/ReaderScreen.kt` (**L16 + L21**):
+  - Bổ sung `.pointerInput(Unit) { detectTapGestures(onTap = { latestOnLeftEdgeTap() }) }` tách riêng khỏi `.pointerInput(Unit)` của `detectVerticalDragGestures` trên dải cạnh trái `14.dp`: chạm mép trái gọi `pdfController.goBackward()` (với PDF) hoặc `(navigator as? OverflowableNavigator)?.goBackward(animated = settings.animations)` (với EPUB/CBZ), trong khi kéo dọc vẫn chỉnh độ sáng mượt.
+  - Đồng bộ `viewModel.setOverlayOpen(chromeVisible || settingsOpen || contentsOpen || searchOpen)` qua `LaunchedEffect(chromeVisible, settingsOpen, contentsOpen, searchOpen)` và reset về `false` trong `DisposableEffect(Unit) { onDispose { viewModel.setOverlayOpen(false) } }`.
+- `ui/reader/ReaderViewModel.kt` (**L21**):
+  - Thêm `overlayOpen: StateFlow<Boolean>` (`mutableOverlayOpen`) và `fun setOverlayOpen(open: Boolean)`.
+- `ReaderActivity.kt` (**L21**):
+  - Tách hàm thuần Kotlin `shouldHandleVolumePageTurn(volumeButtonsTurnPages, pendingNoteOpen, dictionaryOpen, overlayOpen)` và helper `canTurnPageWithVolumeKey(keyCode)` dùng chung cho cả `onKeyDown` và `onKeyUp`, bỏ qua lật trang bằng phím âm lượng khi `viewModel.overlayOpen.value == true` (ngoài cài đặt `volumeButtonsTurnPages`, dialog ghi chú và dialog từ điển).
+- `test/.../ui/reader/ReaderViewModelPageTurnTest.kt`:
+  - Thêm 2 unit test mới (`setOverlayOpenUpdatesOverlayStateFlowAndSuppressesVolumePageTurn`, `shouldHandleVolumePageTurnBlocksWhenSettingDisabledOrAnyModalOrOverlayOpen`).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **243/243 tests pass** qua 42 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 50 — L17 + L18: Dialog ghi chú (`dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống) và quyền thông báo (xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo).

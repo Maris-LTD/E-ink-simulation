@@ -36,6 +36,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -129,8 +130,22 @@ fun ReaderScreen(
   var brightnessHudVisible by remember { mutableStateOf(false) }
   var edgeStripHeightPx by remember { mutableFloatStateOf(1f) }
   val latestBrightness by rememberUpdatedState(settings.brightness)
+  val latestOnLeftEdgeTap by rememberUpdatedState {
+    if (bookFormat == BookFormat.PDF) {
+      pdfController.goBackward()
+    } else {
+      (navigator as? OverflowableNavigator)?.goBackward(animated = settings.animations)
+    }
+  }
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
+
+  LaunchedEffect(chromeVisible, settingsOpen, contentsOpen, searchOpen) {
+    viewModel.setOverlayOpen(chromeVisible || settingsOpen || contentsOpen || searchOpen)
+  }
+  DisposableEffect(Unit) {
+    onDispose { viewModel.setOverlayOpen(false) }
+  }
 
   LaunchedEffect(brightnessHudVisible, settings.brightness) {
     if (brightnessHudVisible) {
@@ -550,6 +565,9 @@ fun ReaderScreen(
             .fillMaxHeight()
             .width(14.dp)
             .onSizeChanged { edgeStripHeightPx = it.height.coerceAtLeast(1).toFloat() }
+            .pointerInput(Unit) {
+              detectTapGestures(onTap = { latestOnLeftEdgeTap() })
+            }
             .pointerInput(Unit) {
               var dragBrightness = 0.5f
               detectVerticalDragGestures(
