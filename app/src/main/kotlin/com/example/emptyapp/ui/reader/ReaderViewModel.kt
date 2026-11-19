@@ -21,6 +21,7 @@ import com.example.emptyapp.reader.pdf.PdfBookConfig
 import com.example.emptyapp.reader.pdf.PdfBookConfigStore
 import com.example.emptyapp.reader.pdf.PdfDocumentClassifier
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -423,9 +424,15 @@ class ReaderViewModel(
     mutableSearchState.value = SearchUiState.Searching(query)
     searchJob =
       viewModelScope.launch {
-        val iterator = pub.search(query)
-        searchIterator = iterator
-        loadNextSearchPage(query, reset = true)
+        try {
+          val iterator = pub.search(query)
+          searchIterator = iterator
+          loadNextSearchPage(query, reset = true)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (err: Throwable) {
+          mutableSearchState.value = SearchUiState.Error(query, formatSearchError(err))
+        }
       }
   }
 
@@ -433,7 +440,16 @@ class ReaderViewModel(
     val current = mutableSearchState.value as? SearchUiState.Results ?: return
     if (!current.hasMore) return
     searchJob?.cancel()
-    searchJob = viewModelScope.launch { loadNextSearchPage(current.query, reset = false) }
+    searchJob =
+      viewModelScope.launch {
+        try {
+          loadNextSearchPage(current.query, reset = false)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (err: Throwable) {
+          mutableSearchState.value = SearchUiState.Error(current.query, formatSearchError(err))
+        }
+      }
   }
 
   private suspend fun loadNextSearchPage(query: String, reset: Boolean) {
@@ -453,8 +469,13 @@ class ReaderViewModel(
           )
       }
       .onFailure { err ->
-        mutableSearchState.value = SearchUiState.Error(query, err.message ?: str(R.string.reader_search_error, "Lỗi khi tải kết quả"))
+        mutableSearchState.value = SearchUiState.Error(query, formatSearchError(err))
       }
+  }
+
+  internal fun formatSearchError(error: Any? = null): String {
+    if (error is CancellationException) throw error
+    return str(R.string.reader_search_error, "Error loading search results")
   }
 
   fun retryLoad() {

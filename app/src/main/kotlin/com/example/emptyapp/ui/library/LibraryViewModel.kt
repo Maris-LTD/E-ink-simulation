@@ -53,24 +53,37 @@ class LibraryViewModel(
               com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(app)
             }
           }
-          .onFailure {
-            val localized = context?.let(LocaleHelper::wrap)
-            val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "invalid file"
-            val reason = it.message ?: fallbackInvalid
-            val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Could not import book: $reason"
-            messageChannel.send(msg)
+          .onFailure { err ->
+            if (err is CancellationException) throw err
+            messageChannel.send(formatImportErrorMessage(err))
           }
       } catch (e: Throwable) {
         if (e is CancellationException) throw e
-        val localized = context?.let(LocaleHelper::wrap)
-        val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "invalid file"
-        val reason = e.message ?: fallbackInvalid
-        val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Could not import book: $reason"
-        messageChannel.send(msg)
+        messageChannel.send(formatImportErrorMessage(e))
       } finally {
         mutableImporting.value = false
       }
     }
+  }
+
+  internal fun formatImportErrorMessage(error: Throwable): String {
+    if (error is CancellationException) throw error
+    val localized = context?.let(LocaleHelper::wrap)
+    return formatImportError(
+      error = error,
+      knownLocalizedReasons =
+        setOf(
+          localized?.getString(R.string.lib_import_duplicate) ?: "this book is already in your library",
+          localized?.getString(R.string.import_unsupported_format) ?: "Only EPUB, PDF, and CBZ are supported",
+          localized?.getString(R.string.import_cannot_open_file) ?: "Cannot open file",
+        ),
+      storageFullReason = localized?.getString(R.string.lib_error_storage_full) ?: "Device storage is full",
+      invalidFileReason = localized?.getString(R.string.lib_import_invalid_file) ?: "invalid file",
+      genericFailedMessage = localized?.getString(R.string.lib_import_failed) ?: "Could not import book",
+      formatWithReason = { reason ->
+        localized?.getString(R.string.lib_import_error, reason) ?: "Could not import book: $reason"
+      },
+    )
   }
 
   fun remove(id: String, alsoDeleteFromCloud: Boolean = true) {
@@ -110,5 +123,49 @@ class LibraryViewModel(
 
   fun setDailyGoalMinutes(minutes: Int) {
     viewModelScope.launch { statsRepository.setDailyGoalMinutes(minutes) }
+  }
+
+  companion object {
+    private const val MAX_CAUSE_DEPTH = 8
+
+    fun isStorageFullError(error: Throwable?): Boolean {
+      var current = error
+      var depth = 0
+      while (current != null && depth < MAX_CAUSE_DEPTH) {
+        val msg = current.message.orEmpty()
+        if (
+          msg.contains("ENOSPC", ignoreCase = true) ||
+            msg.contains("No space left", ignoreCase = true) ||
+            msg.contains("Disk full", ignoreCase = true) ||
+            msg.contains("out of space", ignoreCase = true)
+        ) {
+          return true
+        }
+        if (current.cause === current) break
+        current = current.cause
+        depth++
+      }
+      return false
+    }
+
+    fun formatImportError(
+      error: Throwable,
+      knownLocalizedReasons: Set<String>,
+      storageFullReason: String,
+      invalidFileReason: String,
+      genericFailedMessage: String,
+      formatWithReason: (String) -> String,
+    ): String {
+      if (error is CancellationException) throw error
+      val rawMessage = error.message?.trim()
+      val reason =
+        when {
+          rawMessage != null && rawMessage in knownLocalizedReasons -> rawMessage
+          isStorageFullError(error) -> storageFullReason
+          invalidFileReason.isNotBlank() -> invalidFileReason
+          else -> return genericFailedMessage
+        }
+      return formatWithReason(reason)
+    }
   }
 }

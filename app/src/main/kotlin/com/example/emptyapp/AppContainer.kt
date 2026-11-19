@@ -31,7 +31,7 @@ class AppContainer(context: Context) {
   val dictionary: DictionaryService by lazy { DictionaryService(appContext) }
   val stats: ReadingStatsRepository by lazy { ReadingStatsRepository(appContext) }
   val sync: GoogleDriveSyncManager by lazy {
-    GoogleDriveSyncManager(appContext, library, annotations, stats, syncTombstones)
+    GoogleDriveSyncManager(appContext, library, annotations, stats, syncTombstones, appScope)
   }
   val lockScreenReading: LockScreenReadingStore by lazy { LockScreenReadingStore(appContext) }
 

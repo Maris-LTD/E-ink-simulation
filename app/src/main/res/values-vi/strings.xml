@@ -205,6 +205,8 @@
     <string name="lib_bookmarks_empty">Chưa có dấu trang nào.\nNhấn biểu tượng dấu trang khi đọc sách để lưu.</string>
     <string name="lib_highlights_empty">Chưa có highlight nào.\nChạm giữ để bôi đen đoạn văn bản khi đọc sách.</string>
     <string name="lib_import_error">Không nhập được sách: %1$s</string>
+    <string name="lib_import_failed">Không nhập được sách</string>
+    <string name="lib_error_storage_full">Bộ nhớ thiết bị đã đầy</string>
     <string name="lib_import_invalid_file">tệp không hợp lệ</string>
     <string name="lib_import_duplicate">sách này đã có trong thư viện</string>
 

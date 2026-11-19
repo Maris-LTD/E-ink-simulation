@@ -119,9 +119,13 @@ fun ReadingStatsScreen(
   syncState: SyncUiState = SyncUiState(),
   onSignInAndSync: suspend () -> SyncActionResult = { SyncActionResult.Synced },
   onHandleSyncConsent: suspend (Intent?) -> SyncActionResult = { SyncActionResult.Synced },
+  onLaunchSignInAndSync: ((onNeedConsent: (IntentSenderRequest) -> Unit) -> Unit)? = null,
+  onLaunchHandleSyncConsent: ((Intent?) -> Unit)? = null,
   onToggleSyncBookFiles: (Boolean) -> Unit = {},
   onDeleteCloudBook: suspend (SyncedBookProgress) -> SyncActionResult = { SyncActionResult.Synced },
+  onLaunchDeleteCloudBook: ((SyncedBookProgress) -> Unit)? = null,
   onDeleteAllCloudData: suspend () -> SyncActionResult = { SyncActionResult.Synced },
+  onLaunchDeleteAllCloudData: (() -> Unit)? = null,
   onSignOutSync: () -> Unit = {},
   onChangeGoalMinutes: (Int) -> Unit,
   settings: EInkSettings = EInkSettings(),
@@ -135,13 +139,25 @@ fun ReadingStatsScreen(
   val scope = rememberCoroutineScope()
   val consentLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
-      scope.launch { onHandleSyncConsent(res.data) }
+      if (onLaunchHandleSyncConsent != null) {
+        onLaunchHandleSyncConsent(res.data)
+      } else {
+        scope.launch { onHandleSyncConsent(res.data) }
+      }
     }
   fun triggerSync() {
-    scope.launch {
-      val result = onSignInAndSync()
-      if (result is SyncActionResult.NeedsConsent) {
-        consentLauncher.launch(IntentSenderRequest.Builder(result.pendingIntent).build())
+    if (onLaunchSignInAndSync != null) {
+      onLaunchSignInAndSync { request ->
+        runCatching { consentLauncher.launch(request) }
+      }
+    } else {
+      scope.launch {
+        val result = onSignInAndSync()
+        if (result is SyncActionResult.NeedsConsent) {
+          runCatching {
+            consentLauncher.launch(IntentSenderRequest.Builder(result.pendingIntent).build())
+          }
+        }
       }
     }
   }
@@ -231,8 +247,20 @@ fun ReadingStatsScreen(
           syncState = syncState,
           onSyncOrSignIn = ::triggerSync,
           onToggleSyncBookFiles = onToggleSyncBookFiles,
-          onDeleteCloudBook = { book -> scope.launch { onDeleteCloudBook(book) } },
-          onDeleteAllCloudData = { scope.launch { onDeleteAllCloudData() } },
+          onDeleteCloudBook = { book ->
+            if (onLaunchDeleteCloudBook != null) {
+              onLaunchDeleteCloudBook(book)
+            } else {
+              scope.launch { onDeleteCloudBook(book) }
+            }
+          },
+          onDeleteAllCloudData = {
+            if (onLaunchDeleteAllCloudData != null) {
+              onLaunchDeleteAllCloudData()
+            } else {
+              scope.launch { onDeleteAllCloudData() }
+            }
+          },
           onSignOut = onSignOutSync,
         )
         SystemEInkModeCard()

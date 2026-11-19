@@ -55,7 +55,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
 - [x] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
 - [x] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
-- [ ] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
+- [x] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
 - [ ] 39. M9 + L2 + L8 — Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`
 - [ ] 40. L5 + L7 + L9 + L22 (`updatedAt`) — Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ
 
@@ -765,3 +765,30 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 38 — M8 + L10: Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized, xoá cloud gặp `hasResolution()` bật `needsReconnect`.
+
+### 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException` & chuẩn hoá thông báo lỗi localized — 2026-11-19
+**Nguyên nhân:**
+- **M8:** Khi người dùng bấm "Đồng bộ ngay", "Xóa khỏi Drive" hoặc "Xóa dữ liệu trên Drive" tại `ReadingStatsScreen` rồi bấm Back rời màn Thống kê, coroutine được khởi chạy trên `rememberCoroutineScope()` của composable bị huỷ ngay giữa chừng (sau khi đã tải/merge dữ liệu nhưng chưa kịp upload JSON); đồng thời một số chỗ dùng `runCatching { ... }.getOrElse { ... }` có thể nuốt `CancellationException` và biến thành lỗi `"Sync failed"` giả.
+- **L10:**
+  - `LibraryViewModel.import`: khi `repository.import(uri)` trả `Result.failure(e)` hoặc ném ngoại lệ kỹ thuật (message thô của Readium, `ENOSPC` / `"No space left"`, `"Cannot replace library.json"`), app ghép nguyên văn `e.message` vào `lib_import_error` đưa thẳng lên Snackbar.
+  - `ReaderViewModel.searchInBook` / `loadNextSearchPage`: khi `next()` trả `onFailure { err -> ... }`, app hiển thị thẳng `err.message` thô của Readium thay vì chuỗi localized `reader_search_error`.
+  - `GoogleDriveSyncManager`: khi `httpGet` gặp mã lỗi HTTP non-2xx và ném `DriveRemoteReadException(statusCode = code)`, `formatSyncError` trả luôn `err.message` (`sync_remote_read_failed` chung chung) thay vì phân loại theo mã HTTP (`401`, `403`, `429`, `507`, `5xx`) như `DriveHttpException`.
+
+**Đã sửa:**
+- `AppContainer.kt`, `Navigation.kt`, `ui/library/ReadingStatsSheet.kt`, `data/sync/GoogleDriveSyncManager.kt`:
+  - Truyền `appScope` vào `GoogleDriveSyncManager` và bổ sung `launchSignInAndSync(onNeedConsent)`, `launchHandleConsentResult(data)`, `launchDeleteAllCloudData()` (cùng `deleteBookFromCloudAsync`) chạy trên `backgroundScope` của sync manager. `ReadingStatsScreen` gọi các hàm này để tiến trình đồng bộ / xoá dữ liệu Drive tiếp tục chạy trọn vẹn ngay cả khi người dùng thoát màn Thống kê, và bọc `runCatching { consentLauncher.launch(request) }` an toàn trên Main thread khi cần mở màn hình cấp quyền.
+  - Đảm bảo mọi nhánh `runCatching` / `getOrElse` / `formatSyncError` trong `GoogleDriveSyncManager` (`handleConsentResult`, `uploadMissingBooks`, `downloadSyncPayload`, `formatSyncError`) đều kiểm tra `if (err is CancellationException) throw err`.
+  - Cập nhật `DriveRemoteReadException` giữ cả `statusCode` lẫn `cause = DriveHttpException(code, ...)` khi có mã HTTP, và cập nhật `GoogleDriveSyncManager.formatSyncError` phân loại mã HTTP (`401` → `sync_error_auth_expired`, `403`/`507` → `sync_error_quota_or_permission`, `429`/`5xx` → `sync_error_server`, mã HTTP khác → `sync_error_http`) cho cả `DriveRemoteReadException` lẫn `DriveHttpException` (vẫn giữ thông báo `sync_remote_read_failed` cho lỗi `parse`/`metadata`/`userinfo` không phải mã HTTP).
+  - Xác nhận `authorizeForSignedInOperation` ở đầu `deleteBookFromCloud` và `deleteAllCloudData` khi gặp `authResult.hasResolution()` luôn bật `needsReconnect = true` và đặt `statusMessage = str(R.string.sync_needs_reconnect)`.
+- `ui/library/LibraryViewModel.kt`, `res/values/strings.xml`, `res/values-vi/strings.xml`:
+  - Thêm chuỗi `lib_import_failed` và `lib_error_storage_full` vào `values/strings.xml` & `values-vi/strings.xml`.
+  - Thêm `LibraryViewModel.formatImportError` & `isStorageFullError`: chỉ giữ các lý do đã được localize từ `BookImporter` (`lib_import_duplicate`, `import_unsupported_format`, `import_cannot_open_file`), ánh xạ lỗi đầy bộ nhớ (`ENOSPC` / `No space left`) sang `lib_error_storage_full`, và ẩn toàn bộ message kỹ thuật thô khác về `lib_import_invalid_file` / `lib_import_failed`.
+- `ui/reader/ReaderViewModel.kt`:
+  - Trong `searchInBook`, `loadMoreSearchResults` và `loadNextSearchPage`: bọc `try/catch` (rethrow `CancellationException`) và dùng chuỗi localized `reader_search_error` (`formatSearchError`) thay vì truyền `err.message` thô của Readium lên UI.
+- Mới `test/.../data/sync/SyncErrorFormatterTest.kt` (5 tests) và `test/.../ui/library/LibraryViewModelErrorTest.kt` (4 tests): kiểm tra phân loại mã HTTP `401`/`403`/`507`/`429`/`5xx` cho cả `DriveRemoteReadException` và `DriveHttpException`, giữ thông báo `parse` khi không có HTTP code, ánh xạ lỗi import sách (`lib_import_duplicate`, `ENOSPC`, ẩn lỗi kỹ thuật thô của Readium/`library.json`), và rethrow `CancellationException`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **159/159 pass**, gồm **9/9** test mới trong `SyncErrorFormatterTest` và `LibraryViewModelErrorTest`; `lintDebug`: **0 errors**).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 39 — M9 + L2 + L8: Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`.
