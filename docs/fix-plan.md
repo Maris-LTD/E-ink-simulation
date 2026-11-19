@@ -38,7 +38,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
 - [x] 26. U7 — Accessibility (contentDescription, 48dp, semantics)
 - [x] 27. U8 + U9 — Launcher pins, empty state, sort, cạnh trái ẩn, phím âm lượng, đồng hồ 12h
-- [ ] 28. U10 + U11 — Chuỗi cứng, plurals, privacy policy
+- [x] 28. U10 + U11 — Chuỗi cứng, plurals, privacy policy
 
 ---
 
@@ -495,3 +495,17 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 28 — U10 + U11 (mục cuối): xử lý chuỗi cứng còn sót, thêm `<plurals>` cho streak/active days và cập nhật `docs/privacy-policy.md` khớp với code.
+
+### 28. U10 + U11 — Localization (`plurals`, chuỗi cứng) & Privacy Policy — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Chuỗi cứng & thiếu `<plurals>` (U10):**
+  - `values/strings.xml` & `values-vi/strings.xml`: thêm `<plurals name="stats_xp_streak_plurals">` (phân biệt `1 day` / `N days` ở tiếng Anh) và `dict_no_data`, `dict_no_definition`.
+  - `ReadingStatsSheet.kt`: dùng `pluralStringResource(R.plurals.stats_xp_streak_plurals, ...)`.
+  - `DictionaryService.kt`: thay `"Không có dữ liệu từ điển"` / `"Không có định nghĩa"` bằng `str(R.string.dict_no_data, ...)` / `str(R.string.dict_no_definition, ...)`.
+  - `widget_eink_reading.xml`: thay `"INKIFY"` cứng bằng `@string/app_name` + `textAllCaps="true"`.
+- **Privacy policy lệch với code (U11):**
+  - `docs/privacy-policy.md` (cả tiếng Việt & tiếng Anh): bổ sung danh sách API bên thứ ba (`api.dictionaryapi.dev`, `translate.googleapis.com`, `api.mymemory.translated.net`), ghi rõ đồng bộ file sách mặc định tắt và chỉ qua Wi-Fi ở nền, nêu Android Auto Backup và lưu ý về thiết bị khác còn đăng nhập khi xóa dữ liệu Drive.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`).
+
+**Kết thúc kế hoạch:** 28/28 mục trong `docs/fix-plan.md` đã hoàn thành (`[x]`). Còn lại việc test tay các luồng UI trên máy thật/emulator và `lintDebug` nếu cần trước khi phát hành.

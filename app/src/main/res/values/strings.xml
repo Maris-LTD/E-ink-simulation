@@ -287,6 +287,10 @@
     <string name="stats_title">Profile &amp; Stats</string>
     <string name="stats_rank_format">Lv %1$d · %2$s</string>
     <string name="stats_xp_streak_format">%1$d XP · Streak: %2$d days (Best: %3$d)</string>
+    <plurals name="stats_xp_streak_plurals">
+        <item quantity="one">%1$d XP · Streak: %2$d day (Best: %3$d)</item>
+        <item quantity="other">%1$d XP · Streak: %2$d days (Best: %3$d)</item>
+    </plurals>
     <string name="stats_xp_to_next">%1$d XP to %2$s</string>
     <string name="stats_max_rank">Max rank reached</string>
     <string name="stats_daily_goal">Today\'s Goal</string>

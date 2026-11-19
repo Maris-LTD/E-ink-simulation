@@ -266,7 +266,13 @@ fun ReadingStatsScreen(
               style = MaterialTheme.typography.titleMedium,
             )
             EInkText(
-              text = stringResource(R.string.stats_xp_streak_format, rank.xp, stats.currentStreak, stats.longestStreak),
+              text = androidx.compose.ui.res.pluralStringResource(
+                R.plurals.stats_xp_streak_plurals,
+                stats.currentStreak,
+                rank.xp,
+                stats.currentStreak,
+                stats.longestStreak,
+              ),
               style = MaterialTheme.typography.labelMedium,
               color = MaterialTheme.colorScheme.secondary,
             )
