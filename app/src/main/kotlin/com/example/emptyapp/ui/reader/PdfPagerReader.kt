@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -97,9 +99,11 @@ import com.example.emptyapp.reader.pdf.PdfReflowEngine
 import com.example.emptyapp.reader.pdf.PdfReflowPaginator
 import com.example.emptyapp.reader.pdf.PdfRegionNavigator
 import com.example.emptyapp.reader.pdf.ReflowImageKind
+import com.example.emptyapp.reader.pdf.ReflowImageTapAction
 import com.example.emptyapp.reader.pdf.ReflowPageMeta
 import com.example.emptyapp.reader.pdf.ReflowReadingAnchor
 import com.example.emptyapp.reader.pdf.ReflowScreenPage
+import com.example.emptyapp.reader.pdf.resolveReflowImageTapAction
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -135,17 +139,36 @@ private data class ViewportTileState(
   val bitmapRect: PdfRect,
 )
 
+private sealed interface ReflowZoomTarget {
+  val sourcePage: Int
+
+  data class InlineRegion(val element: PaginatedReflowElement.InlineImage) : ReflowZoomTarget {
+    override val sourcePage: Int
+      get() = element.sourcePage
+  }
+
+  data class FallbackPage(
+    override val sourcePage: Int,
+    val autoCrop: Boolean,
+  ) : ReflowZoomTarget
+}
+
 class PdfPagerController {
   internal var onPrev: (() -> Unit)? = null
   internal var onNext: (() -> Unit)? = null
   internal var onJumpTo: ((Int) -> Unit)? = null
+  internal var overlayOpen: Boolean = false
 
   fun goBackward() {
-    onPrev?.invoke()
+    if (!overlayOpen) {
+      onPrev?.invoke()
+    }
   }
 
   fun goForward() {
-    onNext?.invoke()
+    if (!overlayOpen) {
+      onNext?.invoke()
+    }
   }
 
   fun jumpToPage(pageIndex: Int) {
@@ -470,7 +493,7 @@ fun PdfPagerReader(
     val reflowScreens = reflowScreensState.orEmpty()
 
     if (readingMode == PdfReadingMode.HYBRID_REFLOW && reflowScreens.isNotEmpty()) {
-      var zoomedImageElement by remember { mutableStateOf<PaginatedReflowElement.InlineImage?>(null) }
+      var zoomedTarget by remember { mutableStateOf<ReflowZoomTarget?>(null) }
       var pendingJumpTargetScreen by remember { mutableStateOf<Int?>(null) }
       val initialAnchor = currentReflowAnchor ?: ReflowReadingAnchor(sourcePageIndex = currentPdfPage)
       val startScreen = remember(reflowScreens) {
@@ -484,14 +507,25 @@ fun PdfPagerReader(
         )
       val scope = rememberCoroutineScope()
 
+      DisposableEffect(controller, zoomedTarget) {
+        controller.overlayOpen = zoomedTarget != null
+        onDispose {
+          controller.overlayOpen = false
+        }
+      }
+
       DisposableEffect(controller, reflowPagerState, reflowScreens) {
         controller.onPrev = {
-          val target = (reflowPagerState.currentPage - 1).coerceAtLeast(0)
-          if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          if (zoomedTarget == null) {
+            val target = (reflowPagerState.currentPage - 1).coerceAtLeast(0)
+            if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          }
         }
         controller.onNext = {
-          val target = (reflowPagerState.currentPage + 1).coerceAtMost(reflowScreens.lastIndex)
-          if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          if (zoomedTarget == null) {
+            val target = (reflowPagerState.currentPage + 1).coerceAtMost(reflowScreens.lastIndex)
+            if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
+          }
         }
         controller.onJumpTo = { pdfIdx ->
           val targetPdf = pdfIdx.coerceIn(0, pageCount - 1)
@@ -553,6 +587,7 @@ fun PdfPagerReader(
       HorizontalPager(
         state = reflowPagerState,
         beyondViewportPageCount = 1,
+        userScrollEnabled = zoomedTarget == null,
         flingBehavior =
           PagerDefaults.flingBehavior(
             state = reflowPagerState,
@@ -567,40 +602,77 @@ fun PdfPagerReader(
           var fallbackBitmap by remember(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop) {
             mutableStateOf<ImageBitmap?>(null)
           }
-          LaunchedEffect(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop) {
-            fallbackBitmap =
+          var renderFailed by remember(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop) {
+            mutableStateOf(false)
+          }
+          var retryNonce by remember(singleFallback.sourcePage) { mutableIntStateOf(0) }
+          val latestFallbackBitmap by rememberUpdatedState(fallbackBitmap)
+
+          LaunchedEffect(holder, singleFallback.sourcePage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop, retryNonce) {
+            renderFailed = false
+            val rendered =
               holder.renderPage(
                 index = singleFallback.sourcePage,
                 maxWidth = targetWidthPx,
                 maxHeight = targetHeightPx,
                 autoCrop = settings.pdfAutoCrop,
               )
+            if (rendered != null) {
+              fallbackBitmap = rendered
+            } else if (fallbackBitmap == null) {
+              renderFailed = true
+            }
           }
           Box(
             modifier =
               Modifier.fillMaxSize()
-                .pointerInput(controller, onCenterTap) {
+                .pointerInput(controller, onCenterTap, singleFallback.sourcePage, settings.pdfAutoCrop) {
                   detectTapGestures(
+                    onDoubleTap = {
+                      if (latestFallbackBitmap != null) {
+                        zoomedTarget =
+                          ReflowZoomTarget.FallbackPage(
+                            sourcePage = singleFallback.sourcePage,
+                            autoCrop = settings.pdfAutoCrop,
+                          )
+                      }
+                    },
                     onTap = { tapOffset ->
-                      val w = size.width.toFloat().coerceAtLeast(1f)
-                      when {
-                        tapOffset.x < w * 0.25f -> controller.goBackward()
-                        tapOffset.x > w * 0.75f -> controller.goForward()
-                        else -> onCenterTap()
+                      when (resolveReflowImageTapAction(tapOffset.x, size.width.toFloat())) {
+                        ReflowImageTapAction.PREV_PAGE -> controller.goBackward()
+                        ReflowImageTapAction.NEXT_PAGE -> controller.goForward()
+                        ReflowImageTapAction.OPEN_ZOOM -> onCenterTap()
                       }
                     },
                   )
                 },
             contentAlignment = Alignment.Center,
           ) {
-            fallbackBitmap?.let { bmp ->
+            val currentBmp = fallbackBitmap
+            if (currentBmp != null) {
               Image(
-                bitmap = bmp,
-                contentDescription = "Trang ${singleFallback.sourcePage + 1}",
+                bitmap = currentBmp,
+                contentDescription = stringResource(R.string.cd_pdf_page, singleFallback.sourcePage + 1),
                 contentScale = ContentScale.Fit,
                 colorFilter = colorFilter,
                 modifier = Modifier.fillMaxSize(),
               )
+            } else if (renderFailed) {
+              Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+              ) {
+                Text(
+                  text = stringResource(R.string.pdf_page_render_error),
+                  color = Color(settings.tone.text),
+                  style = MaterialTheme.typography.bodyLarge,
+                )
+                OutlinedButton(onClick = { retryNonce += 1 }) {
+                  Text(text = stringResource(R.string.action_retry))
+                }
+              }
+            } else {
+              CircularProgressIndicator(color = Color(settings.tone.text))
             }
           }
         } else {
@@ -619,21 +691,22 @@ fun PdfPagerReader(
             onPrevPage = { controller.goBackward() },
             onNextPage = { controller.goForward() },
             onCenterTap = onCenterTap,
-            onImageTap = { element -> zoomedImageElement = element },
+            onImageTap = { element -> zoomedTarget = ReflowZoomTarget.InlineRegion(element) },
             modifier = Modifier.fillMaxSize(),
           )
         }
       }
 
-      zoomedImageElement?.let { zoomed ->
-        BackHandler { zoomedImageElement = null }
+      zoomedTarget?.let { zoomed ->
+        BackHandler { zoomedTarget = null }
         PdfReflowImageZoomOverlay(
-          element = zoomed,
+          target = zoomed,
           holder = holder,
           maxRenderWidthPx = targetWidthPx * 2,
+          maxRenderHeightPx = targetHeightPx * 2,
           settings = settings,
           colorFilter = colorFilter,
-          onDismiss = { zoomedImageElement = null },
+          onDismiss = { zoomedTarget = null },
           modifier = Modifier.fillMaxSize(),
         )
       }
@@ -1261,7 +1334,18 @@ private fun PdfPaginatedReflowScreen(
             } else {
               Modifier.fillMaxWidth()
                 .height(imgHeightDp)
-                .clickable { onImageTap(element) }
+                .pointerInput(element, onPrevPage, onNextPage, onImageTap) {
+                  detectTapGestures(
+                    onDoubleTap = { onImageTap(element) },
+                    onTap = { tapOffset ->
+                      when (resolveReflowImageTapAction(tapOffset.x, size.width.toFloat())) {
+                        ReflowImageTapAction.PREV_PAGE -> onPrevPage()
+                        ReflowImageTapAction.NEXT_PAGE -> onNextPage()
+                        ReflowImageTapAction.OPEN_ZOOM -> onImageTap(element)
+                      }
+                    },
+                  )
+                }
             }
           Box(
             modifier = boxModifier,
@@ -1270,7 +1354,7 @@ private fun PdfPaginatedReflowScreen(
             regionBitmap?.let { bmp ->
               Image(
                 bitmap = bmp,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.cd_pdf_inline_image, element.sourcePage + 1),
                 contentScale = ContentScale.Fit,
                 colorFilter = colorFilter,
                 modifier =
@@ -1291,20 +1375,32 @@ private fun PdfPaginatedReflowScreen(
 
 @Composable
 private fun PdfReflowImageZoomOverlay(
-  element: PaginatedReflowElement.InlineImage,
+  target: ReflowZoomTarget,
   holder: PdfRendererHolder,
   maxRenderWidthPx: Int,
+  maxRenderHeightPx: Int,
   settings: EInkSettings,
   colorFilter: ColorFilter,
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   BackHandler(onBack = onDismiss)
-  var bitmap by remember(holder, element.sourcePage, element.bounds, maxRenderWidthPx) {
+  var bitmap by remember(holder, target, maxRenderWidthPx, maxRenderHeightPx) {
     mutableStateOf<ImageBitmap?>(null)
   }
-  LaunchedEffect(holder, element.sourcePage, element.bounds, maxRenderWidthPx) {
-    bitmap = holder.renderRegion(element.sourcePage, element.bounds, maxRenderWidthPx)
+  LaunchedEffect(holder, target, maxRenderWidthPx, maxRenderHeightPx) {
+    bitmap =
+      when (target) {
+        is ReflowZoomTarget.InlineRegion ->
+          holder.renderRegion(target.element.sourcePage, target.element.bounds, maxRenderWidthPx)
+        is ReflowZoomTarget.FallbackPage ->
+          holder.renderPage(
+            index = target.sourcePage,
+            maxWidth = maxRenderWidthPx,
+            maxHeight = maxRenderHeightPx,
+            autoCrop = target.autoCrop,
+          )
+      }
   }
 
   var scale by remember { mutableFloatStateOf(1f) }
@@ -1315,6 +1411,13 @@ private fun PdfReflowImageZoomOverlay(
 
   val bgColor = Color(settings.tone.background)
   val inkColor = Color(settings.tone.text)
+  val imageContentDesc =
+    when (target) {
+      is ReflowZoomTarget.InlineRegion ->
+        stringResource(R.string.cd_pdf_inline_image, target.sourcePage + 1)
+      is ReflowZoomTarget.FallbackPage ->
+        stringResource(R.string.cd_pdf_page, target.sourcePage + 1)
+    }
 
   Box(
     modifier =
@@ -1370,7 +1473,7 @@ private fun PdfReflowImageZoomOverlay(
     } else {
       Image(
         bitmap = currentBitmap,
-        contentDescription = null,
+        contentDescription = imageContentDesc,
         contentScale = ContentScale.Fit,
         colorFilter = colorFilter,
         modifier =
@@ -1389,10 +1492,13 @@ private fun PdfReflowImageZoomOverlay(
       modifier =
         Modifier.align(Alignment.TopEnd)
           .padding(16.dp)
+          .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+          .heightIn(min = 48.dp)
           .background(bgColor)
           .border(1.5.dp, inkColor)
           .clickable(onClick = onDismiss)
           .padding(horizontal = 14.dp, vertical = 8.dp),
+      contentAlignment = Alignment.Center,
     ) {
       Text(
         text = stringResource(R.string.action_close),

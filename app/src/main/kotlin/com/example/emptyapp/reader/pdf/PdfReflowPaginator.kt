@@ -20,6 +20,24 @@ data class ReflowSettleEffect(
   val isSubPageTurn: Boolean,
 )
 
+enum class ReflowImageTapAction {
+  PREV_PAGE,
+  NEXT_PAGE,
+  OPEN_ZOOM,
+}
+
+fun resolveReflowImageTapAction(
+  tapX: Float,
+  containerWidth: Float,
+): ReflowImageTapAction {
+  val width = containerWidth.coerceAtLeast(1f)
+  return when {
+    tapX < width * 0.25f -> ReflowImageTapAction.PREV_PAGE
+    tapX > width * 0.75f -> ReflowImageTapAction.NEXT_PAGE
+    else -> ReflowImageTapAction.OPEN_ZOOM
+  }
+}
+
 data class ReflowPageMeta(
   val pageIndex: Int,
   val hasSpecialObjects: Boolean,

@@ -1,5 +1,6 @@
 package com.example.emptyapp.reader.pdf
 
+import com.example.emptyapp.ui.reader.PdfPagerController
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -418,5 +419,45 @@ class PdfReflowPaginatorTest {
       )
     assertNull(explicitJump.updatedAnchor)
     assertFalse(explicitJump.isSubPageTurn)
+  }
+
+  @Test
+  fun resolveReflowImageTapActionPreservesLeftAndRightPageTurnZones() {
+    assertEquals(ReflowImageTapAction.PREV_PAGE, resolveReflowImageTapAction(tapX = 0f, containerWidth = 1000f))
+    assertEquals(ReflowImageTapAction.PREV_PAGE, resolveReflowImageTapAction(tapX = 249.9f, containerWidth = 1000f))
+    assertEquals(ReflowImageTapAction.OPEN_ZOOM, resolveReflowImageTapAction(tapX = 250f, containerWidth = 1000f))
+    assertEquals(ReflowImageTapAction.OPEN_ZOOM, resolveReflowImageTapAction(tapX = 500f, containerWidth = 1000f))
+    assertEquals(ReflowImageTapAction.OPEN_ZOOM, resolveReflowImageTapAction(tapX = 750f, containerWidth = 1000f))
+    assertEquals(ReflowImageTapAction.NEXT_PAGE, resolveReflowImageTapAction(tapX = 750.1f, containerWidth = 1000f))
+    assertEquals(ReflowImageTapAction.NEXT_PAGE, resolveReflowImageTapAction(tapX = 1000f, containerWidth = 1000f))
+
+    // Degenerate container width coerced to >= 1f safely
+    assertEquals(ReflowImageTapAction.OPEN_ZOOM, resolveReflowImageTapAction(tapX = 0.5f, containerWidth = 0f))
+  }
+
+  @Test
+  fun pdfPagerControllerSuppressesPrevAndNextWhenOverlayIsOpen() {
+    val controller = PdfPagerController()
+    var prevCount = 0
+    var nextCount = 0
+    controller.onPrev = { prevCount += 1 }
+    controller.onNext = { nextCount += 1 }
+
+    controller.goBackward()
+    controller.goForward()
+    assertEquals(1, prevCount)
+    assertEquals(1, nextCount)
+
+    controller.overlayOpen = true
+    controller.goBackward()
+    controller.goForward()
+    assertEquals(1, prevCount)
+    assertEquals(1, nextCount)
+
+    controller.overlayOpen = false
+    controller.goBackward()
+    controller.goForward()
+    assertEquals(2, prevCount)
+    assertEquals(2, nextCount)
   }
 }

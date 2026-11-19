@@ -118,6 +118,7 @@
     <string name="cd_prev_snippet">Đoạn trước</string>
     <string name="cd_next_snippet">Đoạn tiếp</string>
     <string name="cd_pdf_page">Trang %1$d</string>
+    <string name="cd_pdf_inline_image">Hình minh họa trang %1$d</string>
     <string name="cd_bookmark_saved_state">Đã đánh dấu</string>
     <string name="cd_bookmark_not_saved_state">Chưa đánh dấu</string>
     <string name="reader_contents_button">Mục lục</string>

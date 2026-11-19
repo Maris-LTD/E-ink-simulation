@@ -65,7 +65,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
 - [x] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
 - [x] 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file
-- [ ] 46. L15 — Trang fallback trong Reflow: `cd_pdf_page`, spinner/lỗi/retry, cho zoom; ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở
+- [x] 46. L15 — Trang fallback trong Reflow: `cd_pdf_page`, spinner/lỗi/retry, cho zoom; ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở
 
 ### 5D — Khởi động & Reader EPUB
 - [ ] 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO
@@ -982,3 +982,26 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 46 — L15: Trang fallback trong Reflow (`cd_pdf_page`, spinner/lỗi/retry, cho zoom); ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở.
+
+### 46. L15 — Trang fallback trong Reflow (`cd_pdf_page`, spinner/lỗi/retry, cho zoom); ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở — 2026-11-19
+**Nguyên nhân:**
+- Trang fallback trong Reflow (`PaginatedReflowElement.FallbackPage`) dùng chuỗi cứng `"Trang ${singleFallback.sourcePage + 1}"` cho `contentDescription`, không có spinner khi đang tải (`fallbackBitmap == null && !renderFailed`), không có thông báo lỗi + nút Thử lại khi render thất bại, và không cho double-tap để phóng to trang fallback.
+- Ảnh inline (`PaginatedReflowElement.InlineImage`) dùng `Modifier.fillMaxWidth().clickable { onImageTap(element) }` chiếm hết chiều ngang màn hình nên cướp luôn vùng chạm 25% cạnh trái/phải dùng để lật trang của màn Reflow, và thiếu `contentDescription` (cả trên màn hình Reflow lẫn trong `PdfReflowImageZoomOverlay`).
+- Nút "Đóng" trên `PdfReflowImageZoomOverlay` chỉ có `padding(horizontal = 14.dp, vertical = 8.dp)` (~35 dp cao, dưới chuẩn 48 dp).
+- Khi `PdfReflowImageZoomOverlay` đang mở, bấm phím âm lượng vẫn gọi `controller.goBackward()`/`controller.goForward()` làm lật màn Reflow bên dưới.
+
+**Đã sửa:**
+- `res/values/strings.xml`, `res/values-vi/strings.xml`: thêm chuỗi `cd_pdf_inline_image` (EN: `"Illustration on page %1$d"`, VI: `"Hình minh họa trang %1$d"`).
+- `reader/pdf/PdfReflowPaginator.kt`: thêm `ReflowImageTapAction` (`PREV_PAGE`, `NEXT_PAGE`, `OPEN_ZOOM`) và hàm thuần Kotlin `resolveReflowImageTapAction(tapX, containerWidth)` bảo toàn dải chạm 25% trái/phải để lật trang và 50% vùng giữa để mở zoom/tác vụ trung tâm.
+- `ui/reader/PdfPagerReader.kt`:
+  - Trang fallback trong Reflow: đổi `contentDescription` sang `stringResource(R.string.cd_pdf_page, singleFallback.sourcePage + 1)`; bổ sung `renderFailed` + `retryNonce` để hiển thị `CircularProgressIndicator` khi đang tải và `pdf_page_render_error` + nút `action_retry` khi lỗi; hỗ trợ `onDoubleTap` mở `PdfReflowImageZoomOverlay` với `ReflowZoomTarget.FallbackPage` trong khi chạm 25% trái/phải vẫn lật trang và chạm vùng giữa bật/tắt thanh công cụ.
+  - Ảnh inline (`PaginatedReflowElement.InlineImage`): bỏ `.clickable` toàn chiều ngang, thay bằng `pointerInput` + `detectTapGestures` dùng `resolveReflowImageTapAction` (chạm 25% trái/phải gọi `onPrevPage()`/`onNextPage()`, chạm vùng giữa hoặc double-tap mở `PdfReflowImageZoomOverlay`); gắn `contentDescription = stringResource(R.string.cd_pdf_inline_image, element.sourcePage + 1)` cho ảnh inline và ảnh trong `PdfReflowImageZoomOverlay`.
+  - Nút "Đóng" (`action_close`) trên `PdfReflowImageZoomOverlay`: thêm `.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).heightIn(min = 48.dp)` và `contentAlignment = Alignment.Center`.
+  - Chặn lật màn Reflow khi overlay mở: thêm cờ `overlayOpen` trên `PdfPagerController` (chặn trong `goBackward()`/`goForward()`), đồng bộ qua `DisposableEffect(controller, zoomedTarget)`, kiểm tra `zoomedTarget == null` trong `controller.onPrev`/`onNext` và khoá `userScrollEnabled = zoomedTarget == null` trên `HorizontalPager` của Reflow.
+- `test/.../reader/pdf/PdfReflowPaginatorTest.kt`: thêm 2 unit test (`resolveReflowImageTapActionPreservesLeftAndRightPageTurnZones`, `pdfPagerControllerSuppressesPrevAndNextWhenOverlayIsOpen`).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **231/231 tests pass**, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 47 — M17: Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO.

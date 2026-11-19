@@ -118,6 +118,7 @@
     <string name="cd_prev_snippet">Previous excerpt</string>
     <string name="cd_next_snippet">Next excerpt</string>
     <string name="cd_pdf_page">Page %1$d</string>
+    <string name="cd_pdf_inline_image">Illustration on page %1$d</string>
     <string name="cd_bookmark_saved_state">Bookmarked</string>
     <string name="cd_bookmark_not_saved_state">Not bookmarked</string>
     <string name="reader_contents_button">Contents</string>
