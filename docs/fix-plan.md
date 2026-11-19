@@ -80,7 +80,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
 - [x] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
 - [x] 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main
-- [ ] 57. L30 + L31 — `docs/privacy-policy.md` bổ sung (snippet trên màn khoá, nút "Dịch ngoài", device-transfer, giới hạn text từ điển); `.gitignore` chặn `*.jks`/`*.keystore`
+- [x] 57. L30 + L31 — `docs/privacy-policy.md` bổ sung (snippet trên màn khoá, nút "Dịch ngoài", device-transfer, giới hạn text từ điển); `.gitignore` chặn `*.jks`/`*.keystore`
 
 ### 5F — Nghiệm thu
 - [ ] 58. `testDebugUnitTest` + `lintDebug` xanh; chạy bản release R8 trên máy; cài AAB (bundletool) kiểm ngôn ngữ; backup/restore; đi qua danh sách test tay mục 5 của `docs/audit-2026-11-19.md`
@@ -1265,3 +1265,18 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 57 — L30 + L31: `docs/privacy-policy.md` bổ sung; `.gitignore` chặn `*.jks`/`*.keystore`.
+
+### 57. L30 + L31 — Cập nhật `docs/privacy-policy.md` & chặn keystore trong `.gitignore` — 2026-11-19
+**Nguyên nhân:**
+- **L30 (INC #28):** `docs/privacy-policy.md` chưa nêu rõ việc hiển thị tiêu đề + snippet công khai trên màn hình khoá (`VISIBILITY_PUBLIC` và Live Wallpaper), nút "Dịch ngoài" mở `translate.google.com` trong trình duyệt, phạm vi chuyển dữ liệu trực tiếp giữa hai máy (device-transfer mang theo tệp sách và trạng thái tài khoản đồng bộ), và giới hạn độ dài văn bản gửi từ điển/dịch nhanh (tối đa 500 ký tự).
+- **L31:** `.gitignore` chưa chặn `*.jks`, `*.keystore`, `keystore.properties`.
+
+**Đã sửa:**
+- `docs/privacy-policy.md`: bổ sung đầy đủ cả phần Tiếng Việt và Tiếng Anh về hiển thị trên màn khoá, nút "Dịch ngoài", device-transfer và giới hạn 500 ký tự khi tra từ điển/dịch nhanh.
+- `.gitignore`: bổ sung `*.jks`, `*.keystore`, `keystore.properties`.
+
+**Cách kiểm tra:** Đối chiếu trực tiếp `docs/privacy-policy.md` và `.gitignore` với code hiện tại (`DictionaryService.MAX_QUERY_CHARS = 500`, `data_extraction_rules.xml`, `LockScreenReadingNotifier.kt`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 58 — Nghiệm thu cuối: `testDebugUnitTest` + `lintDebug` + `assembleRelease` xanh; kiểm tra các gate có thể tự động hoá trên máy build và ghi nhận checklist test tay trên thiết bị thực.

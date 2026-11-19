@@ -10,7 +10,8 @@
 
 ### 1. Lưu trữ & Quyền sở hữu Dữ liệu
 - Toàn bộ tệp sách bạn nhập vào ứng dụng (`EPUB`, `PDF`, `CBZ`), tiến độ đọc, dấu trang (bookmarks), ghi chú/highlight và thống kê đọc sách mặc định được **lưu trữ cục bộ hoàn toàn trên thiết bị của bạn**.
-- Nếu thiết bị của bạn bật **Android Auto Backup**, hệ thống Android có thể sao lưu tự động dữ liệu cấu hình/thư viện nhẹ (không bao gồm tệp sách và bộ nhớ đệm) vào tài khoản Google của bạn theo chính sách sao lưu của Android.
+- Nếu thiết bị của bạn bật **Android Auto Backup** (sao lưu đám mây), hệ thống Android chỉ sao lưu dữ liệu cài đặt và thống kê nhẹ (không bao gồm tệp sách, ảnh bìa, trạng thái đăng nhập Drive và bộ nhớ đệm) theo chính sách sao lưu của Android.
+- Nếu bạn thực hiện **chuyển dữ liệu trực tiếp sang thiết bị mới (Device-to-Device Transfer)** qua dây cáp hoặc công cụ chuyển máy của Android, hệ thống sẽ chuyển toàn bộ dữ liệu ứng dụng bao gồm tệp sách (`books/`), ảnh bìa, dữ liệu thư viện và trạng thái tài khoản đồng bộ (chỉ loại trừ bộ nhớ đệm `pdf_cache/` và tệp tạm `sync_tmp/`).
 - **Inkify** không vận hành máy chủ riêng để thu thập dữ liệu người dùng, không tích hợp SDK theo dõi/phân tích hành vi của bên thứ ba và không chứa quảng cáo.
 
 ### 2. Đăng nhập Google & Đồng bộ Google Drive (Tùy chọn)
@@ -22,8 +23,10 @@
   - Bạn có thể **xóa từng cuốn sách khỏi Google Drive** (ngay khi xóa sách trong Thư viện hoặc trong danh sách *Sách đã lưu trên Drive* tại phần Cài đặt).
   - Bạn có thể **xóa toàn bộ dữ liệu sao lưu trên Google Drive** bất cứ lúc nào bằng nút **"Xóa dữ liệu trên Drive"** trong mục *Hồ sơ & Thống kê → Cài đặt → Đồng bộ Google Drive*. Thao tác này xóa dữ liệu trên Drive và đăng xuất máy hiện tại; các thiết bị khác vẫn đang đăng nhập có thể tải lại dữ liệu cục bộ của chúng nếu chưa đăng xuất.
 
-### 3. Tra từ điển & Dịch thuật
-- Khi bạn chọn một từ hoặc đoạn văn bản trong lúc đọc sách và bấm *Tra từ / Dịch*, chỉ đoạn văn bản được chọn đó mới được gửi qua kết nối mã hóa HTTPS tới các dịch vụ tra cứu/dịch thuật bên thứ ba (`api.dictionaryapi.dev`, `translate.googleapis.com`, `api.mymemory.translated.net`) để trả về kết quả.
+### 3. Tra từ điển, Dịch thuật & Hiển thị Màn hình khóa
+- Khi bạn chọn một từ hoặc đoạn văn bản trong lúc đọc sách và bấm *Tra từ / Dịch*, đoạn văn bản được chọn (được **giới hạn tối đa 500 ký tự**) sẽ được gửi qua kết nối mã hóa HTTPS tới các dịch vụ tra cứu/dịch thuật bên thứ ba (`api.dictionaryapi.dev`, `translate.googleapis.com`, `api.mymemory.translated.net`) để trả về kết quả.
+- Khi bạn bấm nút **"Dịch ngoài"**, ứng dụng sẽ mở trang `translate.google.com` trong trình duyệt web trên máy kèm đoạn văn bản được chọn để bạn tự dịch trực tiếp trên trang web của Google.
+- Khi bạn bật tính năng **Đọc trên màn hình khóa** hoặc **Live Wallpaper Inkify**, tiêu đề sách và trích đoạn (snippet) đang đọc có thể hiển thị công khai trên màn hình khóa (`VISIBILITY_PUBLIC` trên thông báo điều hướng và trên hình nền động) mà không cần mở khóa thiết bị. Bạn có thể tắt tùy chọn này bất cứ lúc nào trong phần Cài đặt Reader.
 
 ### 4. Các quyền hệ thống ứng dụng sử dụng
 - `INTERNET`: Chỉ dùng khi bạn đồng bộ Google Drive hoặc tra từ điển trực tuyến.
@@ -37,7 +40,8 @@
 
 ### 1. Data Storage & Ownership
 - All imported books (`EPUB`, `PDF`, `CBZ`), reading progress, bookmarks, highlights/notes, and reading statistics are **stored locally on your device by default**.
-- If **Android Auto Backup** is enabled on your device, Android may back up lightweight app configuration and metadata (excluding book files and caches) to your Google account.
+- If **Android Auto Backup** (cloud backup) is enabled on your device, Android only backs up lightweight app settings and reading statistics (excluding book files, covers, Drive sign-in state, and caches).
+- If you perform a direct **Device-to-Device Transfer** (wired/Android device transfer to a new phone), Android transfers your full app data including book files (`books/`), covers, library index, and sync sign-in state (excluding only `pdf_cache/` and temporary `sync_tmp/` files).
 - **Inkify** does not operate any external tracking servers, third-party analytics SDKs, or advertising networks.
 
 ### 2. Google Sign-In & Google Drive Sync (Optional)
@@ -49,8 +53,10 @@
   - You can **remove individual books from Google Drive** (either when deleting a book in the Library or from the *Books backed up on Drive* list in Settings).
   - You can **delete all Google Drive backup data** at any time by tapping **"Delete Drive data"** in *Profile & Stats → Settings → Google Drive Sync*. This removes the Drive backup and signs out this device; other devices that remain signed in may re-upload their local data unless signed out.
 
-### 3. Dictionary & Translation
-- When you select text while reading and choose *Define / Translate*, only the selected word or phrase is transmitted over HTTPS to third-party dictionary/translation services (`api.dictionaryapi.dev`, `translate.googleapis.com`, `api.mymemory.translated.net`).
+### 3. Dictionary, Translation & Lock Screen Display
+- When you select text while reading and choose *Define / Translate*, only the selected word or phrase (capped at **a maximum of 500 characters**) is transmitted over HTTPS to third-party dictionary/translation services (`api.dictionaryapi.dev`, `translate.googleapis.com`, `api.mymemory.translated.net`).
+- When you tap the **"External Translate"** button, the app opens `translate.google.com` in your device's web browser with the selected text.
+- When you enable **Lock Screen Reading** or the **Inkify Live Wallpaper**, the current book title and reading excerpt (snippet) may be displayed publicly on your lock screen (`VISIBILITY_PUBLIC` notification and live wallpaper) without unlocking your device. You can disable this at any time in Reader Settings.
 
 ### 4. Permissions Used
 - `INTERNET`: Used solely for optional Google Drive Sync and online dictionary/translation lookups.
