@@ -72,7 +72,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s)
 - [x] 49. L16 + L21 — Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM)
 - [x] 50. L17 + L18 — Dialog ghi chú: `dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống; quyền thông báo: xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo
-- [ ] 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle
+- [x] 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle
 
 ### 5E — Thư viện, Launcher, Wallpaper, Widget, l10n, a11y
 - [ ] 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm"
@@ -1113,3 +1113,37 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 51 — L19 + L20 + L22 (reader) + L23: Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle.
+
+### 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle — 2026-11-19
+**Nguyên nhân:**
+- **L19 (REG #18):**
+  - Trên API 26+, `PixelCopy.request(window, ...)` chụp từ window surface đã đi qua hardware layer color filter của `ReaderScreen`, nhưng `ReaderGhostAndFlashLayer` vẫn truyền `ghostColorFilter` vào `RefreshFlashOverlay` khiến ảnh ghost bị áp color filter lần thứ 2 (CBZ ở tone DARK bị đảo màu ngược trở lại).
+  - `captureGhostSnapshot` gọi `existing?.recycle()` khi tạo lại buffer lúc đổi kích thước view, có nguy cơ đụng bitmap mà `RefreshFlashOverlay` đang vẽ ở frame cuối.
+  - `ReaderGhostAndFlashLayer` đảo buffer slot trước khi biết kết quả chụp và trên API 26+ khi `PixelCopy` thất bại lại rơi xuống `view.draw(canvas)`.
+- **L20 (INC #3):**
+  - `progressSaveJob` chỉ chạy 1 lần `delay(PROGRESS_SAVE_INTERVAL_MS)` rồi `flushProgress()`; nếu một locator mới đến trong lúc `flushProgress()` đang chờ `repository.saveProgress(...)` thì `progressSaveJob?.isActive == true` nên không tạo job mới và locator mới không được hẹn lưu tiếp.
+  - `flushProgress()` xoá `pendingProgress = null` trước khi gọi `repository.saveProgress(...)` mà không bọc trong `withContext(NonCancellable)`, nên khi `onReaderForegroundChanged(false)` (`onPause`) gọi `progressSaveJob?.cancel()` đúng lúc đang chờ `writeMutex`/IO thì tiến độ đang ghi bị huỷ và mất luôn.
+- **L22 (reader):**
+  - `retryLoad()` luôn gọi `viewModelScope.launch { load() }` mà không kiểm tra job đang chạy → bấm "Thử lại" nhiều lần liên tiếp tạo nhiều `load()` chạy song song và có thể làm rò rỉ `Publication` mở trước đó.
+- **L23 (NEW):**
+  - `ReaderFooterBar` dùng `while (true)` trực tiếp trong `LaunchedEffect(context)` mà không gắn với lifecycle → vòng lặp cập nhật đồng hồ vẫn thức dậy mỗi phút ngay cả khi Activity đang ở trạng thái `STOPPED`.
+
+**Đã sửa:**
+- `ui/reader/ReaderScreen.kt` (**L19**):
+  - Thêm `GhostSnapshotCapture(bitmap, capturedViaPixelCopy)` và hàm thuần Kotlin `shouldApplyGhostOverlayFilter(sdkInt, capturedViaPixelCopy)` (`true` chỉ khi `sdkInt < Build.VERSION_CODES.O || !capturedViaPixelCopy`).
+  - Trong `captureGhostSnapshot`: bỏ `existing?.recycle()` (để GC thu hồi an toàn khi đổi kích thước); trên API 26+ chỉ trả về ảnh khi `PixelCopy.SUCCESS` (`capturedViaPixelCopy = true`, thất bại trả về `null`), trên API 24–25 dùng fallback `Canvas` (`capturedViaPixelCopy = false`).
+  - Trong `ReaderGhostAndFlashLayer`: chỉ đảo `nextBufferSlot = 1 - slotIndex` và cập nhật `latestSnapshot` khi `captured != null`; chỉ truyền `ghostColorFilter` vào `RefreshFlashOverlay` khi `shouldApplyGhostOverlayFilter(...) == true` (trên API 26+ với `PixelCopy` truyền `null`).
+- `ui/reader/ReaderViewModel.kt` (**L20 + L22 reader**):
+  - Trong `onLocatorChanged`: đổi `progressSaveJob` sang vòng lặp `while (pendingProgress != null && isActive) { delay(PROGRESS_SAVE_INTERVAL_MS); flushProgress() }` để locator mới đến trong lúc đang lưu luôn được hẹn lưu ở nhịp kế tiếp.
+  - Trong `flushProgress()`: bọc phần xoá `if (pendingProgress === snapshot) pendingProgress = null` và `repository.saveProgress(...)` trong `withContext(NonCancellable)` để `progressSaveJob?.cancel()` ở `onPause` chỉ huỷ `delay` chứ không bao giờ làm đứt quãng lần ghi đã lấy `snapshot`.
+  - Thêm `private var loadJob: Job? = null` và `startLoad()` dùng chung cho `init` và `retryLoad()`: bỏ qua ngay nếu `loadJob?.isActive == true`, huỷ `loadJob` trong `onCleared()`, và đóng `previousPub.close()` an toàn nếu đã có `Publication` cũ trước khi gán `publication = pub`.
+- `ui/reader/ReaderFooterBar.kt` (**L23**):
+  - Dùng `LocalLifecycleOwner.current` và `lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED)` bao quanh vòng lặp `while (true)` cập nhật đồng hồ chân trang.
+- `test/.../ui/reader/ReaderViewModelPageTurnTest.kt`, `test/.../ui/reader/ReaderViewModelLoadTest.kt`:
+  - Thêm 3 unit test mới (`shouldApplyGhostOverlayFilterSkipsFilterForPixelCopyOnApi26PlusAndAppliesForCanvasFallback`, `throttledProgressSaveReschedulesLocatorArrivingDuringInFlightSaveAndSurvivesCancelOnPause`, `retryLoadIgnoresDuplicateCallsWhileLoadingIsAlreadyActive`).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **249/249 tests pass** qua 42 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 52 — M19 + M20: Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm".

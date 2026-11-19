@@ -95,6 +95,7 @@ class ReaderViewModel(
     context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
   private val flashController = RefreshFlashController()
   private var publication: Publication? = null
+  private var loadJob: Job? = null
   private var searchIterator: SearchIterator? = null
   private var searchJob: Job? = null
   private var statsTickerJob: Job? = null
@@ -183,7 +184,7 @@ class ReaderViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
   init {
-    viewModelScope.launch { load() }
+    startLoad()
   }
 
   fun updateSettings(transform: (EInkSettings) -> EInkSettings) {
@@ -260,7 +261,7 @@ class ReaderViewModel(
     epubPageWindowFlow.value =
       if (totalPages > 0) {
         EpubPageWindow(
-          href = locator.href.toString(),
+          href = locator.safeHref(),
           progression = locator.locations.progression,
           totalPages = totalPages,
         )
@@ -270,17 +271,24 @@ class ReaderViewModel(
   }
 
   fun onLocatorChanged(locator: Locator) {
-    val key = "${locator.href}#${locator.locations.progression}#${locator.locations.position}"
+    val key = "${locator.safeHref()}#${locator.locations.progression}#${locator.locations.position}"
     val total = (locator.locations.totalProgression ?: 0.0).toFloat()
     currentLocator = locator
-    currentLocatorFlow.value = locator
+    try {
+      currentLocatorFlow.value = locator
+    } catch (_: NullPointerException) {
+      currentLocatorFlow.value = null
+      currentLocatorFlow.value = locator
+    }
     onPositionKeyChanged(key, total)
     pendingProgress = locator to total
     if (progressSaveJob?.isActive != true) {
       progressSaveJob =
         viewModelScope.launch {
-          delay(PROGRESS_SAVE_INTERVAL_MS)
-          flushProgress()
+          while (pendingProgress != null && isActive) {
+            delay(PROGRESS_SAVE_INTERVAL_MS)
+            flushProgress()
+          }
         }
     }
   }
@@ -316,10 +324,23 @@ class ReaderViewModel(
   }
 
   private suspend fun flushProgress() {
-    val (locator, total) = pendingProgress ?: return
-    pendingProgress = null
-    repository.saveProgress(bookId, locator.toJSON().toString(), total)
+    val snapshot = pendingProgress ?: return
+    withContext(NonCancellable) {
+      if (pendingProgress === snapshot) {
+        pendingProgress = null
+      }
+      val (locator, total) = snapshot
+      repository.saveProgress(bookId, serializeLocator(locator), total)
+    }
   }
+
+  private fun serializeLocator(locator: Locator): String {
+    val raw = runCatching { locator.toJSON().toString() }.getOrNull()
+    if (!raw.isNullOrBlank() && raw != "null") return raw
+    return """{"href":"${locator.safeHref()}","progression":${locator.locations.progression ?: 0.0},"position":${locator.locations.position ?: 0},"totalProgression":${locator.locations.totalProgression ?: 0.0}}"""
+  }
+
+  private fun Locator.safeHref(): String = runCatching { href.toString() }.getOrDefault("")
 
   fun notifyUserInteraction() {
     lastInteractionMs = elapsedRealtimeMs()
@@ -419,7 +440,7 @@ class ReaderViewModel(
 
   private fun Locator.toBookmarkLocation(): BookmarkLocation =
     BookmarkLocation(
-      href = href.toString(),
+      href = safeHref(),
       position = locations.position,
       progression = locations.progression,
       totalProgression = (locations.totalProgression ?: 0.0).toFloat(),
@@ -608,8 +629,13 @@ class ReaderViewModel(
   }
 
   fun retryLoad() {
+    startLoad()
+  }
+
+  private fun startLoad() {
+    if (loadJob?.isActive == true) return
     mutableState.value = ReaderUiState.Loading
-    viewModelScope.launch { load() }
+    loadJob = viewModelScope.launch { load() }
   }
 
   private suspend fun load() {
@@ -644,6 +670,10 @@ class ReaderViewModel(
     }
     openResult
       .onSuccess { pub ->
+        val previousPub = publication
+        if (previousPub != null && previousPub !== pub) {
+          runCatching { previousPub.close() }
+        }
         publication = pub
         bookmarkMatchModeFlow.value =
           BookmarkMatcher.matchModeFor(
@@ -722,11 +752,12 @@ class ReaderViewModel(
     if (modeToPersist != null || progressToPersist != null) {
       kotlinx.coroutines.CoroutineScope(ioDispatcher + NonCancellable).launch {
         progressToPersist?.let { (locator, total) ->
-          repository.saveProgress(bookId, locator.toJSON().toString(), total)
+          repository.saveProgress(bookId, serializeLocator(locator), total)
         }
         if (modeToPersist != null) repository.savePdfReadingMode(bookId, modeToPersist)
       }
     }
+    loadJob?.cancel()
     statsTickerJob?.cancel()
     searchJob?.cancel()
     runCatching { searchIterator?.close() }
@@ -735,7 +766,7 @@ class ReaderViewModel(
 
   companion object {
     private const val INACTIVITY_TIMEOUT_MS = 120_000L
-    private const val PROGRESS_SAVE_INTERVAL_MS = 1_500L
+    internal const val PROGRESS_SAVE_INTERVAL_MS = 1_500L
     internal const val RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS = 3_000L
 
     internal fun resolveInitialLocatorChoice(

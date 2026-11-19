@@ -678,11 +678,11 @@ private fun ReaderGhostAndFlashLayer(
 ) {
   val flashTrigger by flashTriggerFlow.collectAsStateWithLifecycle()
   val pagesSinceFlash by pagesSinceFlashFlow.collectAsStateWithLifecycle()
-  var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
-  var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
+  var latestSnapshot by remember { mutableStateOf<GhostSnapshotCapture?>(null) }
+  var activeGhost by remember { mutableStateOf<GhostSnapshotCapture?>(null) }
   val bufferA = remember { arrayOfNulls<Bitmap>(1) }
   val bufferB = remember { arrayOfNulls<Bitmap>(1) }
-  var useBufferA by remember { mutableStateOf(true) }
+  var nextBufferSlot by remember { mutableStateOf(0) }
 
   LaunchedEffect(navigator, settings.ghosting) {
     val nav = navigator ?: return@LaunchedEffect
@@ -695,10 +695,11 @@ private fun ReaderGhostAndFlashLayer(
     merge(pageTurnTriggerFlow, flashTriggerFlow).collect {
       activeGhost = if (pagesSinceFlashFlow.value > 0) latestSnapshot else null
       delay(220L)
-      val slot = if (useBufferA) bufferA else bufferB
-      useBufferA = !useBufferA
+      val slotIndex = nextBufferSlot
+      val slot = if (slotIndex == 0) bufferA else bufferB
       val captured = captureGhostSnapshot(view, slot)
       if (captured != null) {
+        nextBufferSlot = 1 - slotIndex
         latestSnapshot = captured
       }
     }
@@ -706,27 +707,48 @@ private fun ReaderGhostAndFlashLayer(
 
   val ghostAlpha =
     if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
-  val ghostColorFilter =
-    remember(settings.grayscale, settings.contrast, settings.tone, bookFormat) {
-      ColorFilter.colorMatrix(
-        ColorMatrix(
-          EInkColorFilter.matrixOf(settings, contentAlreadyDark = bookFormat == BookFormat.EPUB).array,
-        ),
+  val activeGhostCapture = activeGhost
+  val applyGhostFilter =
+    activeGhostCapture != null &&
+      shouldApplyGhostOverlayFilter(
+        sdkInt = Build.VERSION.SDK_INT,
+        capturedViaPixelCopy = activeGhostCapture.capturedViaPixelCopy,
       )
+  val ghostColorFilter =
+    remember(settings.grayscale, settings.contrast, settings.tone, bookFormat, applyGhostFilter) {
+      if (!applyGhostFilter) {
+        null
+      } else {
+        ColorFilter.colorMatrix(
+          ColorMatrix(
+            EInkColorFilter.matrixOf(settings, contentAlreadyDark = bookFormat == BookFormat.EPUB).array,
+          ),
+        )
+      }
     }
 
   RefreshFlashOverlay(
-    ghostBitmap = activeGhost,
+    ghostBitmap = activeGhostCapture?.bitmap,
     ghostAlpha = ghostAlpha,
     flashTrigger = flashTrigger,
     ghostColorFilter = ghostColorFilter,
   )
 }
 
+private data class GhostSnapshotCapture(
+  val bitmap: ImageBitmap,
+  val capturedViaPixelCopy: Boolean,
+)
+
+internal fun shouldApplyGhostOverlayFilter(
+  sdkInt: Int,
+  capturedViaPixelCopy: Boolean,
+): Boolean = sdkInt < Build.VERSION_CODES.O || !capturedViaPixelCopy
+
 private suspend fun captureGhostSnapshot(
   view: View,
   reusableSlot: Array<Bitmap?>,
-): ImageBitmap? {
+): GhostSnapshotCapture? {
   if (view.width <= 0 || view.height <= 0) return null
   val scaledWidth = (view.width / 4).coerceAtLeast(1)
   val scaledHeight = (view.height / 4).coerceAtLeast(1)
@@ -735,7 +757,6 @@ private suspend fun captureGhostSnapshot(
     if (existing != null && !existing.isRecycled && existing.width == scaledWidth && existing.height == scaledHeight) {
       existing
     } else {
-      existing?.recycle()
       Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888).also { reusableSlot[0] = it }
     }
 
@@ -758,16 +779,25 @@ private suspend fun captureGhostSnapshot(
               )
             }.onFailure { cont.resume(false) }
           }
-        if (copied) return bitmap.asImageBitmap()
+        if (copied) {
+          return GhostSnapshotCapture(
+            bitmap = bitmap.asImageBitmap(),
+            capturedViaPixelCopy = true,
+          )
+        }
       }
     }
+    return null
   }
 
   return runCatching {
     val canvas = Canvas(bitmap)
     canvas.scale(0.25f, 0.25f)
     view.draw(canvas)
-    bitmap.asImageBitmap()
+    GhostSnapshotCapture(
+      bitmap = bitmap.asImageBitmap(),
+      capturedViaPixelCopy = false,
+    )
   }.getOrNull()
 }
 

@@ -28,6 +28,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import android.text.format.DateFormat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import java.util.Date
 import kotlinx.coroutines.delay
 
@@ -39,13 +42,16 @@ fun ReaderFooterBar(
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
+  val lifecycleOwner = LocalLifecycleOwner.current
   var clockText by remember(context) { mutableStateOf(formatClock(context)) }
-  LaunchedEffect(context) {
-    while (true) {
-      clockText = formatClock(context)
-      val nowMs = System.currentTimeMillis()
-      val delayToNextMinute = (60_000L - (nowMs % 60_000L) + 50L).coerceIn(1_000L, 60_000L)
-      delay(delayToNextMinute)
+  LaunchedEffect(context, lifecycleOwner) {
+    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+      while (true) {
+        clockText = formatClock(context)
+        val nowMs = System.currentTimeMillis()
+        val delayToNextMinute = (60_000L - (nowMs % 60_000L) + 50L).coerceIn(1_000L, 60_000L)
+        delay(delayToNextMinute)
+      }
     }
   }
 

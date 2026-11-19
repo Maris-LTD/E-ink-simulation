@@ -3,6 +3,9 @@ package com.example.emptyapp.ui.reader
 import android.os.Build
 import com.example.emptyapp.NotificationPermissionAction
 import com.example.emptyapp.data.annotation.AnnotationRepository
+import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.book.BookFormat
+import com.example.emptyapp.data.book.BookIndexStore
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
@@ -21,8 +24,15 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -71,9 +81,26 @@ class ReaderViewModelPageTurnTest {
         autoBackfill = false,
       )
     val settingsStore = EInkSettingsStore(initialSettings)
-    val pdfConfigs = PdfBookConfigStore(File(dir, "pdf_configs.json"))
-    val annotations = AnnotationRepository(File(dir, "bookmarks.json"), File(dir, "highlights.json"))
-    val stats = ReadingStatsRepository(File(dir, "reading_stats.json"))
+    val pdfConfigs =
+      PdfBookConfigStore(
+        storageFile = File(dir, "pdf_configs.json"),
+        preloadInBackground = false,
+        ioDispatcher = Dispatchers.Unconfined,
+      )
+    val annotations =
+      AnnotationRepository(
+        bookmarksFile = File(dir, "bookmarks.json"),
+        highlightsFile = File(dir, "highlights.json"),
+        tombstones = null,
+        preloadInBackground = false,
+        ioDispatcher = Dispatchers.Unconfined,
+      )
+    val stats =
+      ReadingStatsRepository(
+        statsFile = File(dir, "reading_stats.json"),
+        preloadInBackground = false,
+        ioDispatcher = Dispatchers.Unconfined,
+      )
     val vm =
       ReaderViewModel(
         bookId = "book-1",
@@ -621,5 +648,187 @@ class ReaderViewModelPageTurnTest {
         shouldShowRationale = false,
       ),
     )
+  }
+
+  @Test
+  fun shouldApplyGhostOverlayFilterSkipsFilterForPixelCopyOnApi26PlusAndAppliesForCanvasFallback() {
+    assertFalse(
+      shouldApplyGhostOverlayFilter(
+        sdkInt = Build.VERSION_CODES.O,
+        capturedViaPixelCopy = true,
+      ),
+    )
+    assertFalse(
+      shouldApplyGhostOverlayFilter(
+        sdkInt = Build.VERSION_CODES.TIRAMISU,
+        capturedViaPixelCopy = true,
+      ),
+    )
+    assertTrue(
+      shouldApplyGhostOverlayFilter(
+        sdkInt = Build.VERSION_CODES.N,
+        capturedViaPixelCopy = false,
+      ),
+    )
+    assertTrue(
+      shouldApplyGhostOverlayFilter(
+        sdkInt = Build.VERSION_CODES.N_MR1,
+        capturedViaPixelCopy = false,
+      ),
+    )
+    assertTrue(
+      shouldApplyGhostOverlayFilter(
+        sdkInt = Build.VERSION_CODES.O,
+        capturedViaPixelCopy = false,
+      ),
+    )
+  }
+
+  private class ManualIoDispatcher : kotlinx.coroutines.CoroutineDispatcher() {
+    private val queue = ArrayDeque<Runnable>()
+
+    override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+      queue.addLast(block)
+    }
+
+    fun runAll() {
+      while (true) {
+        val next = queue.removeFirstOrNull() ?: break
+        next.run()
+      }
+    }
+  }
+
+  private fun sampleProgressLocator(position: Int, totalProgression: Double): Locator {
+    val ctor =
+      org.readium.r2.shared.util.RelativeUrl::class.java
+        .getDeclaredConstructor(android.net.Uri::class.java)
+        .apply { isAccessible = true }
+    val url = ctor.newInstance(android.net.Uri.EMPTY)
+    return Locator(
+      href = url,
+      mediaType = MediaType.XHTML,
+      locations =
+        Locator.Locations(
+          position = position,
+          progression = totalProgression,
+          totalProgression = totalProgression,
+        ),
+    )
+  }
+
+  @Test
+  fun throttledProgressSaveReschedulesLocatorArrivingDuringInFlightSaveAndSurvivesCancelOnPause() = runTest {
+    val dir = createTempDirectory("reader_vm_throttle_progress_test").toFile()
+    val ioDispatcher = ManualIoDispatcher()
+    Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+    var vmRef: ReaderViewModel? = null
+    try {
+      BookIndexStore(File(dir, "library.json")).write(
+        listOf(
+          BookEntry(
+            id = "book-1",
+            title = "Throttle Book",
+            author = "Author",
+            fileName = "book-1.epub",
+            format = BookFormat.EPUB,
+            progress = 0f,
+          ),
+        ),
+      )
+      val repo =
+        LibraryRepository(
+          appFilesDir = dir,
+          engineProvider = { error("Not used") },
+          importFromUri = { _, _ -> Result.failure(UnsupportedOperationException()) },
+          verifyAndExtractSyncedCover = { _, _, _ -> false },
+          extractBackfillCover = { _, _, _ -> false },
+          readAttemptedCoverIds = { emptySet() },
+          persistAttemptedCoverIds = {},
+          autoBackfill = false,
+          preloadInBackground = false,
+          ioDispatcher = ioDispatcher,
+        )
+      val vm =
+        ReaderViewModel(
+          bookId = "book-1",
+          repository = repo,
+          settingsStore = EInkSettingsStore(EInkSettings()),
+          pdfBookConfigs = null,
+          annotations =
+            AnnotationRepository(
+              bookmarksFile = File(dir, "bookmarks.json"),
+              highlightsFile = File(dir, "highlights.json"),
+              tombstones = null,
+              preloadInBackground = false,
+              ioDispatcher = ioDispatcher,
+            ),
+          dictionary = DictionaryService(),
+          statsRepository =
+            ReadingStatsRepository(
+              statsFile = File(dir, "reading_stats.json"),
+              preloadInBackground = false,
+              ioDispatcher = ioDispatcher,
+            ),
+          ioDispatcher = ioDispatcher,
+        )
+      vmRef = vm
+      ioDispatcher.runAll()
+      runCurrent()
+
+      // 1. First locator schedules throttled save
+      vm.onLocatorChanged(sampleProgressLocator(position = 2, totalProgression = 0.2))
+      assertEquals(0f, repo.find("book-1")?.progress ?: -1f, 1e-4f)
+
+      // Advance 1.5s: flushProgress() starts and suspends on ioDispatcher inside repository.saveProgress
+      advanceTimeBy(ReaderViewModel.PROGRESS_SAVE_INTERVAL_MS)
+      runCurrent()
+
+      // While first saveProgress(0.2) is still suspended in flight on ioDispatcher, a new locator (0.5) arrives!
+      vm.onLocatorChanged(sampleProgressLocator(position = 5, totalProgression = 0.5))
+
+      // Complete the first in-flight disk write on ioDispatcher
+      ioDispatcher.runAll()
+      runCurrent()
+      assertFalse(repo.lastWriteError.value)
+      assertEquals(0.2f, repo.find("book-1")?.progress ?: -1f, 1e-4f)
+
+      // The second locator (0.5) must have been rescheduled for the next throttle window (1.5s)
+      advanceTimeBy(ReaderViewModel.PROGRESS_SAVE_INTERVAL_MS)
+      runCurrent()
+      ioDispatcher.runAll()
+      runCurrent()
+      assertFalse(repo.lastWriteError.value)
+      assertEquals(0.5f, repo.find("book-1")?.progress ?: -1f, 1e-4f)
+
+      // 2. Verify NonCancellable when onReaderForegroundChanged(false) cancels progressSaveJob mid-save
+      // Hold repository writeMutex with an in-flight write on ioDispatcher
+      val blockerJob = launch { repo.savePdfReadingMode("book-1", PdfReadingMode.HYBRID_REFLOW) }
+      runCurrent()
+
+      vm.onLocatorChanged(sampleProgressLocator(position = 8, totalProgression = 0.8))
+      // Advance 1.5s so progressSaveJob clears pendingProgress and suspends waiting for writeMutex
+      advanceTimeBy(ReaderViewModel.PROGRESS_SAVE_INTERVAL_MS)
+      runCurrent()
+      assertEquals(0.5f, repo.find("book-1")?.progress ?: -1f, 1e-4f)
+
+      // Pause reader while flushProgress() is waiting on writeMutex -> cancels progressSaveJob
+      vm.onReaderForegroundChanged(false)
+      runCurrent()
+
+      // Release ioDispatcher so writeMutex unlocks; NonCancellable flushProgress() must still complete!
+      ioDispatcher.runAll()
+      runCurrent()
+      ioDispatcher.runAll()
+      runCurrent()
+      blockerJob.join()
+
+      assertFalse(repo.lastWriteError.value)
+      assertEquals(0.8f, repo.find("book-1")?.progress ?: -1f, 1e-4f)
+    } finally {
+      vmRef?.onReaderForegroundChanged(false)
+      ioDispatcher.runAll()
+      dir.deleteRecursively()
+    }
   }
 }

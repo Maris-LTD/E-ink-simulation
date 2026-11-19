@@ -215,4 +215,95 @@ class ReaderViewModelLoadTest {
       dir.deleteRecursively()
     }
   }
+
+  @Test
+  fun retryLoadIgnoresDuplicateCallsWhileLoadingIsAlreadyActive() = runTest {
+    val dir = createTempDirectory("reader_vm_retry_load_test").toFile()
+    val booksDir = File(dir, "books").apply { mkdirs() }
+    val ioDispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+    var vmRef: ReaderViewModel? = null
+    try {
+      File(booksDir, "book-retry.epub").writeText("epub-data")
+      BookIndexStore(File(dir, "library.json")).write(
+        listOf(
+          BookEntry(
+            id = "book-retry",
+            title = "Retry Book",
+            author = "Author",
+            fileName = "book-retry.epub",
+            format = BookFormat.EPUB,
+          ),
+        ),
+      )
+
+      var engineOpenAttempts = 0
+      val repo =
+        LibraryRepository(
+          appFilesDir = dir,
+          engineProvider = {
+            engineOpenAttempts += 1
+            error("Simulated engine open failure")
+          },
+          importFromUri = { _, _ -> Result.failure(UnsupportedOperationException()) },
+          verifyAndExtractSyncedCover = { _, _, _ -> false },
+          extractBackfillCover = { _, _, _ -> false },
+          readAttemptedCoverIds = { emptySet() },
+          persistAttemptedCoverIds = {},
+          autoBackfill = false,
+          preloadInBackground = true,
+          ioDispatcher = ioDispatcher,
+        )
+      val annotations =
+        AnnotationRepository(
+          bookmarksFile = File(dir, "bookmarks.json"),
+          highlightsFile = File(dir, "highlights.json"),
+          tombstones = null,
+          preloadInBackground = true,
+          ioDispatcher = ioDispatcher,
+        )
+      val stats =
+        ReadingStatsRepository(
+          statsFile = File(dir, "reading_stats.json"),
+          preloadInBackground = true,
+          ioDispatcher = ioDispatcher,
+        )
+
+      val vm =
+        ReaderViewModel(
+          bookId = "book-retry",
+          repository = repo,
+          settingsStore = EInkSettingsStore(EInkSettings()),
+          pdfBookConfigs = null,
+          annotations = annotations,
+          dictionary = DictionaryService(),
+          statsRepository = stats,
+          ioDispatcher = ioDispatcher,
+        )
+      vmRef = vm
+
+      // Initial load is active; calling retryLoad() while Loading must be ignored
+      assertEquals(ReaderUiState.Loading, vm.state.value)
+      vm.retryLoad()
+      vm.retryLoad()
+
+      testScheduler.advanceUntilIdle()
+      assertEquals(1, engineOpenAttempts)
+      assertTrue(vm.state.value is ReaderUiState.Error)
+
+      // Now in Error state: rapid double/triple tap on "Retry" must only start 1 load()
+      vm.retryLoad()
+      assertEquals(ReaderUiState.Loading, vm.state.value)
+      vm.retryLoad()
+      vm.retryLoad()
+
+      testScheduler.advanceUntilIdle()
+      assertEquals(2, engineOpenAttempts)
+      assertTrue(vm.state.value is ReaderUiState.Error)
+    } finally {
+      vmRef?.onReaderForegroundChanged(false)
+      Dispatchers.resetMain()
+      dir.deleteRecursively()
+    }
+  }
 }
