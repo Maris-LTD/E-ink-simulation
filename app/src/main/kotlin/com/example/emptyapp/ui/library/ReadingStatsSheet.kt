@@ -771,7 +771,13 @@ private fun GoogleSyncCard(
           onClick = onSyncOrSignIn,
           enabled = !syncState.syncing,
         ) {
-          EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_syncing) else stringResource(R.string.stats_sync_now))
+          val btnText =
+            when {
+              syncState.syncing -> stringResource(R.string.stats_sync_syncing)
+              syncState.needsReconnect -> stringResource(R.string.sync_reconnect_btn)
+              else -> stringResource(R.string.stats_sync_now)
+            }
+          EInkText(btnText)
         }
         OutlinedButton(
           onClick = { confirmDeleteAll = true },

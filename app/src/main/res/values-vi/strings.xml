@@ -208,6 +208,14 @@
     <string name="sync_downloading_book">Đang tải sách: %1$s</string>
     <string name="sync_uploading_book">Đang tải lên: %1$s</string>
     <string name="sync_partial_book_upload_failed">Đã đồng bộ tiến độ, nhưng %1$d file sách tải lên thất bại</string>
+    <string name="sync_needs_reconnect">Phiên Google Drive đã hết hạn. Nhấn để kết nối lại.</string>
+    <string name="sync_reconnect_btn">Kết nối lại Google Drive</string>
+    <string name="sync_error_offline">Không có kết nối mạng</string>
+    <string name="sync_error_timeout">Kết nối Google Drive quá hạn, vui lòng thử lại</string>
+    <string name="sync_error_auth_expired">Phiên Google Drive đã hết hạn, hãy kết nối lại</string>
+    <string name="sync_error_quota_or_permission">Google Drive hết dung lượng hoặc bị từ chối quyền</string>
+    <string name="sync_error_server">Google Drive tạm thời bận (%1$d)</string>
+    <string name="sync_error_http">Lỗi đồng bộ (HTTP %1$d)</string>
     <string name="sync_deleting_cloud">Đang xóa dữ liệu trên Drive…</string>
     <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive và ngắt đồng bộ trên máy này</string>
     <string name="sync_book_deleted_cloud">Đã xóa "%1$s" khỏi Google Drive</string>

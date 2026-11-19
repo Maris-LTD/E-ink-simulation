@@ -33,7 +33,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 ## Đợt 4 — UX
 - [x] 21. U1 — Giữ state thư viện khi mở Thống kê
 - [x] 22. U2 + U3 — PDF zoom không chớp trắng, tap-zoom, lật trang khi zoom, placeholder/retry
-- [ ] 23. U4 — Thông báo lỗi sync localized, trạng thái "kết nối lại"
+- [x] 23. U4 — Thông báo lỗi sync localized, trạng thái "kết nối lại"
 - [ ] 24. U5 — Quyền thông báo, notification màn khoá, focus mode, lỗi intent bị nuốt
 - [ ] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
 - [ ] 26. U7 — Accessibility (contentDescription, 48dp, semantics)
@@ -421,3 +421,19 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** chưa phân biệt riêng thông báo lỗi PDF có mật khẩu/hỏng khi mở file (`pdf_load_error`) và giữ nguyên `autoCrop` theo từng trang.
 
 **Bước tiếp theo:** mục 23 — U4: thông báo lỗi sync localized (phân biệt offline, hết phiên/401, Drive đầy) và trạng thái "Kết nối lại Google Drive" khi background sync gặp `hasResolution()`.
+
+### 23. U4 — Thông báo lỗi sync localized & trạng thái "Kết nối lại Google Drive" — 2026-11-19
+**Nguyên nhân:** `GoogleDriveSyncManager` trả thẳng `err.localizedMessage` (tiếng Anh thô như "Unable to resolve host...", "Drive upload failed (401)") và không phân biệt offline / timeout / 401 hết phiên / Drive đầy; khi background sync gặp `hasResolution()` thì im lặng dừng mà không báo UI.
+
+**Đã sửa:**
+- `SyncModels.kt`: thêm `needsReconnect: Boolean = false` vào `SyncUiState`.
+- `GoogleDriveSyncManager.kt`:
+  - Thêm `DriveHttpException(statusCode, message)` và `formatSyncError(err)` ánh xạ lỗi mạng (`UnknownHostException`/`ConnectException`), timeout (`SocketTimeoutException`), HTTP 401/403/507/429/5xx và `ApiException` sang các chuỗi đã localize (`sync_error_offline`, `sync_error_timeout`, `sync_error_auth_expired`, `sync_error_quota_or_permission`, `sync_error_server`, `sync_error_http`, `sync_needs_reconnect`, `sync_reconnect_btn` trong `values/strings.xml` & `values-vi/strings.xml`).
+  - Khi `runBackgroundSyncOnce()` gặp `hasResolution()` hoặc khi sync nhận HTTP 401, bật `needsReconnect = true` và đặt thông báo `sync_needs_reconnect` / `sync_error_auth_expired`; reset `needsReconnect = false` khi sync thành công hoặc đăng xuất.
+- `ReadingStatsSheet.kt`: khi `syncState.needsReconnect == true`, nút hành động hiển thị `sync_reconnect_btn` ("Kết nối lại Google Drive").
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: tắt mạng bấm Sync báo "Không có kết nối mạng", thu hồi quyền Drive thấy trạng thái & nút "Kết nối lại Google Drive".
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 24 — U5: quyền thông báo, notification màn khoá không đăng lại sau khi user gạt, tên channel theo ngôn ngữ, focus mode xin quyền DND từ settings panel, không nuốt lỗi intent setup/DND/dịch ngoài.

@@ -62,6 +62,7 @@ data class SyncUiState(
   val lastSyncedAt: Long = 0L,
   val syncBookFiles: Boolean = true,
   val syncing: Boolean = false,
+  val needsReconnect: Boolean = false,
   val statusMessage: String? = null,
   val cloudBooks: List<SyncedBookProgress> = emptyList(),
 ) {

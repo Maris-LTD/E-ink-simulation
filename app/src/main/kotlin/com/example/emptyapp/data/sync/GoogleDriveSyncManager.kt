@@ -18,9 +18,12 @@ import com.google.android.gms.common.api.Scope
 import com.google.android.gms.tasks.Task
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.URLEncoder
+import java.net.UnknownHostException
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +52,8 @@ sealed interface SyncActionResult {
 }
 
 class DriveRemoteReadException(message: String) : Exception(message)
+
+class DriveHttpException(val statusCode: Int, message: String) : Exception(message)
 
 class GoogleDriveSyncManager(
   private val context: Context,
@@ -123,7 +128,7 @@ class GoogleDriveSyncManager(
     state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_connecting)) }
     val authResult =
       runCatching { authorizeScopes() }.getOrElse { err ->
-        val msg = err.localizedMessage ?: str(R.string.sync_play_services_error)
+        val msg = formatSyncError(err)
         state.update { it.copy(syncing = false, statusMessage = msg) }
         return SyncActionResult.Error(msg)
       }
@@ -159,7 +164,7 @@ class GoogleDriveSyncManager(
       runCatching {
         Identity.getAuthorizationClient(appContext).getAuthorizationResultFromIntent(data)
       }.getOrElse { err ->
-        val msg = err.localizedMessage ?: str(R.string.sync_auth_failed)
+        val msg = formatSyncError(err)
         state.update { it.copy(syncing = false, statusMessage = msg) }
         return SyncActionResult.Error(msg)
       }
@@ -204,7 +209,15 @@ class GoogleDriveSyncManager(
       runCatching {
         val authResult = authorizeScopes()
         val token = authResult.accessToken
-        if (!authResult.hasResolution() && !token.isNullOrBlank()) {
+        if (authResult.hasResolution()) {
+          state.update {
+            it.copy(
+              needsReconnect = true,
+              statusMessage = str(R.string.sync_needs_reconnect),
+            )
+          }
+          null
+        } else if (!token.isNullOrBlank()) {
           completeSyncWithToken(token, allowBookFiles = isUnmeteredNetwork())
         } else {
           null
@@ -304,8 +317,14 @@ class GoogleDriveSyncManager(
           state.update { it.copy(syncing = false, statusMessage = doneMsg) }
           SyncActionResult.Synced
         }.getOrElse { err ->
-          val msg = err.localizedMessage ?: str(R.string.sync_failed)
-          state.update { it.copy(syncing = false, statusMessage = msg) }
+          val msg = formatSyncError(err)
+          state.update {
+            it.copy(
+              syncing = false,
+              needsReconnect = it.needsReconnect || isAuthExpiredError(err),
+              statusMessage = msg,
+            )
+          }
           SyncActionResult.Error(msg)
         }
       }
@@ -333,8 +352,14 @@ class GoogleDriveSyncManager(
           clearAccountState(statusMessage = str(R.string.sync_all_cloud_deleted))
           SyncActionResult.Synced
         }.getOrElse { err ->
-          val msg = err.localizedMessage ?: str(R.string.sync_failed)
-          state.update { it.copy(syncing = false, statusMessage = msg) }
+          val msg = formatSyncError(err)
+          state.update {
+            it.copy(
+              syncing = false,
+              needsReconnect = it.needsReconnect || isAuthExpiredError(err),
+              statusMessage = msg,
+            )
+          }
           SyncActionResult.Error(msg)
         }
       }
@@ -408,6 +433,7 @@ class GoogleDriveSyncManager(
           state.update {
             it.copy(
               syncing = false,
+              needsReconnect = false,
               lastSyncedAt = now,
               cloudBooks = mergedPayload.books,
               statusMessage = doneStatus,
@@ -415,8 +441,14 @@ class GoogleDriveSyncManager(
           }
           SyncActionResult.Synced
         }.getOrElse { err ->
-          val msg = err.localizedMessage ?: str(R.string.sync_failed)
-          state.update { it.copy(syncing = false, statusMessage = msg) }
+          val msg = formatSyncError(err)
+          state.update {
+            it.copy(
+              syncing = false,
+              needsReconnect = it.needsReconnect || isAuthExpiredError(err),
+              statusMessage = msg,
+            )
+          }
           SyncActionResult.Error(msg)
         }
       }
@@ -699,7 +731,7 @@ class GoogleDriveSyncManager(
         out.write(footer)
       }
       val code = conn.responseCode
-      if (code !in 200..299) error("Drive book upload failed ($code)")
+      if (code !in 200..299) throw DriveHttpException(code, "Drive book upload failed ($code)")
     } finally {
       conn.disconnect()
     }
@@ -737,7 +769,7 @@ class GoogleDriveSyncManager(
       try {
         conn.outputStream.use { it.write(payload) }
         val code = conn.responseCode
-        if (code !in 200..299) error("Drive upload failed ($code)")
+        if (code !in 200..299) throw DriveHttpException(code, "Drive upload failed ($code)")
       } finally {
         conn.disconnect()
       }
@@ -754,7 +786,7 @@ class GoogleDriveSyncManager(
       try {
         conn.outputStream.use { it.write(jsonBody.toByteArray(StandardCharsets.UTF_8)) }
         val code = conn.responseCode
-        if (code !in 200..299) error("Drive update failed ($code)")
+        if (code !in 200..299) throw DriveHttpException(code, "Drive update failed ($code)")
       } finally {
         conn.disconnect()
       }
@@ -805,12 +837,32 @@ class GoogleDriveSyncManager(
     }
     return try {
       val code = conn.responseCode
+      if (code == 401) throw DriveHttpException(401, "HTTP 401")
       if (code !in 200..299) throw remoteReadError("HTTP $code")
       conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
     } finally {
       conn.disconnect()
     }
   }
+
+  private fun isAuthExpiredError(err: Throwable): Boolean =
+    err is DriveHttpException && err.statusCode == 401
+
+  private fun formatSyncError(err: Throwable): String =
+    when (err) {
+      is DriveRemoteReadException -> err.message ?: str(R.string.sync_failed)
+      is UnknownHostException, is ConnectException -> str(R.string.sync_error_offline)
+      is SocketTimeoutException -> str(R.string.sync_error_timeout)
+      is DriveHttpException ->
+        when (err.statusCode) {
+          401 -> str(R.string.sync_error_auth_expired)
+          403, 507 -> str(R.string.sync_error_quota_or_permission)
+          429, in 500..599 -> str(R.string.sync_error_server, err.statusCode)
+          else -> str(R.string.sync_error_http, err.statusCode)
+        }
+      is com.google.android.gms.common.api.ApiException -> str(R.string.sync_play_services_error)
+      else -> str(R.string.sync_failed)
+    }
 
   private suspend fun <T> Task<T>.await(): T =
     suspendCancellableCoroutine { cont ->

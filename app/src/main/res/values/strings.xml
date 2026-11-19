@@ -208,6 +208,14 @@
     <string name="sync_downloading_book">Downloading book: %1$s</string>
     <string name="sync_uploading_book">Uploading: %1$s</string>
     <string name="sync_partial_book_upload_failed">Synced progress, but %1$d book file(s) failed to upload</string>
+    <string name="sync_needs_reconnect">Google Drive session expired. Tap to reconnect.</string>
+    <string name="sync_reconnect_btn">Reconnect Google Drive</string>
+    <string name="sync_error_offline">No internet connection</string>
+    <string name="sync_error_timeout">Google Drive connection timed out. Please retry.</string>
+    <string name="sync_error_auth_expired">Google Drive session expired. Please reconnect.</string>
+    <string name="sync_error_quota_or_permission">Google Drive storage is full or permission was denied</string>
+    <string name="sync_error_server">Google Drive is temporarily unavailable (%1$d)</string>
+    <string name="sync_error_http">Sync error (HTTP %1$d)</string>
     <string name="sync_deleting_cloud">Deleting cloud data…</string>
     <string name="sync_all_cloud_deleted">All Google Drive backup data deleted and sync turned off on this device</string>
     <string name="sync_book_deleted_cloud">Removed "%1$s" from Google Drive</string>
