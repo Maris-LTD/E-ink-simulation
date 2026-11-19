@@ -391,4 +391,85 @@
     <string name="onboard_btn_import">+ Thêm sách (EPUB / PDF)</string>
     <string name="onboard_btn_library">Vào Thư viện</string>
     <string name="onboard_banner_setup">Thiết lập E-Ink: %1$d/2 tính năng màn hình khóa — Bật tiếp ›</string>
+
+    <!-- Inkify Pro & Paywall -->
+    <string name="paywall_title">Inkify Pro</string>
+    <string name="paywall_badge_pro">PRO</string>
+    <string name="paywall_header_general">Đọc sâu hơn trên màn hình E-Ink</string>
+    <string name="paywall_sub_general">Mở khóa toàn bộ Adaptive PDF, đồng bộ đám mây, đọc trên màn hình khóa và Focus Mode.</string>
+    <string name="paywall_header_pdf_reflow">Mở khóa Adaptive PDF toàn phần</string>
+    <string name="paywall_sub_pdf_reflow">Bạn vừa xem thử 5 trang đầu. Nâng cấp để dàn chữ, lọc hình/bảng và đọc theo vùng cho toàn bộ tài liệu.</string>
+    <string name="paywall_header_drive_sync">Đồng bộ giữa mọi thiết bị</string>
+    <string name="paywall_sub_drive_sync">Sao lưu sách, tiến độ đọc, dấu trang và highlight riêng tư trên Google Drive của bạn.</string>
+    <string name="paywall_header_lockscreen">Đọc ngay trên Màn hình khóa</string>
+    <string name="paywall_sub_lockscreen">Biến màn hình khóa thành trang giấy E-Ink tĩnh lặng kèm tiến độ và nút lật trang.</string>
+    <string name="paywall_header_launcher">Màn hình chính eInk tối giản</string>
+    <string name="paywall_sub_launcher">Thay thế màn hình chính nhiều màu sắc bằng giao diện E-Ink đơn sắc và nút đọc tiếp 1 chạm.</string>
+    <string name="paywall_header_focus">Chế độ Tập trung (Focus Mode)</string>
+    <string name="paywall_sub_focus">Tự động bật Không làm phiền khi đọc để giữ trọn sự tập trung qua từng chương sách.</string>
+
+    <string name="paywall_feat_pdf_title">Dàn chữ PDF, Cắt lề &amp; Lọc hình</string>
+    <string name="paywall_feat_pdf_desc">Dàn lại chữ PDF, lọc bảng/hình minh họa và điều hướng theo từng cột.</string>
+    <string name="paywall_feat_sync_title">Đồng bộ Google Drive</string>
+    <string name="paywall_feat_sync_desc">Sao lưu riêng tư sách, highlight, dấu trang và thống kê trên Drive.</string>
+    <string name="paywall_feat_lockscreen_title">Hình nền khóa &amp; Điều hướng</string>
+    <string name="paywall_feat_lockscreen_desc">Hình nền giấy E-Ink kèm đoạn đang đọc và nút lật trang.</string>
+    <string name="paywall_feat_launcher_title">eInk Home Launcher</string>
+    <string name="paywall_feat_launcher_desc">Màn hình chính đơn sắc tối giản dành riêng cho máy đọc sách.</string>
+    <string name="paywall_feat_focus_title">Chế độ Tập trung (DND)</string>
+    <string name="paywall_feat_focus_desc">Tự động chặn thông báo làm phiền trong lúc đọc sách.</string>
+
+    <string name="paywall_trust_ads">100% Không quảng cáo &amp; Không theo dõi</string>
+    <string name="paywall_trust_offline">Hoạt động Offline hoàn toàn</string>
+    <string name="paywall_trust_restore">Khôi phục 1 chạm trên mọi máy Android</string>
+
+    <string name="paywall_tier_annual_title">Gói Năm</string>
+    <string name="paywall_tier_annual_badge">TIẾT KIỆM NHẤT</string>
+    <string name="paywall_tier_annual_trial">Dùng thử 7 ngày miễn phí</string>
+    <string name="paywall_tier_annual_fallback_price">249.000đ / năm</string>
+    <string name="paywall_tier_lifetime_title">Trọn đời</string>
+    <string name="paywall_tier_lifetime_badge">MUA ĐỨT</string>
+    <string name="paywall_tier_lifetime_desc">Thanh toán 1 lần, sở hữu mãi mãi</string>
+    <string name="paywall_tier_lifetime_fallback_price">599.000đ</string>
+    <string name="paywall_tier_monthly_title">Gói Tháng</string>
+    <string name="paywall_tier_monthly_desc">Gia hạn linh hoạt từng tháng</string>
+    <string name="paywall_tier_monthly_fallback_price">59.000đ / tháng</string>
+
+    <string name="paywall_cta_trial">Dùng thử 7 ngày miễn phí</string>
+    <string name="paywall_cta_subscribe">Đăng ký %1$s</string>
+    <string name="paywall_cta_lifetime">Mở khóa Trọn đời — %1$s</string>
+    <string name="paywall_cta_loading">Đang tải từ Play Store…</string>
+    <string name="paywall_sub_disclosure">Gói thuê bao tự động gia hạn trừ khi bạn hủy ít nhất 24 giờ trước khi hết chu kỳ. Sau 7 ngày dùng thử, gói sẽ tự động gia hạn với mức giá %1$s. Quản lý hoặc hủy bất cứ lúc nào tại Google Play → Thanh toán và gói thuê bao.</string>
+    <string name="paywall_lifetime_disclosure">Thanh toán một lần qua Google Play. Không tự động gia hạn.</string>
+    <string name="paywall_restore_btn">Khôi phục giao dịch</string>
+    <string name="paywall_restoring">Đang khôi phục…</string>
+    <string name="paywall_privacy_link">Chính sách bảo mật &amp; Điều khoản</string>
+
+    <string name="paywall_active_badge">ĐÃ KÍCH HOẠT INKIFY PRO</string>
+    <string name="paywall_active_lifetime">Bản quyền Trọn đời — Đã mở khóa toàn bộ tính năng Pro.</string>
+    <string name="paywall_active_subscription">Gói thuê bao đang hoạt động — Đã mở khóa toàn bộ tính năng Pro.</string>
+    <string name="paywall_active_pending">Đang chờ thanh toán — Quyền Pro sẽ mở ngay khi Google Play xác nhận.</string>
+    <string name="paywall_tip_header">ỦNG HỘ TÁC GIẢ (TÙY CHỌN)</string>
+    <string name="paywall_tip_desc">Bạn thích Inkify? Có thể tặng tác giả một ly cà phê hoặc cuốn sách nhỏ.</string>
+    <string name="paywall_tip_coffee">Tặng ly cà phê</string>
+    <string name="paywall_tip_book">Tặng cuốn sách</string>
+
+    <string name="paywall_msg_purchase_success">Chào mừng đến với Inkify Pro! Toàn bộ tính năng đã được mở khóa.</string>
+    <string name="paywall_msg_tip_success">Cảm ơn bạn rất nhiều vì đã ủng hộ!</string>
+    <string name="paywall_msg_pending">Giao dịch đang chờ Google Play xác nhận.</string>
+    <string name="paywall_msg_canceled">Đã hủy giao dịch.</string>
+    <string name="paywall_msg_restored">Đã khôi phục gói Pro thành công.</string>
+    <string name="paywall_msg_no_restore">Không tìm thấy giao dịch Pro nào trên tài khoản Google này.</string>
+    <string name="paywall_msg_error">Lỗi thanh toán (%1$d): %2$s</string>
+
+    <string name="pro_card_title">Inkify Pro</string>
+    <string name="pro_card_status_active">Đang hoạt động · %1$s</string>
+    <string name="pro_card_plan_lifetime">Trọn đời</string>
+    <string name="pro_card_plan_subscription">Thuê bao</string>
+    <string name="pro_card_status_pending">Đang chờ thanh toán…</string>
+    <string name="pro_card_upgrade_desc">Mở khóa Adaptive PDF Reflow, Đồng bộ Drive, Đọc màn hình khóa, eInk Launcher &amp; Focus Mode.</string>
+    <string name="pro_card_cta_upgrade">Nâng cấp</string>
+    <string name="pro_card_cta_manage">Chi tiết</string>
+    <string name="pro_compact_free">Bản miễn phí · Nâng cấp Inkify Pro ›</string>
+    <string name="pro_compact_active">Inkify Pro đang bật · Chi tiết ›</string>
 </resources>

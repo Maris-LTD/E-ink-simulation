@@ -37,11 +37,15 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,6 +78,10 @@ import com.example.emptyapp.reader.OrientationLock
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeatureGate
+import com.example.emptyapp.data.billing.PurchaseType
 import com.example.emptyapp.data.stats.DailyReadingStat
 import com.example.emptyapp.data.stats.ReadingBadge
 import com.example.emptyapp.data.stats.ReadingGamification
@@ -84,6 +92,7 @@ import com.example.emptyapp.data.sync.SyncUiState
 import com.example.emptyapp.data.sync.SyncedBookProgress
 import com.example.emptyapp.system.EInkWallpaperService
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -139,11 +148,15 @@ fun ReadingStatsScreen(
   currentLanguage: AppLanguage = AppLanguage.SYSTEM,
   onChangeLanguage: (AppLanguage) -> Unit = {},
   writeError: Boolean = false,
+  billing: PlayBillingManager? = null,
+  proGate: ProFeatureGate? = null,
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
+  var paywallOpen by remember { mutableStateOf(false) }
+  val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
   val saveErrorMsg = stringResource(R.string.error_save_data)
   LaunchedEffect(writeError) {
     if (writeError) {
@@ -302,6 +315,9 @@ fun ReadingStatsScreen(
       verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
       if (selectedTab == 1) {
+        if (billing != null && proGate != null) {
+          InkifyProSettingsCard(entitlement = entitlement, onOpenPaywall = { paywallOpen = true })
+        }
         EInkDisplaySettingsCard(settings = settings, onUpdateSettings = onUpdateSettings)
         LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
         GoogleSyncCard(
@@ -393,6 +409,10 @@ fun ReadingStatsScreen(
           style = MaterialTheme.typography.labelSmall,
           color = MaterialTheme.colorScheme.secondary,
         )
+      }
+
+      if (billing != null && proGate != null) {
+        InkifyProCompactRow(entitlement = entitlement, onOpenPaywall = { paywallOpen = true })
       }
 
       Column(
@@ -490,6 +510,118 @@ fun ReadingStatsScreen(
         AchievementsCard(badges = badges)
       }
     }
+  }
+  if (paywallOpen && billing != null && proGate != null) {
+    ProPaywallSheet(
+      billing = billing,
+      proGate = proGate,
+      onDismiss = { paywallOpen = false },
+    )
+  }
+}
+
+@Composable
+private fun InkifyProSettingsCard(
+  entitlement: ProEntitlement,
+  onOpenPaywall: () -> Unit,
+) {
+  Column(
+    modifier =
+      Modifier.fillMaxWidth()
+        .border(2.dp, MaterialTheme.colorScheme.outline)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText(stringResource(R.string.pro_card_title), style = MaterialTheme.typography.titleMedium)
+      if (entitlement.isPro) {
+        Box(
+          modifier =
+            Modifier.background(MaterialTheme.colorScheme.primary)
+              .padding(horizontal = 8.dp, vertical = 2.dp),
+        ) {
+          EInkText(
+            text = stringResource(R.string.paywall_badge_pro),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimary,
+          )
+        }
+      }
+    }
+    val statusText =
+      when {
+        entitlement.isPro -> {
+          val plan =
+            if (entitlement.purchaseType == PurchaseType.LIFETIME) {
+              stringResource(R.string.pro_card_plan_lifetime)
+            } else {
+              stringResource(R.string.pro_card_plan_subscription)
+            }
+          stringResource(R.string.pro_card_status_active, plan)
+        }
+        entitlement.isPending -> stringResource(R.string.pro_card_status_pending)
+        else -> stringResource(R.string.pro_card_upgrade_desc)
+      }
+    EInkText(
+      text = statusText,
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.secondary,
+    )
+    if (entitlement.isPro) {
+      OutlinedButton(
+        onClick = onOpenPaywall,
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+      ) {
+        EInkText(stringResource(R.string.pro_card_cta_manage), style = MaterialTheme.typography.labelLarge)
+      }
+    } else {
+      Button(
+        onClick = onOpenPaywall,
+        shape = RectangleShape,
+        colors =
+          ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+          ),
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+      ) {
+        EInkText(
+          text = stringResource(R.string.pro_card_cta_upgrade),
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.onPrimary,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun InkifyProCompactRow(
+  entitlement: ProEntitlement,
+  onOpenPaywall: () -> Unit,
+) {
+  Row(
+    modifier =
+      Modifier.fillMaxWidth()
+        .defaultMinSize(minHeight = 48.dp)
+        .background(if (entitlement.isPro) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surfaceVariant)
+        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clickable(onClick = onOpenPaywall)
+        .padding(horizontal = 14.dp, vertical = 12.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    EInkText(
+      text =
+        stringResource(
+          if (entitlement.isPro) R.string.pro_compact_active else R.string.pro_compact_free
+        ),
+      style = MaterialTheme.typography.labelLarge,
+    )
   }
 }
 

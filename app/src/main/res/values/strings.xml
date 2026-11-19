@@ -395,4 +395,85 @@
     <string name="onboard_btn_import">+ Import Book (EPUB / PDF)</string>
     <string name="onboard_btn_library">Go to Library</string>
     <string name="onboard_banner_setup">E-Ink setup: %1$d/2 lock screen features active — Configure ›</string>
+
+    <!-- Inkify Pro & Paywall -->
+    <string name="paywall_title">Inkify Pro</string>
+    <string name="paywall_badge_pro">PRO</string>
+    <string name="paywall_header_general">Read Deeper on E-Ink</string>
+    <string name="paywall_sub_general">Unlock full Adaptive PDF, cloud sync, lock-screen reading, and Focus Mode.</string>
+    <string name="paywall_header_pdf_reflow">Unlock Full Adaptive PDF</string>
+    <string name="paywall_sub_pdf_reflow">You\'ve previewed the first 5 pages. Upgrade to reflow, mask graphics, and navigate regions across entire PDFs.</string>
+    <string name="paywall_header_drive_sync">Sync Across All Devices</string>
+    <string name="paywall_sub_drive_sync">Back up your books, reading progress, bookmarks, and highlights privately in your Google Drive.</string>
+    <string name="paywall_header_lockscreen">Read Right on Your Lock Screen</string>
+    <string name="paywall_sub_lockscreen">Turn your lock screen into a calm E-Ink paper display with live reading progress and page controls.</string>
+    <string name="paywall_header_launcher">Minimalist eInk Home Launcher</string>
+    <string name="paywall_sub_launcher">Replace distracting app grids with a calm monochrome E-Ink home screen and 1-tap book resume.</string>
+    <string name="paywall_header_focus">Distraction-Free Focus Mode</string>
+    <string name="paywall_sub_focus">Silence notifications with Do Not Disturb while reading so you stay immersed in every chapter.</string>
+
+    <string name="paywall_feat_pdf_title">Adaptive PDF Reflow &amp; Masking</string>
+    <string name="paywall_feat_pdf_desc">Reflow dense PDFs, mask illustrations, and navigate multi-column regions.</string>
+    <string name="paywall_feat_sync_title">Google Drive Sync</string>
+    <string name="paywall_feat_sync_desc">Private AppData backup for books, highlights, bookmarks, and stats.</string>
+    <string name="paywall_feat_lockscreen_title">Lock-Screen Wallpaper &amp; Nav</string>
+    <string name="paywall_feat_lockscreen_desc">Live E-Ink paper wallpaper with excerpt &amp; page turn controls.</string>
+    <string name="paywall_feat_launcher_title">eInk Home Launcher</string>
+    <string name="paywall_feat_launcher_desc">Distraction-free monochrome home screen built for E-Ink phones.</string>
+    <string name="paywall_feat_focus_title">Focus Mode (Do Not Disturb)</string>
+    <string name="paywall_feat_focus_desc">Automatically mute notifications during reading sessions.</string>
+
+    <string name="paywall_trust_ads">100% Ads-free &amp; No tracking</string>
+    <string name="paywall_trust_offline">Works 100% Offline</string>
+    <string name="paywall_trust_restore">1-tap Restore on any Android device</string>
+
+    <string name="paywall_tier_annual_title">Annual</string>
+    <string name="paywall_tier_annual_badge">BEST VALUE</string>
+    <string name="paywall_tier_annual_trial">Includes 7-day free trial</string>
+    <string name="paywall_tier_annual_fallback_price">$11.99 / year</string>
+    <string name="paywall_tier_lifetime_title">Lifetime</string>
+    <string name="paywall_tier_lifetime_badge">ONE-TIME</string>
+    <string name="paywall_tier_lifetime_desc">Pay once, own Inkify Pro forever</string>
+    <string name="paywall_tier_lifetime_fallback_price">$27.99</string>
+    <string name="paywall_tier_monthly_title">Monthly</string>
+    <string name="paywall_tier_monthly_desc">Flexible monthly access</string>
+    <string name="paywall_tier_monthly_fallback_price">$2.49 / month</string>
+
+    <string name="paywall_cta_trial">Start 7-Day Free Trial</string>
+    <string name="paywall_cta_subscribe">Continue with %1$s</string>
+    <string name="paywall_cta_lifetime">Unlock Lifetime — %1$s</string>
+    <string name="paywall_cta_loading">Loading Play Store…</string>
+    <string name="paywall_sub_disclosure">Subscriptions auto-renew unless canceled at least 24 hours before the end of the current period. Free trials convert to %1$s after 7 days. Manage or cancel anytime in Google Play → Payments &amp; subscriptions.</string>
+    <string name="paywall_lifetime_disclosure">One-time purchase via Google Play. No recurring charges.</string>
+    <string name="paywall_restore_btn">Restore Purchases</string>
+    <string name="paywall_restoring">Restoring…</string>
+    <string name="paywall_privacy_link">Privacy Policy &amp; Terms</string>
+
+    <string name="paywall_active_badge">INKIFY PRO ACTIVE</string>
+    <string name="paywall_active_lifetime">Lifetime License — All Pro features unlocked forever.</string>
+    <string name="paywall_active_subscription">Active Subscription — All Pro features unlocked.</string>
+    <string name="paywall_active_pending">Payment Pending — Access will unlock once Google Play confirms.</string>
+    <string name="paywall_tip_header">SUPPORT THE DEVELOPER (OPTIONAL)</string>
+    <string name="paywall_tip_desc">Enjoying Inkify? Buy a small coffee or book to support future E-Ink features.</string>
+    <string name="paywall_tip_coffee">Buy a Coffee</string>
+    <string name="paywall_tip_book">Buy a Book</string>
+
+    <string name="paywall_msg_purchase_success">Welcome to Inkify Pro! All features are now unlocked.</string>
+    <string name="paywall_msg_tip_success">Thank you so much for your support!</string>
+    <string name="paywall_msg_pending">Purchase is pending confirmation from Google Play.</string>
+    <string name="paywall_msg_canceled">Purchase canceled.</string>
+    <string name="paywall_msg_restored">Pro purchases restored.</string>
+    <string name="paywall_msg_no_restore">No active Pro purchases found for this Google account.</string>
+    <string name="paywall_msg_error">Billing error (%1$d): %2$s</string>
+
+    <string name="pro_card_title">Inkify Pro</string>
+    <string name="pro_card_status_active">Active · %1$s</string>
+    <string name="pro_card_plan_lifetime">Lifetime</string>
+    <string name="pro_card_plan_subscription">Subscription</string>
+    <string name="pro_card_status_pending">Payment pending…</string>
+    <string name="pro_card_upgrade_desc">Unlock full Adaptive PDF Reflow, Google Drive Sync, Lock-Screen Reader, eInk Launcher &amp; Focus Mode.</string>
+    <string name="pro_card_cta_upgrade">Upgrade</string>
+    <string name="pro_card_cta_manage">Details</string>
+    <string name="pro_compact_free">Inkify Free · Upgrade to Pro ›</string>
+    <string name="pro_compact_active">Inkify Pro Active · Support / Details ›</string>
 </resources>

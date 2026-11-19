@@ -43,6 +43,8 @@ fun MainNavigation() {
             settings = settings,
             onUpdateSettings = container.settings::update,
             grayscaleCovers = settings.grayscale,
+            billing = container.billing,
+            proGate = container.proGate,
             onOpenBook = { id, locatorJson ->
               context.startActivity(ReaderActivity.intentFor(context, id, locatorJson))
             },
@@ -88,6 +90,8 @@ fun MainNavigation() {
               (context as? android.app.Activity)?.recreate()
             },
             writeError = writeError,
+            billing = container.billing,
+            proGate = container.proGate,
             onBack = {
               if (backStack.size > 1 && backStack.lastOrNull() == ReadingStats) {
                 backStack.removeLastOrNull()

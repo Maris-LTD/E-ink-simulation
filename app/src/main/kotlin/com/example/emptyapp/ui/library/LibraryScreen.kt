@@ -70,8 +70,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -117,6 +121,8 @@ fun LibraryScreen(
   settings: com.example.emptyapp.reader.EInkSettings = com.example.emptyapp.reader.EInkSettings(),
   onUpdateSettings: ((com.example.emptyapp.reader.EInkSettings) -> com.example.emptyapp.reader.EInkSettings) -> Unit = {},
   grayscaleCovers: Boolean = true,
+  billing: PlayBillingManager? = null,
+  proGate: ProFeatureGate? = null,
   onOpenBook: (String, String?) -> Unit,
   onOpenStats: () -> Unit,
   modifier: Modifier = Modifier,
@@ -130,6 +136,8 @@ fun LibraryScreen(
     )
   }
   var tutorialInitialPage by remember { mutableStateOf(0) }
+  var paywallOpen by remember { mutableStateOf(false) }
+  val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
   var setupBannerDismissed by remember { mutableStateOf(tutorialPrefs.getBoolean("setup_banner_dismissed", false)) }
   fun markTutorialSeen() {
     tutorialPrefs.edit().putBoolean("tutorial_seen", true).apply()
@@ -229,6 +237,9 @@ fun LibraryScreen(
           .then(if (tutorialOpen) Modifier.clearAndSetSemantics {} else Modifier),
     ) {
       LibraryHeader(
+        isPro = entitlement.isPro,
+        showProButton = billing != null && proGate != null,
+        onOpenPaywall = { paywallOpen = true },
         onOpenTutorial = {
           tutorialInitialPage = 0
           tutorialOpen = true
@@ -480,11 +491,21 @@ fun LibraryScreen(
         initialPage = tutorialInitialPage,
       )
     }
+    if (paywallOpen && billing != null && proGate != null) {
+      ProPaywallSheet(
+        billing = billing,
+        proGate = proGate,
+        onDismiss = { paywallOpen = false },
+      )
+    }
   }
 }
 
 @Composable
 private fun LibraryHeader(
+  isPro: Boolean,
+  showProButton: Boolean,
+  onOpenPaywall: () -> Unit,
   onOpenTutorial: () -> Unit,
   onOpenStats: () -> Unit,
 ) {
@@ -495,6 +516,32 @@ private fun LibraryHeader(
   ) {
     EInkText(stringResource(com.example.emptyapp.R.string.app_name), style = MaterialTheme.typography.headlineLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+      if (showProButton) {
+        val proCd = stringResource(com.example.emptyapp.R.string.pro_card_title)
+        Box(
+          modifier =
+            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+              .clickable(onClick = onOpenPaywall)
+              .semantics { contentDescription = proCd },
+          contentAlignment = Alignment.Center,
+        ) {
+          Box(
+            modifier =
+              Modifier.background(
+                if (isPro) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
+              )
+                .border(1.5.dp, MaterialTheme.colorScheme.outline)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+          ) {
+            EInkText(
+              text = stringResource(com.example.emptyapp.R.string.paywall_badge_pro),
+              style = MaterialTheme.typography.labelSmall,
+              color = if (isPro) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+            )
+          }
+        }
+      }
       val tutorialCd = stringResource(com.example.emptyapp.R.string.cd_tutorial)
       Box(
         modifier =
