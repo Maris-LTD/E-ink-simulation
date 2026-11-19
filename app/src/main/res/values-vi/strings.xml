@@ -250,6 +250,8 @@
     <string name="notif_rationale_message">Cấp quyền thông báo để hiển thị đoạn đang đọc và lật trang ngay trên màn hình khóa.</string>
     <string name="notif_rationale_allow">Cho phép</string>
     <string name="notif_rationale_later">Để sau</string>
+    <string name="notif_permission_blocked_msg">Thông báo của Inkify đang bị tắt. Hãy bật trong Cài đặt để dùng tính năng đọc trên màn hình khóa.</string>
+    <string name="notif_open_settings_action">Mở Cài đặt</string>
 
     <!-- Tutorial -->
     <string name="tutorial_skip">Bỏ qua</string>

@@ -250,6 +250,8 @@
     <string name="notif_rationale_message">Allow notifications to read excerpts and turn pages directly from your lock screen.</string>
     <string name="notif_rationale_allow">Allow</string>
     <string name="notif_rationale_later">Not now</string>
+    <string name="notif_permission_blocked_msg">Notifications are turned off for Inkify. Enable them in Settings to use lock-screen reading.</string>
+    <string name="notif_open_settings_action">Open Settings</string>
 
     <!-- Tutorial -->
     <string name="tutorial_skip">Skip</string>

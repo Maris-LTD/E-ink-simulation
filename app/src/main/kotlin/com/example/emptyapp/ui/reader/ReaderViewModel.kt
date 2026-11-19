@@ -112,6 +112,7 @@ class ReaderViewModel(
   private val bookmarkMatchModeFlow = MutableStateFlow(BookmarkMatchMode.POSITION_BASED)
   private val epubPageWindowFlow = MutableStateFlow<EpubPageWindow?>(null)
   private var currentBookTitle: String = ""
+  private var pendingNoteLocatorJsonOverride: String? = null
 
   private val mutableState = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
   private val mutableProgress = MutableStateFlow(0f)
@@ -121,6 +122,9 @@ class ReaderViewModel(
   private val mutableDictionaryState = MutableStateFlow<DictionaryUiState?>(null)
   private val mutableSearchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
   private val mutableOverlayOpen = MutableStateFlow(false)
+  private val mutablePendingNoteLocator = MutableStateFlow<Locator?>(null)
+  private val mutablePendingNoteDraft = MutableStateFlow("")
+  private val mutableNotificationPermissionBlockedCount = MutableStateFlow(0)
 
   val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
   val progress: StateFlow<Float> = mutableProgress.asStateFlow()
@@ -130,6 +134,9 @@ class ReaderViewModel(
   val dictionaryState: StateFlow<DictionaryUiState?> = mutableDictionaryState.asStateFlow()
   val searchState: StateFlow<SearchUiState> = mutableSearchState.asStateFlow()
   val overlayOpen: StateFlow<Boolean> = mutableOverlayOpen.asStateFlow()
+  val pendingNoteLocator: StateFlow<Locator?> = mutablePendingNoteLocator.asStateFlow()
+  val pendingNoteDraft: StateFlow<String> = mutablePendingNoteDraft.asStateFlow()
+  val notificationPermissionBlockedCount: StateFlow<Int> = mutableNotificationPermissionBlockedCount.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
   val writeError: StateFlow<Boolean> =
     combine(
@@ -426,9 +433,12 @@ class ReaderViewModel(
     viewModelScope.launch { annotations.restoreBookmark(entry) }
   }
 
-  fun addHighlight(locator: Locator, note: String = "") {
-    val quote = locator.text.highlight?.takeIf { it.isNotBlank() } ?: return
+  fun addHighlight(locator: Locator, note: String = "", locatorJsonOverride: String? = null): Boolean {
+    val quote = locator.text.highlight?.takeIf { it.isNotBlank() } ?: return false
     val total = (locator.locations.totalProgression ?: 0.0).toFloat()
+    val locatorJson =
+      locatorJsonOverride
+        ?: runCatching { locator.toJSON().toString() }.getOrElse { "{}" }
     viewModelScope.launch {
       annotations.addHighlight(
         bookId = bookId,
@@ -436,9 +446,63 @@ class ReaderViewModel(
         quote = quote,
         note = note,
         progress = total,
-        locatorJson = locator.toJSON().toString(),
+        locatorJson = locatorJson,
       )
     }
+    return true
+  }
+
+  fun openNoteDialog(locator: Locator, initialDraft: String = "", locatorJsonOverride: String? = null) {
+    if (locator.text.highlight.isNullOrBlank()) return
+    mutablePendingNoteLocator.value = locator
+    mutablePendingNoteDraft.value = initialDraft
+    pendingNoteLocatorJsonOverride = locatorJsonOverride
+  }
+
+  fun updateNoteDraft(draft: String) {
+    mutablePendingNoteDraft.value = draft
+  }
+
+  fun dismissNoteDialog() {
+    mutablePendingNoteLocator.value = null
+    mutablePendingNoteDraft.value = ""
+    pendingNoteLocatorJsonOverride = null
+  }
+
+  fun savePendingNote(): Boolean {
+    val locator = mutablePendingNoteLocator.value ?: return false
+    val draft = mutablePendingNoteDraft.value
+    val jsonOverride = pendingNoteLocatorJsonOverride
+    val saved = addHighlight(locator, draft, jsonOverride)
+    dismissNoteDialog()
+    return saved
+  }
+
+  fun pendingNoteLocatorJsonSnapshot(): String? =
+    pendingNoteLocatorJsonOverride
+      ?: mutablePendingNoteLocator.value?.let { loc ->
+        runCatching { loc.toJSON().toString() }.getOrNull()
+      }
+
+  fun restorePendingNoteIfAbsent(
+    locatorJson: String?,
+    draft: String?,
+    locatorParser: (String?) -> Locator? = ::parseLocator,
+  ) {
+    if (mutablePendingNoteLocator.value != null) return
+    val restored = locatorParser(locatorJson) ?: return
+    if (restored.text.highlight.isNullOrBlank()) return
+    mutablePendingNoteLocator.value = restored
+    mutablePendingNoteDraft.value = draft.orEmpty()
+    pendingNoteLocatorJsonOverride = locatorJson
+  }
+
+  fun notifyNotificationPermissionBlocked() {
+    mutableNotificationPermissionBlockedCount.value += 1
+  }
+
+  fun consumeNotificationPermissionBlocked() {
+    mutableNotificationPermissionBlockedCount.value = 0
   }
 
   fun removeHighlight(id: String) {

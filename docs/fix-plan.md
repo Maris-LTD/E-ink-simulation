@@ -71,7 +71,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO
 - [x] 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s)
 - [x] 49. L16 + L21 — Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM)
-- [ ] 50. L17 + L18 — Dialog ghi chú: `dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống; quyền thông báo: xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo
+- [x] 50. L17 + L18 — Dialog ghi chú: `dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống; quyền thông báo: xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo
 - [ ] 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle
 
 ### 5E — Thư viện, Launcher, Wallpaper, Widget, l10n, a11y
@@ -1079,3 +1079,37 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 50 — L17 + L18: Dialog ghi chú (`dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống) và quyền thông báo (xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo).
+
+### 50. L17 + L18 — Dialog ghi chú (`dismissOnBackPress = false`, nháp + `pendingNoteLocator` trong ViewModel + `onSaveInstanceState`, không toast khi quote trống) & Quyền thông báo màn khoá (xin lại khi còn rationale, nếu bị chặn thì hiện Snackbar mở cài đặt thông báo) — 2026-11-19
+**Nguyên nhân:**
+- **L17 (INC #25):**
+  - `HighlightNoteDialog` chỉ đặt `DialogProperties(dismissOnClickOutside = false)` mà chưa đặt `dismissOnBackPress = false` → bấm Back khi đang gõ ghi chú sẽ đóng ngay dialog và làm mất nháp.
+  - `ReaderActivity` gọi `super.onCreate(null)` để tránh crash khôi phục Fragment của Readium, khiến `rememberSaveable` trong `HighlightNoteDialog` và field `pendingNoteLocator` trên `ReaderActivity` bị mất khi recreate Activity (đổi dark mode hệ thống, xoay màn hình, "Don't keep activities") hoặc sau process death.
+  - Khi bấm menu `MENU_HIGHLIGHT` trong `ReaderActivity`, Toast `reader_highlight_saved` ("Đã lưu highlight") luôn hiển thị kể cả khi `locator.text.highlight` trống (trong khi `ReaderViewModel.addHighlight` bỏ qua không lưu).
+- **L18 (INC #24):**
+  - Dialog rationale (`notif_rationale_title`) không chặn `dismissOnClickOutside = false` và đánh dấu `notif_asked_once = true` ngay cả khi người dùng chạm ra ngoài hoặc bấm "Để sau" (`notif_rationale_later`) — làm mất cơ hội hiện lại rationale mà chưa hề gọi system permission prompt.
+  - Sau lần hỏi đầu tiên (`notif_asked_once = true`), khi người dùng bật lại toggle "Đọc trên màn hình khóa" (`lockScreenReader = true`) mà chưa có quyền `POST_NOTIFICATIONS` (hoặc thông báo bị tắt ở cấp ứng dụng), code tự tắt `lockScreenReader = false` im lặng mà không xin quyền lại khi `shouldShowRequestPermissionRationale == true`, cũng không báo hay dẫn người dùng tới màn hình Cài đặt thông báo khi quyền đã bị chặn vĩnh viễn.
+
+**Đã sửa:**
+- `ui/reader/HighlightNoteDialog.kt` (**L17**):
+  - Đặt `DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false)` để chỉ đóng dialog khi người dùng chủ động bấm "Hủy" hoặc "Lưu".
+  - Chuyển state `note` từ `rememberSaveable` cục bộ sang nhận `note: String` và `onNoteChange: (String) -> Unit` từ `ReaderViewModel`.
+- `ui/reader/ReaderViewModel.kt` (**L17 + L18**):
+  - Đổi `addHighlight(locator, note)` sang trả về `Boolean` (`false` nếu `locator.text.highlight` trống/blank, `true` nếu hợp lệ và đã gửi lưu).
+  - Thêm `pendingNoteLocator: StateFlow<Locator?>`, `pendingNoteDraft: StateFlow<String>` và các hàm `openNoteDialog`, `updateNoteDraft`, `dismissNoteDialog`, `savePendingNote`, `pendingNoteLocatorJsonSnapshot`, `restorePendingNoteIfAbsent` để giữ nguyên dialog ghi chú + nội dung nháp qua configuration changes và khôi phục từ `savedInstanceState`.
+  - Thêm `notificationPermissionBlockedCount: StateFlow<Int>`, `notifyNotificationPermissionBlocked()` và `consumeNotificationPermissionBlocked()` để báo `ReaderScreen` hiển thị Snackbar mở cài đặt thông báo.
+- `ReaderActivity.kt`, `ui/reader/ReaderScreen.kt`, `res/values/strings.xml`, `res/values-vi/strings.xml` (**L17 + L18**):
+  - Lưu `STATE_PENDING_NOTE_LOCATOR_JSON` và `STATE_PENDING_NOTE_DRAFT` trong `onSaveInstanceState` và khôi phục vào `viewModel.restorePendingNoteIfAbsent(...)` trong `onCreate` trước/sau `super.onCreate(null)`.
+  - Ở `MENU_HIGHLIGHT` và `onSaveNote`, chỉ hiển thị Toast `reader_highlight_saved` khi `viewModel.addHighlight(...) == true`.
+  - Thêm chuỗi `notif_permission_blocked_msg` và `notif_open_settings_action` vào `values/strings.xml` & `values-vi/strings.xml`.
+  - Tách hàm thuần Kotlin `resolveNotificationPermissionAction(sdkInt, hasRuntimePermission, areNotificationsEnabled, askedOnce, shouldShowRationale)` trả về `PROCEED`, `SHOW_RATIONALE`, hoặc `BLOCKED_OPEN_SETTINGS`.
+  - Trên dialog rationale: đặt `DialogProperties(dismissOnClickOutside = false)`, chỉ ghi `notif_asked_once = true` khi người dùng bấm nút `notif_rationale_allow` để gọi system prompt (`requestNotificationPermission.launch(...)`); bấm "Để sau" hoặc đóng dialog chỉ tắt `lockScreenReader = false`.
+  - Khi `resolveNotificationPermissionAction` trả về `BLOCKED_OPEN_SETTINGS` (hoặc kết quả `RequestPermission` bị từ chối với `shouldShowRequestPermissionRationale == false`), tắt `lockScreenReader = false` và gọi `viewModel.notifyNotificationPermissionBlocked()` để `ReaderScreen` hiện Snackbar kèm nút hành động mở `openAppNotificationSettings()` (`Settings.ACTION_APP_NOTIFICATION_SETTINGS` với fallback `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` và Toast báo lỗi nếu không mở được).
+- `test/.../ui/reader/ReaderViewModelPageTurnTest.kt`:
+  - Thêm 3 unit test mới (`addHighlightReturnsFalseForBlankQuoteAndTrueForNonBlankQuote`, `pendingNoteStateSupportsDraftEditingSnapshotAndSavedInstanceStateRestoration`, `resolveNotificationPermissionActionHandlesFirstRequestRationaleAndBlockedCases`).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **246/246 tests pass** qua 42 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 51 — L19 + L20 + L22 (reader) + L23: Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle.

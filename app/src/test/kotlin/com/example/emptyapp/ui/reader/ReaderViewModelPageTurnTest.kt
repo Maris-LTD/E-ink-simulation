@@ -1,5 +1,7 @@
 package com.example.emptyapp.ui.reader
 
+import android.os.Build
+import com.example.emptyapp.NotificationPermissionAction
 import com.example.emptyapp.data.annotation.AnnotationRepository
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.dictionary.DictionaryService
@@ -13,6 +15,7 @@ import com.example.emptyapp.reader.pdf.PdfReflowPaginator
 import com.example.emptyapp.reader.pdf.ReflowItem
 import com.example.emptyapp.reader.pdf.ReflowPageMeta
 import com.example.emptyapp.reader.pdf.ReflowPageResult
+import com.example.emptyapp.resolveNotificationPermissionAction
 import com.example.emptyapp.shouldHandleVolumePageTurn
 import java.io.File
 import kotlin.io.path.createTempDirectory
@@ -24,9 +27,14 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReaderViewModelPageTurnTest {
@@ -76,6 +84,7 @@ class ReaderViewModelPageTurnTest {
         dictionary = DictionaryService(),
         statsRepository = stats,
         elapsedRealtimeMs = nowProvider,
+        ioDispatcher = Dispatchers.Unconfined,
       )
     return Triple(vm, stats, settingsStore)
   }
@@ -421,6 +430,195 @@ class ReaderViewModelPageTurnTest {
         pendingNoteOpen = false,
         dictionaryOpen = false,
         overlayOpen = true,
+      ),
+    )
+  }
+
+  private fun sampleHighlightLocator(quote: String?): Locator {
+    val ctor =
+      org.readium.r2.shared.util.RelativeUrl::class.java
+        .getDeclaredConstructor(android.net.Uri::class.java)
+        .apply { isAccessible = true }
+    val url = ctor.newInstance(android.net.Uri.EMPTY)
+    return Locator(
+      href = url,
+      mediaType = MediaType.XHTML,
+      locations = Locator.Locations(progression = 0.25, totalProgression = 0.4),
+      text = Locator.Text(highlight = quote),
+    )
+  }
+
+  @Test
+  fun addHighlightReturnsFalseForBlankQuoteAndTrueForNonBlankQuote() = runBlocking {
+    val dir = createTempDirectory("reader_vm_highlight_quote_test").toFile()
+    var vmRef: ReaderViewModel? = null
+    try {
+      val (vm, _, _) =
+        createViewModel(
+          dir = dir,
+          initialSettings = EInkSettings(),
+          nowProvider = { 1_000L },
+        )
+      vmRef = vm
+
+      assertFalse(vm.addHighlight(sampleHighlightLocator(null), "note"))
+      assertFalse(vm.addHighlight(sampleHighlightLocator(""), "note"))
+      assertFalse(vm.addHighlight(sampleHighlightLocator("   "), "note"))
+
+      assertTrue(
+        vm.addHighlight(
+          locator = sampleHighlightLocator("Selected passage"),
+          note = "my note",
+          locatorJsonOverride = """{"href":"chap1.xhtml"}""",
+        ),
+      )
+    } finally {
+      vmRef?.onReaderForegroundChanged(false)
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun pendingNoteStateSupportsDraftEditingSnapshotAndSavedInstanceStateRestoration() = runBlocking {
+    val dir = createTempDirectory("reader_vm_pending_note_test").toFile()
+    var vmRef: ReaderViewModel? = null
+    var vm2Ref: ReaderViewModel? = null
+    try {
+      val (vm, _, _) =
+        createViewModel(
+          dir = dir,
+          initialSettings = EInkSettings(),
+          nowProvider = { 1_000L },
+        )
+      vmRef = vm
+
+      assertNull(vm.pendingNoteLocator.value)
+      assertEquals("", vm.pendingNoteDraft.value)
+
+      // Opening with blank quote is ignored
+      vm.openNoteDialog(sampleHighlightLocator("  "))
+      assertNull(vm.pendingNoteLocator.value)
+
+      val validLocator = sampleHighlightLocator("Important quote")
+      val rawLocatorJson = """{"href":"chap1.xhtml","quote":"Important quote"}"""
+      vm.openNoteDialog(validLocator, locatorJsonOverride = rawLocatorJson)
+      assertNotNull(vm.pendingNoteLocator.value)
+      assertEquals("Important quote", vm.pendingNoteLocator.value?.text?.highlight)
+      assertEquals("", vm.pendingNoteDraft.value)
+
+      vm.updateNoteDraft("Draft note before rotation")
+      assertEquals("Draft note before rotation", vm.pendingNoteDraft.value)
+
+      val savedLocatorJson = vm.pendingNoteLocatorJsonSnapshot()
+      val savedDraft = vm.pendingNoteDraft.value
+      assertEquals(rawLocatorJson, savedLocatorJson)
+
+      // Simulate recreate / process death into a fresh ViewModel instance
+      val (vm2, _, _) =
+        createViewModel(
+          dir = dir,
+          initialSettings = EInkSettings(),
+          nowProvider = { 2_000L },
+        )
+      vm2Ref = vm2
+      vm2.restorePendingNoteIfAbsent(
+        locatorJson = savedLocatorJson,
+        draft = savedDraft,
+        locatorParser = { json ->
+          if (json == rawLocatorJson) sampleHighlightLocator("Important quote") else null
+        },
+      )
+      assertEquals("Important quote", vm2.pendingNoteLocator.value?.text?.highlight)
+      assertEquals("Draft note before rotation", vm2.pendingNoteDraft.value)
+
+      // Calling restorePendingNoteIfAbsent again does not overwrite newer draft if already open
+      vm2.updateNoteDraft("Updated after restore")
+      vm2.restorePendingNoteIfAbsent(
+        locatorJson = savedLocatorJson,
+        draft = "Stale draft",
+        locatorParser = { sampleHighlightLocator("Important quote") },
+      )
+      assertEquals("Updated after restore", vm2.pendingNoteDraft.value)
+
+      assertTrue(vm2.savePendingNote())
+      assertNull(vm2.pendingNoteLocator.value)
+      assertEquals("", vm2.pendingNoteDraft.value)
+    } finally {
+      vmRef?.onReaderForegroundChanged(false)
+      vm2Ref?.onReaderForegroundChanged(false)
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun resolveNotificationPermissionActionHandlesFirstRequestRationaleAndBlockedCases() {
+    // 1. Runtime permission granted & notifications enabled -> PROCEED
+    assertEquals(
+      NotificationPermissionAction.PROCEED,
+      resolveNotificationPermissionAction(
+        sdkInt = Build.VERSION_CODES.TIRAMISU,
+        hasRuntimePermission = true,
+        areNotificationsEnabled = true,
+        askedOnce = true,
+        shouldShowRationale = false,
+      ),
+    )
+
+    // 2. API 33+, permission missing, never asked system prompt yet -> SHOW_RATIONALE
+    assertEquals(
+      NotificationPermissionAction.SHOW_RATIONALE,
+      resolveNotificationPermissionAction(
+        sdkInt = Build.VERSION_CODES.TIRAMISU,
+        hasRuntimePermission = false,
+        areNotificationsEnabled = false,
+        askedOnce = false,
+        shouldShowRationale = false,
+      ),
+    )
+
+    // 3. API 33+, permission missing, asked once and denied once (shouldShowRationale = true) -> SHOW_RATIONALE
+    assertEquals(
+      NotificationPermissionAction.SHOW_RATIONALE,
+      resolveNotificationPermissionAction(
+        sdkInt = Build.VERSION_CODES.TIRAMISU,
+        hasRuntimePermission = false,
+        areNotificationsEnabled = false,
+        askedOnce = true,
+        shouldShowRationale = true,
+      ),
+    )
+
+    // 4. API 33+, permission missing, asked once and permanently denied (shouldShowRationale = false) -> BLOCKED_OPEN_SETTINGS
+    assertEquals(
+      NotificationPermissionAction.BLOCKED_OPEN_SETTINGS,
+      resolveNotificationPermissionAction(
+        sdkInt = Build.VERSION_CODES.TIRAMISU,
+        hasRuntimePermission = false,
+        areNotificationsEnabled = false,
+        askedOnce = true,
+        shouldShowRationale = false,
+      ),
+    )
+
+    // 5. Pre-33 (or runtime granted) but notifications disabled in system app settings -> BLOCKED_OPEN_SETTINGS
+    assertEquals(
+      NotificationPermissionAction.BLOCKED_OPEN_SETTINGS,
+      resolveNotificationPermissionAction(
+        sdkInt = Build.VERSION_CODES.S,
+        hasRuntimePermission = true,
+        areNotificationsEnabled = false,
+        askedOnce = false,
+        shouldShowRationale = false,
+      ),
+    )
+    assertEquals(
+      NotificationPermissionAction.BLOCKED_OPEN_SETTINGS,
+      resolveNotificationPermissionAction(
+        sdkInt = Build.VERSION_CODES.TIRAMISU,
+        hasRuntimePermission = true,
+        areNotificationsEnabled = false,
+        askedOnce = true,
+        shouldShowRationale = false,
       ),
     )
   }

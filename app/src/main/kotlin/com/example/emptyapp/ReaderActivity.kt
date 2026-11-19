@@ -5,13 +5,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,6 +31,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -61,7 +67,6 @@ import com.example.emptyapp.ui.reader.PdfPagerController
 import com.example.emptyapp.ui.reader.ReaderScreen
 import com.example.emptyapp.ui.reader.ReaderUiState
 import com.example.emptyapp.ui.reader.ReaderViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
 import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
@@ -80,7 +85,6 @@ class ReaderActivity : FragmentActivity() {
 
   private var navigator: OverflowableNavigator? = null
   private val pdfController = PdfPagerController()
-  private val pendingNoteLocator = MutableStateFlow<Locator?>(null)
   private val focusModeController by lazy { FocusModeController(this) }
   private var lastLockScreenPositionKey: String? = null
   private var overrideLocatorConsumedInState: Boolean = false
@@ -88,10 +92,16 @@ class ReaderActivity : FragmentActivity() {
   private val cachedPdfPageSnippets = PdfSnippetMemoryCache()
   private val requestNotificationPermission =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-      if (granted) {
+      if (granted && NotificationManagerCompat.from(this).areNotificationsEnabled()) {
         postLockScreenNotification(force = true)
       } else {
         viewModel.updateSettings { it.copy(lockScreenReader = false) }
+        val shouldShowRationale =
+          Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.POST_NOTIFICATIONS)
+        if (!shouldShowRationale) {
+          viewModel.notifyNotificationPermissionBlocked()
+        }
       }
     }
 
@@ -131,8 +141,13 @@ class ReaderActivity : FragmentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     overrideLocatorConsumedInState =
       savedInstanceState?.getBoolean(STATE_OVERRIDE_LOCATOR_CONSUMED, false) == true
+    val restoredNoteLocatorJson = savedInstanceState?.getString(STATE_PENDING_NOTE_LOCATOR_JSON)
+    val restoredNoteDraft = savedInstanceState?.getString(STATE_PENDING_NOTE_DRAFT)
     super.onCreate(null)
     (application as EmptyApplication).container.warmUpForUiAsync()
+    if (restoredNoteLocatorJson != null) {
+      viewModel.restorePendingNoteIfAbsent(restoredNoteLocatorJson, restoredNoteDraft)
+    }
     enableEdgeToEdge()
     hideSystemBars()
     setContent {
@@ -157,15 +172,32 @@ class ReaderActivity : FragmentActivity() {
       LaunchedEffect(settings.lockScreenReader) {
         applyLockScreenMode(false)
         if (settings.lockScreenReader) {
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !LockScreenReadingNotifier.hasPermission(this@ReaderActivity)) {
-            val prefs = getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
-            if (!prefs.getBoolean("notif_asked_once", false)) {
-              showNotifRationaleState.value = true
-            } else {
+          val prefs = getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
+          val askedOnce = prefs.getBoolean("notif_asked_once", false)
+          val hasRuntimePermission = LockScreenReadingNotifier.hasPermission(this@ReaderActivity)
+          val areNotificationsEnabled =
+            NotificationManagerCompat.from(this@ReaderActivity).areNotificationsEnabled()
+          val shouldShowRationale =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+              ActivityCompat.shouldShowRequestPermissionRationale(
+                this@ReaderActivity,
+                Manifest.permission.POST_NOTIFICATIONS,
+              )
+          when (
+            resolveNotificationPermissionAction(
+              sdkInt = Build.VERSION.SDK_INT,
+              hasRuntimePermission = hasRuntimePermission,
+              areNotificationsEnabled = areNotificationsEnabled,
+              askedOnce = askedOnce,
+              shouldShowRationale = shouldShowRationale,
+            )
+          ) {
+            NotificationPermissionAction.PROCEED -> postLockScreenNotification(force = true)
+            NotificationPermissionAction.SHOW_RATIONALE -> showNotifRationaleState.value = true
+            NotificationPermissionAction.BLOCKED_OPEN_SETTINGS -> {
               viewModel.updateSettings { it.copy(lockScreenReader = false) }
+              viewModel.notifyNotificationPermissionBlocked()
             }
-          } else {
-            postLockScreenNotification(force = true)
           }
         } else {
           LockScreenReadingNotifier.cancel(this@ReaderActivity)
@@ -175,10 +207,9 @@ class ReaderActivity : FragmentActivity() {
         androidx.compose.material3.AlertDialog(
           onDismissRequest = {
             showNotifRationaleState.value = false
-            getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
-              .edit().putBoolean("notif_asked_once", true).apply()
             viewModel.updateSettings { it.copy(lockScreenReader = false) }
           },
+          properties = DialogProperties(dismissOnClickOutside = false),
           title = { androidx.compose.material3.Text(getString(R.string.notif_rationale_title)) },
           text = { androidx.compose.material3.Text(getString(R.string.notif_rationale_message)) },
           confirmButton = {
@@ -199,8 +230,6 @@ class ReaderActivity : FragmentActivity() {
             androidx.compose.material3.TextButton(
               onClick = {
                 showNotifRationaleState.value = false
-                getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
-                  .edit().putBoolean("notif_asked_once", true).apply()
                 viewModel.updateSettings { it.copy(lockScreenReader = false) }
               },
             ) {
@@ -372,6 +401,38 @@ class ReaderActivity : FragmentActivity() {
       STATE_OVERRIDE_LOCATOR_CONSUMED,
       overrideLocatorConsumedInState || viewModel.isOverrideLocatorConsumed(),
     )
+    val noteLocatorJson = viewModel.pendingNoteLocatorJsonSnapshot()
+    if (noteLocatorJson != null) {
+      outState.putString(STATE_PENDING_NOTE_LOCATOR_JSON, noteLocatorJson)
+      outState.putString(STATE_PENDING_NOTE_DRAFT, viewModel.pendingNoteDraft.value)
+    }
+  }
+
+  private fun openAppNotificationSettings() {
+    val notifIntent =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+          putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+      } else {
+        null
+      }
+    val openedNotif =
+      notifIntent != null && runCatching { startActivity(notifIntent) }.isSuccess
+    if (!openedNotif) {
+      val fallbackIntent =
+        Intent(
+          Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+          Uri.fromParts("package", packageName, null),
+        ).apply {
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+      if (runCatching { startActivity(fallbackIntent) }.isFailure) {
+        val msg = LocaleHelper.wrap(this).getString(R.string.error_open_system_settings)
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+      }
+    }
   }
 
   override fun onUserInteraction() {
@@ -388,7 +449,8 @@ class ReaderActivity : FragmentActivity() {
   private fun ReaderRoot() {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val noteLocator by pendingNoteLocator.collectAsStateWithLifecycle()
+    val noteLocator by viewModel.pendingNoteLocator.collectAsStateWithLifecycle()
+    val noteDraft by viewModel.pendingNoteDraft.collectAsStateWithLifecycle()
     LaunchedEffect(settings.brightness) {
       val override =
         if (settings.brightness < 0f) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -414,15 +476,24 @@ class ReaderActivity : FragmentActivity() {
             positions = current.positions,
             isSearchable = current.publication.isSearchable,
             pendingNoteLocator = noteLocator,
+            pendingNoteDraft = noteDraft,
+            onNoteDraftChange = viewModel::updateNoteDraft,
             onSaveNote = { locator, note ->
-              viewModel.addHighlight(locator, note)
-              pendingNoteLocator.value = null
+              if (viewModel.addHighlight(locator, note)) {
+                Toast.makeText(
+                  this@ReaderActivity,
+                  getString(R.string.reader_highlight_saved),
+                  Toast.LENGTH_SHORT,
+                ).show()
+              }
+              viewModel.dismissNoteDialog()
             },
-            onDismissNote = { pendingNoteLocator.value = null },
+            onDismissNote = viewModel::dismissNoteDialog,
             onClose = ::finish,
             onNavigatorReady = { navigator = it },
             hasDndPermission = focusModeController::hasDndPermission,
             onOpenDndPermissionSettings = focusModeController::openDndPermissionSettings,
+            onOpenNotificationSettings = ::openAppNotificationSettings,
           )
         }
       }
@@ -527,7 +598,7 @@ class ReaderActivity : FragmentActivity() {
     return isVolumeKey &&
       shouldHandleVolumePageTurn(
         volumeButtonsTurnPages = viewModel.settings.value.volumeButtonsTurnPages,
-        pendingNoteOpen = pendingNoteLocator.value != null,
+        pendingNoteOpen = viewModel.pendingNoteLocator.value != null,
         dictionaryOpen = viewModel.dictionaryState.value != null,
         overlayOpen = viewModel.overlayOpen.value,
       )
@@ -578,12 +649,11 @@ class ReaderActivity : FragmentActivity() {
           MENU_HIGHLIGHT -> {
             lifecycleScope.launch {
               val sel = nav.currentSelection()
-              if (sel != null) {
-                viewModel.addHighlight(sel.locator)
-                android.widget.Toast.makeText(
+              if (sel != null && viewModel.addHighlight(sel.locator)) {
+                Toast.makeText(
                   this@ReaderActivity,
                   getString(R.string.reader_highlight_saved),
-                  android.widget.Toast.LENGTH_SHORT,
+                  Toast.LENGTH_SHORT,
                 ).show()
               }
               nav.clearSelection()
@@ -593,7 +663,7 @@ class ReaderActivity : FragmentActivity() {
           }
           MENU_NOTE -> {
             lifecycleScope.launch {
-              nav.currentSelection()?.let { pendingNoteLocator.value = it.locator }
+              nav.currentSelection()?.let { viewModel.openNoteDialog(it.locator) }
               nav.clearSelection()
             }
             mode.finish()
@@ -619,6 +689,8 @@ class ReaderActivity : FragmentActivity() {
     private const val EXTRA_LOCATOR_JSON = "locator_json"
     private const val EXTRA_LOCATOR_CREATED_AT = "locator_created_at"
     internal const val STATE_OVERRIDE_LOCATOR_CONSUMED = "override_locator_consumed"
+    internal const val STATE_PENDING_NOTE_LOCATOR_JSON = "pending_note_locator_json"
+    internal const val STATE_PENDING_NOTE_DRAFT = "pending_note_draft"
     private const val MENU_HIGHLIGHT = 1001
     private const val MENU_NOTE = 1002
     private const val MENU_LOOKUP = 1003
@@ -641,6 +713,32 @@ class ReaderActivity : FragmentActivity() {
           }
         }
   }
+}
+
+internal enum class NotificationPermissionAction {
+  PROCEED,
+  SHOW_RATIONALE,
+  BLOCKED_OPEN_SETTINGS,
+}
+
+internal fun resolveNotificationPermissionAction(
+  sdkInt: Int,
+  hasRuntimePermission: Boolean,
+  areNotificationsEnabled: Boolean,
+  askedOnce: Boolean,
+  shouldShowRationale: Boolean,
+): NotificationPermissionAction {
+  if (sdkInt >= Build.VERSION_CODES.TIRAMISU && !hasRuntimePermission) {
+    return if (!askedOnce || shouldShowRationale) {
+      NotificationPermissionAction.SHOW_RATIONALE
+    } else {
+      NotificationPermissionAction.BLOCKED_OPEN_SETTINGS
+    }
+  }
+  if (!areNotificationsEnabled) {
+    return NotificationPermissionAction.BLOCKED_OPEN_SETTINGS
+  }
+  return NotificationPermissionAction.PROCEED
 }
 
 internal fun shouldHandleVolumePageTurn(

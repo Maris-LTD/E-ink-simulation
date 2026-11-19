@@ -103,12 +103,15 @@ fun ReaderScreen(
   positions: List<Locator>,
   isSearchable: Boolean = true,
   pendingNoteLocator: Locator?,
+  pendingNoteDraft: String = "",
+  onNoteDraftChange: (String) -> Unit = {},
   onSaveNote: (Locator, String) -> Unit,
   onDismissNote: () -> Unit,
   onClose: () -> Unit,
   onNavigatorReady: (OverflowableNavigator) -> Unit,
   hasDndPermission: () -> Boolean = { true },
   onOpenDndPermissionSettings: () -> Unit = {},
+  onOpenNotificationSettings: () -> Unit = {},
 ) {
   val settings by viewModel.settings.collectAsStateWithLifecycle()
   val pdfConfig by viewModel.pdfConfig.collectAsStateWithLifecycle()
@@ -118,6 +121,7 @@ fun ReaderScreen(
   val dictionaryState by viewModel.dictionaryState.collectAsStateWithLifecycle()
   val searchState by viewModel.searchState.collectAsStateWithLifecycle()
   val writeError by viewModel.writeError.collectAsStateWithLifecycle()
+  val notifBlockedCount by viewModel.notificationPermissionBlockedCount.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val density = LocalDensity.current
 
@@ -231,9 +235,25 @@ fun ReaderScreen(
   val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
   val openBrowserErrorMsg = stringResource(com.example.emptyapp.R.string.error_open_browser)
   val saveErrorMsg = stringResource(com.example.emptyapp.R.string.error_save_data)
+  val notifPermissionBlockedMsg = stringResource(com.example.emptyapp.R.string.notif_permission_blocked_msg)
+  val notifOpenSettingsLabel = stringResource(com.example.emptyapp.R.string.notif_open_settings_action)
   LaunchedEffect(writeError) {
     if (writeError) {
       snackbarHostState.showSnackbar(saveErrorMsg, duration = SnackbarDuration.Short)
+    }
+  }
+  LaunchedEffect(notifBlockedCount) {
+    if (notifBlockedCount > 0) {
+      viewModel.consumeNotificationPermissionBlocked()
+      val res =
+        snackbarHostState.showSnackbar(
+          message = notifPermissionBlockedMsg,
+          actionLabel = notifOpenSettingsLabel,
+          duration = SnackbarDuration.Long,
+        )
+      if (res == SnackbarResult.ActionPerformed) {
+        onOpenNotificationSettings()
+      }
     }
   }
 
@@ -531,6 +551,8 @@ fun ReaderScreen(
     pendingNoteLocator?.let { locator ->
       HighlightNoteDialog(
         quote = locator.text.highlight.orEmpty(),
+        note = pendingNoteDraft,
+        onNoteChange = onNoteDraftChange,
         onSave = { note -> onSaveNote(locator, note) },
         onDismiss = onDismissNote,
       )
