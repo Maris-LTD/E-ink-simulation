@@ -69,7 +69,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 
 ### 5D — Khởi động & Reader EPUB
 - [x] 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO
-- [ ] 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s)
+- [x] 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s)
 - [ ] 49. L16 + L21 — Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM)
 - [ ] 50. L17 + L18 — Dialog ghi chú: `dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống; quyền thông báo: xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo
 - [ ] 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle
@@ -1032,3 +1032,28 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** kiểm tra tay mục 14 trong `docs/audit-2026-11-19.md` (force-stop → chạm widget/notification với StrictMode).
 
 **Bước tiếp theo:** mục 48 — M18: Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s).
+
+### 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s) — 2026-11-19
+**Nguyên nhân:**
+- `ReaderViewModel` dùng cửa sổ chặn cố định `suppressPageTurnUntilMs` (`SETTINGS_RELAYOUT_SUPPRESS_MS = 1000L`) chỉ khi gọi `updateSettings` (thay đổi thuộc tính bố cục) hoặc `updatePdfConfig`:
+  - Xoay máy hoặc đổi kích thước cửa sổ (`configChanges="orientation|screenSize|screenLayout|smallestScreenSize"`) làm Readium/PDF dàn trang lại và phát `onLocatorChanged` mà không qua `updateSettings` → bị tính nhầm là lật trang (`pendingPages++` + flash/ghost).
+  - Trên máy e-ink chậm, dàn trang > 1 s vẫn bị tính là lật trang; ngược lại nếu dàn trang xong nhanh và người dùng lật trang thật trong vòng 1 s thì lần lật thật bị nuốt.
+  - Nhảy trang chủ động qua thanh tiến độ (`onSeekToProgress`), mục lục TOC (`onSelectToc`), bookmark/highlight (`onSelectLocatorJson`), hoặc kết quả tìm kiếm (`onSelectLocator`) trong `ReaderScreen.kt` không đặt cờ chặn nên cũng bị đếm là lật trang và kích hoạt flash.
+
+**Đã sửa:**
+- `ui/reader/ReaderViewModel.kt`:
+  - Thay `suppressPageTurnUntilMs` (`1_000L`) bằng cờ một lần `pendingNonTurnTransition` kèm thời hạn dự phòng `nonTurnTransitionExpiresAtMs` (`RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS = 3_000L`).
+  - Thêm `expectRelayout()` (gọi khi `updateSettings` đổi thuộc tính bố cục, khi `updatePdfConfig`, và khi `ReaderActivity.onConfigurationChanged`) và `expectJump()` (gọi trước các thao tác nhảy trang chủ động).
+  - Thêm `consumeNonTurnTransitionIfActive()`: khi `onPositionKeyChanged` (với `previous != null && previous != key`) hoặc `onSubPageScreenTurned()` được gọi, nếu cờ đang bật và chưa quá 3 s thì tiêu thụ (xoá) cờ ngay lập tức và bỏ qua `recordPageTurnStep()`; lần lật trang thật ngay sau đó của người dùng vẫn được đếm bình thường.
+- `ReaderActivity.kt`:
+  - Override `onConfigurationChanged(newConfig: Configuration)` gọi `super.onConfigurationChanged(newConfig)` và `viewModel.expectRelayout()`.
+- `ui/reader/ReaderScreen.kt`:
+  - Gọi `viewModel.expectJump()` trước khi nhảy trang bằng `navigator?.go(...)` hoặc `pdfController.jumpToPage(...)` tại `onSeekToProgress` (`ReaderBottomBar`), `onSelectToc` & `onSelectLocatorJson` (`ReaderContentsSheet`), và `onSelectLocator` (`ReaderSearchSheet`).
+- `test/.../ui/reader/ReaderViewModelPageTurnTest.kt`:
+  - Cập nhật và bổ sung unit test `relayoutSuppressionConsumesExactlyOneTransitionEvenOverOneSecondAndCountsImmediateNextTurn` và `expectRelayoutOrJumpExpiresAfterFallbackTimeoutWhenNoTransitionArrives` (**241/241 tests pass**).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **241/241 tests pass** qua 42 file test, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 49 — L16 + L21: Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM).

@@ -221,7 +221,7 @@ class ReaderViewModelPageTurnTest {
   }
 
   @Test
-  fun relayoutSuppressionBlocksBothLocatorAndSubPageScreenTurns() = runBlocking {
+  fun relayoutSuppressionConsumesExactlyOneTransitionEvenOverOneSecondAndCountsImmediateNextTurn() = runBlocking {
     val dir = createTempDirectory("reader_vm_suppress_test").toFile()
     var nowMs = 5_000L
     var vmRef: ReaderViewModel? = null
@@ -237,25 +237,91 @@ class ReaderViewModelPageTurnTest {
       vm.onReaderForegroundChanged(true)
       vm.simulatePdfPageChanged(0)
 
-      // Trigger relayout suppression via fontScale update and mode switch
+      // Trigger relayout suppression via fontScale update (even when relayout takes 2_000 ms > 1 s)
       vm.updateSettings { it.copy(fontScale = 1.6) }
-      vm.updatePdfConfig { it.copy(mode = PdfReadingMode.HYBRID_REFLOW) }
-
-      nowMs += 500L
-      vm.onSubPageScreenTurned()
+      nowMs += 2_000L
       vm.simulatePdfPageChanged(1)
       assertEquals(0, vm.pagesSinceFlash.value)
       assertEquals(0, vm.pageTurnTrigger.value)
 
-      // After suppression window (>= 1000 ms), turns count normally
-      nowMs += 600L
+      // Real user page turn right after (100 ms later) is counted immediately because the one-shot flag was consumed
+      nowMs += 100L
+      vm.simulatePdfPageChanged(2)
+      assertEquals(1, vm.pagesSinceFlash.value)
+      assertEquals(1, vm.pageTurnTrigger.value)
+
+      // Same one-shot behavior for expectRelayout() (e.g. onConfigurationChanged) + sub-page turn
+      vm.expectRelayout()
+      nowMs += 1_800L
       vm.onSubPageScreenTurned()
       assertEquals(1, vm.pagesSinceFlash.value)
       assertEquals(1, vm.pageTurnTrigger.value)
 
+      nowMs += 150L
+      vm.onSubPageScreenTurned()
+      assertEquals(2, vm.pagesSinceFlash.value)
+      assertEquals(2, vm.pageTurnTrigger.value)
+
+      // Same one-shot behavior for expectJump() (TOC / search / slider / bookmark jump)
+      vm.expectJump()
+      nowMs += 400L
+      vm.simulatePdfPageChanged(7)
+      assertEquals(2, vm.pagesSinceFlash.value)
+      assertEquals(2, vm.pageTurnTrigger.value)
+
+      // Next real turn after jump hits flashEveryPages = 3
+      nowMs += 200L
+      vm.simulatePdfPageChanged(8)
+      assertEquals(0, vm.pagesSinceFlash.value)
+      assertEquals(1, vm.flashTrigger.value)
+
       vm.onReaderForegroundChanged(false)
       stats.recordReading(0, 0)
-      assertEquals(1, stats.stats.value.totalPagesTurned)
+      assertEquals(3, stats.stats.value.totalPagesTurned)
+    } finally {
+      vmRef?.onReaderForegroundChanged(false)
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun expectRelayoutOrJumpExpiresAfterFallbackTimeoutWhenNoTransitionArrives() = runBlocking {
+    val dir = createTempDirectory("reader_vm_fallback_timeout_test").toFile()
+    var nowMs = 10_000L
+    var vmRef: ReaderViewModel? = null
+    try {
+      val (vm, stats, _) =
+        createViewModel(
+          dir = dir,
+          initialSettings = EInkSettings(flashEnabled = true, flashEveryPages = 3),
+          nowProvider = { nowMs },
+        )
+      vmRef = vm
+
+      vm.onReaderForegroundChanged(true)
+      vm.simulatePdfPageChanged(3)
+
+      // Jump to the same page -> no locator change arrives
+      vm.expectJump()
+      vm.simulatePdfPageChanged(3)
+      assertEquals(0, vm.pagesSinceFlash.value)
+
+      // After fallback timeout (> 3_000 ms), the next real page turn is counted normally
+      nowMs += ReaderViewModel.RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS + 100L
+      vm.simulatePdfPageChanged(4)
+      assertEquals(1, vm.pagesSinceFlash.value)
+      assertEquals(1, vm.pageTurnTrigger.value)
+
+      // Same expiry check for expectRelayout() with no position change
+      vm.expectRelayout()
+      nowMs += ReaderViewModel.RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS + 50L
+      vm.onSubPageScreenTurned()
+      assertEquals(2, vm.pagesSinceFlash.value)
+      assertEquals(2, vm.pageTurnTrigger.value)
+
+      vm.onReaderForegroundChanged(false)
+      stats.recordReading(0, 0)
+      assertEquals(2, stats.stats.value.totalPagesTurned)
     } finally {
       vmRef?.onReaderForegroundChanged(false)
       dir.deleteRecursively()

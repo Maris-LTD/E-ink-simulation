@@ -391,6 +391,7 @@ fun ReaderScreen(
         onSeekToProgress = { fraction ->
           if (positions.isNotEmpty()) {
             val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
+            viewModel.expectJump()
             if (bookFormat == BookFormat.PDF) {
               pdfController.jumpToPage(index)
             } else {
@@ -434,8 +435,12 @@ fun ReaderScreen(
         highlights = highlights,
         onSelectToc = { link ->
           if (bookFormat == BookFormat.PDF) {
-            resolvePdfTocPage(link, positions)?.let(pdfController::jumpToPage)
+            resolvePdfTocPage(link, positions)?.let { page ->
+              viewModel.expectJump()
+              pdfController.jumpToPage(page)
+            }
           } else {
+            viewModel.expectJump()
             navigator?.go(link, animated = false)
           }
           contentsOpen = false
@@ -443,6 +448,7 @@ fun ReaderScreen(
         },
         onSelectLocatorJson = { jsonText ->
           runCatching { Locator.fromJSON(JSONObject(jsonText)) }.getOrNull()?.let { locator ->
+            viewModel.expectJump()
             if (bookFormat == BookFormat.PDF) {
               pdfController.jumpToPage(resolvePdfPageIndex(locator, positions))
             } else {
@@ -495,6 +501,7 @@ fun ReaderScreen(
         onSearch = viewModel::searchInBook,
         onLoadMore = viewModel::loadMoreSearchResults,
         onSelectLocator = { locator ->
+          viewModel.expectJump()
           if (bookFormat == BookFormat.PDF) {
             pdfController.jumpToPage(resolvePdfPageIndex(locator, positions))
           } else {

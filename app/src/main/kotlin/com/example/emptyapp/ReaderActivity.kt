@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.view.ActionMode
@@ -376,6 +377,11 @@ class ReaderActivity : FragmentActivity() {
   override fun onUserInteraction() {
     super.onUserInteraction()
     viewModel.notifyUserInteraction()
+  }
+
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    viewModel.expectRelayout()
   }
 
   @Composable

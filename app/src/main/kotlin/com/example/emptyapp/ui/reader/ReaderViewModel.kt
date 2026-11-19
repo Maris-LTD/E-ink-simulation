@@ -102,7 +102,8 @@ class ReaderViewModel(
   private var pendingProgress: Pair<Locator, Float>? = null
   private var lastInteractionMs: Long = 0L
   private var lastFlushMs: Long = 0L
-  private var suppressPageTurnUntilMs: Long = 0L
+  private var pendingNonTurnTransition: Boolean = false
+  private var nonTurnTransitionExpiresAtMs: Long = 0L
   private var pendingPages: Int = 0
   private var lastPositionKey: String? = null
   private var currentLocator: Locator? = null
@@ -191,12 +192,30 @@ class ReaderViewModel(
         before.orientationLock != after.orientationLock ||
         before.pdfAutoCrop != after.pdfAutoCrop
     if (layoutChanged) {
-      suppressPageTurnUntilMs = elapsedRealtimeMs() + SETTINGS_RELAYOUT_SUPPRESS_MS
+      expectRelayout()
     }
     if (before.copy(brightness = after.brightness) != after) {
       flashController.reset()
       mutablePagesSinceFlash.value = 0
     }
+  }
+
+  fun expectRelayout() {
+    pendingNonTurnTransition = true
+    nonTurnTransitionExpiresAtMs = elapsedRealtimeMs() + RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS
+  }
+
+  fun expectJump() {
+    pendingNonTurnTransition = true
+    nonTurnTransitionExpiresAtMs = elapsedRealtimeMs() + RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS
+  }
+
+  private fun consumeNonTurnTransitionIfActive(): Boolean {
+    if (!pendingNonTurnTransition) return false
+    val active = elapsedRealtimeMs() <= nonTurnTransitionExpiresAtMs
+    pendingNonTurnTransition = false
+    nonTurnTransitionExpiresAtMs = 0L
+    return active
   }
 
   fun previewBrightness(value: Float) {
@@ -208,7 +227,7 @@ class ReaderViewModel(
   }
 
   fun updatePdfConfig(transform: (PdfBookConfig) -> PdfBookConfig) {
-    suppressPageTurnUntilMs = elapsedRealtimeMs() + SETTINGS_RELAYOUT_SUPPRESS_MS
+    expectRelayout()
     val updated = pdfBookConfigs?.update(bookId, transform) ?: return
     val mode = updated.mode ?: return
     viewModelScope.launch {
@@ -262,18 +281,16 @@ class ReaderViewModel(
     val previous = lastPositionKey
     lastPositionKey = key
     mutableProgress.value = totalProgression
-    val isPageTurn =
-      previous != null &&
-        previous != key &&
-        elapsedRealtimeMs() >= suppressPageTurnUntilMs
-    if (isPageTurn) {
-      recordPageTurnStep()
+    if (previous != null && previous != key) {
+      if (!consumeNonTurnTransitionIfActive()) {
+        recordPageTurnStep()
+      }
     }
   }
 
   fun onSubPageScreenTurned() {
     notifyUserInteraction()
-    if (elapsedRealtimeMs() >= suppressPageTurnUntilMs) {
+    if (!consumeNonTurnTransitionIfActive()) {
       recordPageTurnStep()
     }
   }
@@ -649,7 +666,7 @@ class ReaderViewModel(
   companion object {
     private const val INACTIVITY_TIMEOUT_MS = 120_000L
     private const val PROGRESS_SAVE_INTERVAL_MS = 1_500L
-    private const val SETTINGS_RELAYOUT_SUPPRESS_MS = 1_000L
+    internal const val RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS = 3_000L
 
     internal fun resolveInitialLocatorChoice(
       overrideLocatorJson: String?,
