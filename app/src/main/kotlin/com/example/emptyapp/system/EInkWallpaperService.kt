@@ -171,6 +171,7 @@ class EInkWallpaperService : WallpaperService() {
       if (!keyguard.isKeyguardLocked) return
       val container = (applicationContext as? EmptyApplication)?.container ?: return
       if (!container.settings.settings.value.lockScreenReader) return
+      if (LockScreenReadingNotifier.isDismissedByUser(applicationContext)) return
 
       val lockState = container.lockScreenReading.state.value
       if (lockState != null && lockState.snippets.isNotEmpty()) {

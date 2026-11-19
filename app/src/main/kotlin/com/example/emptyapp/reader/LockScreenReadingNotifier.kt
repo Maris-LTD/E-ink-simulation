@@ -104,6 +104,13 @@ object LockScreenReadingNotifier {
         }
       }
 
+    val deleteIntent =
+      PendingIntent.getBroadcast(
+        context,
+        4103,
+        Intent(LockScreenNavReceiver.ACTION_DISMISSED).setPackage(context.packageName),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+      )
     val notification =
       NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(R.mipmap.ic_launcher)
@@ -116,10 +123,25 @@ object LockScreenReadingNotifier {
         .setSilent(true)
         .setOnlyAlertOnce(true)
         .setAutoCancel(true)
+        .setDeleteIntent(deleteIntent)
         .setContentIntent(pendingIntent)
         .build()
+    setDismissedByUser(context, false)
     NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
   }
+
+  fun setDismissedByUser(context: Context, dismissed: Boolean) {
+    context.applicationContext
+      .getSharedPreferences("eink_lockscreen_notif", Context.MODE_PRIVATE)
+      .edit()
+      .putBoolean("dismissed_by_user", dismissed)
+      .apply()
+  }
+
+  fun isDismissedByUser(context: Context): Boolean =
+    context.applicationContext
+      .getSharedPreferences("eink_lockscreen_notif", Context.MODE_PRIVATE)
+      .getBoolean("dismissed_by_user", false)
 
   fun cancel(context: Context) {
     NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
@@ -150,11 +172,19 @@ object LockScreenReadingNotifier {
     if (manager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
       manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
     }
-    if (manager.getNotificationChannel(CHANNEL_ID) != null) return
+    val channelName = LocaleHelper.wrap(context).getString(R.string.lockscreen_channel_name)
+    val existing = manager.getNotificationChannel(CHANNEL_ID)
+    if (existing != null) {
+      if (existing.name != channelName) {
+        existing.name = channelName
+        manager.createNotificationChannel(existing)
+      }
+      return
+    }
     val channel =
       NotificationChannel(
         CHANNEL_ID,
-        LocaleHelper.wrap(context).getString(R.string.lockscreen_channel_name),
+        channelName,
         NotificationManager.IMPORTANCE_DEFAULT,
       ).apply {
         lockscreenVisibility = Notification.VISIBILITY_PUBLIC

@@ -6,11 +6,17 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
+import android.widget.Toast
+import com.example.emptyapp.LocaleHelper
+import com.example.emptyapp.R
 
 object EInkSystemSetupHelper {
   fun openHomeLauncherSettings(context: Context) {
     val intent = Intent(Settings.ACTION_HOME_SETTINGS)
-    runCatching { context.startActivity(intent) }
+    if (runCatching { context.startActivity(intent) }.isFailure) {
+      val msg = LocaleHelper.wrap(context).getString(R.string.error_open_system_settings)
+      Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    }
   }
 
   fun openLiveWallpaperPicker(context: Context) {
@@ -23,7 +29,11 @@ object EInkSystemSetupHelper {
       }
     val launched = runCatching { context.startActivity(direct) }.isSuccess
     if (!launched) {
-      runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) }
+      val fallback = runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) }.isSuccess
+      if (!fallback) {
+        val msg = LocaleHelper.wrap(context).getString(R.string.error_open_system_settings)
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+      }
     }
   }
 

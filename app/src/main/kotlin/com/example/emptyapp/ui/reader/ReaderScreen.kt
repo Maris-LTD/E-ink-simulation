@@ -201,6 +201,39 @@ fun ReaderScreen(
     }
   }
 
+  fun handleToggleFocusMode(next: Boolean) {
+    viewModel.updateSettings { it.copy(focusMode = next) }
+    if (next) {
+      settingsOpen = false
+      chromeVisible = false
+      scope.launch {
+        if (hasDndPermission()) {
+          snackbarHostState.showSnackbar(
+            context.getString(com.example.emptyapp.R.string.reader_focus_enabled),
+            duration = SnackbarDuration.Short,
+          )
+        } else {
+          val res =
+            snackbarHostState.showSnackbar(
+              message = context.getString(com.example.emptyapp.R.string.reader_focus_needs_dnd),
+              actionLabel = context.getString(com.example.emptyapp.R.string.action_grant_permission),
+              duration = SnackbarDuration.Long,
+            )
+          if (res == SnackbarResult.ActionPerformed) {
+            onOpenDndPermissionSettings()
+          }
+        }
+      }
+    } else {
+      scope.launch {
+        snackbarHostState.showSnackbar(
+          context.getString(com.example.emptyapp.R.string.reader_focus_disabled),
+          duration = SnackbarDuration.Short,
+        )
+      }
+    }
+  }
+
   val effectivePdfMode = pdfConfig.mode ?: PdfReadingMode.SMART_ORIGINAL
 
   Box(modifier = Modifier.fillMaxSize().background(Color(settings.tone.background))) {
@@ -346,39 +379,7 @@ fun ReaderScreen(
           }
         },
         focusMode = settings.focusMode,
-        onToggleFocusMode = {
-          val next = !settings.focusMode
-          viewModel.updateSettings { it.copy(focusMode = next) }
-          if (next) {
-            settingsOpen = false
-            chromeVisible = false
-            scope.launch {
-              if (hasDndPermission()) {
-                snackbarHostState.showSnackbar(
-                  context.getString(com.example.emptyapp.R.string.reader_focus_enabled),
-                  duration = SnackbarDuration.Short,
-                )
-              } else {
-                val res =
-                  snackbarHostState.showSnackbar(
-                    message = context.getString(com.example.emptyapp.R.string.reader_focus_needs_dnd),
-                    actionLabel = context.getString(com.example.emptyapp.R.string.action_grant_permission),
-                    duration = SnackbarDuration.Long,
-                  )
-                if (res == SnackbarResult.ActionPerformed) {
-                  onOpenDndPermissionSettings()
-                }
-              }
-            }
-          } else {
-            scope.launch {
-              snackbarHostState.showSnackbar(
-                context.getString(com.example.emptyapp.R.string.reader_focus_disabled),
-                duration = SnackbarDuration.Short,
-              )
-            }
-          }
-        },
+        onToggleFocusMode = { handleToggleFocusMode(!settings.focusMode) },
         onToggleSettings = { settingsOpen = !settingsOpen },
         modifier =
           Modifier.align(Alignment.BottomCenter)
@@ -397,6 +398,7 @@ fun ReaderScreen(
         pdfMode = effectivePdfMode,
         pdfReflowAllowed = pdfConfig.reflowAllowed,
         onPdfModeChange = { next -> viewModel.updatePdfConfig { it.copy(mode = next) } },
+        onToggleFocusMode = ::handleToggleFocusMode,
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
@@ -502,7 +504,14 @@ fun ReaderScreen(
               Intent.ACTION_VIEW,
               Uri.parse("https://translate.google.com/?sl=auto&tl=$tl&text=$encoded"),
             )
-          runCatching { context.startActivity(intent) }
+          if (runCatching { context.startActivity(intent) }.isFailure) {
+            scope.launch {
+              snackbarHostState.showSnackbar(
+                context.getString(com.example.emptyapp.R.string.error_open_browser),
+                duration = SnackbarDuration.Short,
+              )
+            }
+          }
         },
         onDismiss = viewModel::dismissDictionary,
       )

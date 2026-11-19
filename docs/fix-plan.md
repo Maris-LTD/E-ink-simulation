@@ -34,7 +34,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 21. U1 — Giữ state thư viện khi mở Thống kê
 - [x] 22. U2 + U3 — PDF zoom không chớp trắng, tap-zoom, lật trang khi zoom, placeholder/retry
 - [x] 23. U4 — Thông báo lỗi sync localized, trạng thái "kết nối lại"
-- [ ] 24. U5 — Quyền thông báo, notification màn khoá, focus mode, lỗi intent bị nuốt
+- [x] 24. U5 — Quyền thông báo, notification màn khoá, focus mode, lỗi intent bị nuốt
 - [ ] 25. U6 — Dialog ghi chú, checkbox xoá Drive mặc định tắt + undo, tutorial chặn touch, lỗi mở sách
 - [ ] 26. U7 — Accessibility (contentDescription, 48dp, semantics)
 - [ ] 27. U8 + U9 — Launcher pins, empty state, sort, cạnh trái ẩn, phím âm lượng, đồng hồ 12h
@@ -437,3 +437,17 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 24 — U5: quyền thông báo, notification màn khoá không đăng lại sau khi user gạt, tên channel theo ngôn ngữ, focus mode xin quyền DND từ settings panel, không nuốt lỗi intent setup/DND/dịch ngoài.
+
+### 24. U5 — Quyền thông báo, notification màn khoá, Focus mode & báo lỗi intent — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Xin `POST_NOTIFICATIONS` mỗi lần mở sách & không tắt toggle khi từ chối:** `ReaderActivity.kt` thêm dialog giải thích (`notif_rationale_*`) trước khi xin quyền lần đầu (`eink_permissions/notif_asked_once`); nếu người dùng từ chối hoặc đã từ chối trước đó thì tự tắt `lockScreenReader = false`.
+- **Notification màn khoá tự đăng lại sau khi user gạt:** `LockScreenReadingNotifier.kt` gắn `setDeleteIntent` (`LockScreenNavReceiver.ACTION_DISMISSED`) để lưu `dismissed_by_user`; `EInkWallpaperService.ensureLockScreenNotificationOnLock()` bỏ qua đăng lại nếu user đã gạt (cờ này tự xoá khi app đăng phiên đọc mới).
+- **Tên channel không cập nhật theo ngôn ngữ:** `LockScreenReadingNotifier.ensureChannel` cập nhật `existing.name` khi `existing != null`.
+- **Focus mode từ `ReaderSettingsPanel` bỏ qua nhắc quyền DND:** tách `handleToggleFocusMode` trong `ReaderScreen.kt` và truyền vào `ReaderSettingsPanel` (`ReaderSettingsPanel.kt`).
+- **Nuốt lỗi `startActivity`:** `EInkSystemSetupHelper` (`openHomeLauncherSettings`, `openLiveWallpaperPicker`) và `FocusModeController.openDndPermissionSettings` hiện `Toast` (`error_open_system_settings`) khi thất bại; `ReaderScreen.kt` hiện snackbar `error_open_browser` khi không mở được trang dịch ngoài.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: từ chối quyền thông báo ở Reader, gạt bỏ notification màn khoá rồi khoá/mở lại màn hình, bật Focus mode từ Settings panel khi chưa cấp quyền DND.
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 25 — U6: dialog ghi chú highlight không mất text khi chạm ngoài/back, checkbox xoá trên Drive mặc định tắt + undo, `TutorialOverlay` chặn touch không xuyên xuống dưới, thông báo lỗi mở sách thân thiện + nút thử lại.

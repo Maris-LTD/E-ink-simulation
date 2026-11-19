@@ -10,6 +10,10 @@ import kotlinx.coroutines.launch
 
 class LockScreenNavReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
+    if (intent.action == ACTION_DISMISSED) {
+      LockScreenReadingNotifier.setDismissedByUser(context, true)
+      return
+    }
     val delta =
       when (intent.action) {
         ACTION_PREV -> -1
@@ -50,5 +54,6 @@ class LockScreenNavReceiver : BroadcastReceiver() {
   companion object {
     const val ACTION_PREV = "com.example.emptyapp.LOCKSCREEN_PREV"
     const val ACTION_NEXT = "com.example.emptyapp.LOCKSCREEN_NEXT"
+    const val ACTION_DISMISSED = "com.example.emptyapp.LOCKSCREEN_DISMISSED"
   }
 }

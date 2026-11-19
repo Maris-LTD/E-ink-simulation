@@ -83,7 +83,11 @@ class ReaderActivity : FragmentActivity() {
   @Volatile private var cachedChapterSnippets: Pair<String, List<String>>? = null
   private val requestNotificationPermission =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-      if (granted) postLockScreenNotification(force = true)
+      if (granted) {
+        postLockScreenNotification(force = true)
+      } else {
+        viewModel.updateSettings { it.copy(lockScreenReader = false) }
+      }
     }
 
   private val viewModel: ReaderViewModel by lazy {
@@ -136,17 +140,61 @@ class ReaderActivity : FragmentActivity() {
             OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
           }
       }
+      val showNotifRationaleState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
       LaunchedEffect(settings.lockScreenReader) {
         applyLockScreenMode(false)
         if (settings.lockScreenReader) {
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !LockScreenReadingNotifier.hasPermission(this@ReaderActivity)) {
-            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            val prefs = getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("notif_asked_once", false)) {
+              showNotifRationaleState.value = true
+            } else {
+              viewModel.updateSettings { it.copy(lockScreenReader = false) }
+            }
           } else {
             postLockScreenNotification(force = true)
           }
         } else {
           LockScreenReadingNotifier.cancel(this@ReaderActivity)
         }
+      }
+      if (showNotifRationaleState.value) {
+        androidx.compose.material3.AlertDialog(
+          onDismissRequest = {
+            showNotifRationaleState.value = false
+            getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
+              .edit().putBoolean("notif_asked_once", true).apply()
+            viewModel.updateSettings { it.copy(lockScreenReader = false) }
+          },
+          title = { androidx.compose.material3.Text(getString(R.string.notif_rationale_title)) },
+          text = { androidx.compose.material3.Text(getString(R.string.notif_rationale_message)) },
+          confirmButton = {
+            androidx.compose.material3.TextButton(
+              onClick = {
+                showNotifRationaleState.value = false
+                getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
+                  .edit().putBoolean("notif_asked_once", true).apply()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                  requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+              },
+            ) {
+              androidx.compose.material3.Text(getString(R.string.notif_rationale_allow))
+            }
+          },
+          dismissButton = {
+            androidx.compose.material3.TextButton(
+              onClick = {
+                showNotifRationaleState.value = false
+                getSharedPreferences("eink_permissions", Context.MODE_PRIVATE)
+                  .edit().putBoolean("notif_asked_once", true).apply()
+                viewModel.updateSettings { it.copy(lockScreenReader = false) }
+              },
+            ) {
+              androidx.compose.material3.Text(getString(R.string.notif_rationale_later))
+            }
+          },
+        )
       }
       LaunchedEffect(viewModel.state.collectAsStateWithLifecycle().value is ReaderUiState.Ready, settings.lockScreenReader) {
         if (settings.lockScreenReader) postLockScreenNotification()

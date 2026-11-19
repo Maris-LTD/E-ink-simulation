@@ -220,6 +220,13 @@
     <string name="sync_all_cloud_deleted">Đã xóa toàn bộ dữ liệu sao lưu trên Google Drive và ngắt đồng bộ trên máy này</string>
     <string name="sync_book_deleted_cloud">Đã xóa "%1$s" khỏi Google Drive</string>
 
+    <string name="error_open_system_settings">Không mở được cài đặt hệ thống trên thiết bị này</string>
+    <string name="error_open_browser">Không tìm thấy trình duyệt để mở trang dịch</string>
+    <string name="notif_rationale_title">Bật thông báo đọc màn hình khóa?</string>
+    <string name="notif_rationale_message">Cấp quyền thông báo để hiển thị đoạn đang đọc và lật trang ngay trên màn hình khóa.</string>
+    <string name="notif_rationale_allow">Cho phép</string>
+    <string name="notif_rationale_later">Để sau</string>
+
     <!-- Tutorial -->
     <string name="tutorial_header">Hướng dẫn sử dụng</string>
     <string name="tutorial_skip">Bỏ qua</string>
