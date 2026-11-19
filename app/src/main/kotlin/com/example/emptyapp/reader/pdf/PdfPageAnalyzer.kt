@@ -13,6 +13,7 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import java.io.File
 import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
 
 object PdfPageAnalyzer {
   @Volatile private var initialized = false
@@ -32,6 +33,39 @@ object PdfPageAnalyzer {
   private const val MIN_LINES_FOR_COLUMN_CHECK = 6
   private const val MAX_VECTOR_SEGMENTS_PER_PAGE = 400
   private const val MAX_FILLED_RECTS_PER_PAGE = 100
+  private const val DEFAULT_PAGE_WIDTH_PT = 595f
+  private const val DEFAULT_PAGE_HEIGHT_PT = 842f
+
+  internal fun emptyPageAnalysis(
+    pageIndex: Int,
+    pageWidthPt: Float = DEFAULT_PAGE_WIDTH_PT,
+    pageHeightPt: Float = DEFAULT_PAGE_HEIGHT_PT,
+  ): PdfPageAnalysis =
+    PdfPageAnalysis(
+      pageIndex = pageIndex,
+      pageWidthPt = pageWidthPt.coerceAtLeast(1f),
+      pageHeightPt = pageHeightPt.coerceAtLeast(1f),
+      charCount = 0,
+      textLines = emptyList(),
+      imageBlocks = emptyList(),
+      totalImageAreaFraction = 0f,
+      vectorOpCount = 0,
+      columnCount = 1,
+      vectorSegments = emptyList(),
+      filledRects = emptyList(),
+    )
+
+  internal fun analyzePageSafely(
+    pageIndex: Int,
+    block: () -> PdfPageAnalysis,
+  ): PdfPageAnalysis =
+    try {
+      block()
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: Throwable) {
+      emptyPageAnalysis(pageIndex)
+    }
 
   fun analyzeAllPages(
     file: File,
@@ -39,24 +73,28 @@ object PdfPageAnalyzer {
     onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
   ): List<PdfPageAnalysis> {
     if (!file.exists()) return emptyList()
-    return runCatching {
+    return try {
       PDDocument.load(file).use { document ->
         val total = document.numberOfPages
         val stripper = ReusableLineStripper()
         val results = ArrayList<PdfPageAnalysis>(total)
         for (index in 0 until total) {
           if (!shouldContinue()) return emptyList()
-          results += analyzePage(document, index, stripper)
+          results += analyzePageSafely(index) { analyzePage(document, index, stripper) }
           onProgress(index + 1, total)
         }
         results
       }
-    }.getOrDefault(emptyList())
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: Throwable) {
+      emptyList()
+    }
   }
 
   fun analyzePages(file: File, pageIndices: List<Int>): List<PdfPageAnalysis> {
     if (!file.exists() || pageIndices.isEmpty()) return emptyList()
-    return runCatching {
+    return try {
       PDDocument.load(file).use { document ->
         val total = document.numberOfPages
         val stripper = ReusableLineStripper()
@@ -64,10 +102,14 @@ object PdfPageAnalyzer {
           .asSequence()
           .filter { it in 0 until total }
           .distinct()
-          .map { index -> analyzePage(document, index, stripper) }
+          .map { index -> analyzePageSafely(index) { analyzePage(document, index, stripper) } }
           .toList()
       }
-    }.getOrDefault(emptyList())
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: Throwable) {
+      emptyList()
+    }
   }
 
   fun analyzeSamplePages(
@@ -75,7 +117,7 @@ object PdfPageAnalyzer {
     indicesForCount: (Int) -> List<Int>,
   ): List<PdfPageAnalysis> {
     if (!file.exists()) return emptyList()
-    return runCatching {
+    return try {
       PDDocument.load(file).use { document ->
         val total = document.numberOfPages
         val stripper = ReusableLineStripper()
@@ -83,10 +125,14 @@ object PdfPageAnalyzer {
           .asSequence()
           .filter { it in 0 until total }
           .distinct()
-          .map { index -> analyzePage(document, index, stripper) }
+          .map { index -> analyzePageSafely(index) { analyzePage(document, index, stripper) } }
           .toList()
       }
-    }.getOrDefault(emptyList())
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: Throwable) {
+      emptyList()
+    }
   }
 
   fun analyzePage(

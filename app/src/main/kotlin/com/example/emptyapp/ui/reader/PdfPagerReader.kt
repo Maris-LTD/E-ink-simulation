@@ -180,6 +180,8 @@ fun PdfPagerReader(
       if (computed.isNotEmpty()) {
         holder.seedAnalyses(computed)
         allAnalyses = computed
+      } else if (isActive) {
+        allAnalyses = emptyList()
       }
     }
   }
@@ -187,7 +189,11 @@ fun PdfPagerReader(
   val loadedAnalyses = allAnalyses
   if (isReflowMode && loadedAnalyses == null) {
     Box(
-      modifier = modifier.fillMaxSize().background(Color(settings.tone.background)),
+      modifier =
+        modifier
+          .fillMaxSize()
+          .background(Color(settings.tone.background))
+          .pointerInput(onCenterTap) { detectTapGestures(onTap = { onCenterTap() }) },
       contentAlignment = Alignment.Center,
     ) {
       Column(
@@ -356,7 +362,12 @@ fun PdfPagerReader(
       }
 
     if (isReflowMode && reflowScreensState == null) {
-      Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Box(
+        modifier =
+          Modifier.fillMaxSize()
+            .pointerInput(onCenterTap) { detectTapGestures(onTap = { onCenterTap() }) },
+        contentAlignment = Alignment.Center,
+      ) {
         Column(
           horizontalAlignment = Alignment.CenterHorizontally,
           verticalArrangement = Arrangement.spacedBy(12.dp),

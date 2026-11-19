@@ -190,4 +190,29 @@ class PdfReflowEngineTest {
     assertEquals(ReflowImageKind.SYMBOL_STACK, (result.items[2] as ReflowItem.Image).kind)
     assertEquals("Closing paragraph after graphics.", (result.items[3] as ReflowItem.Paragraph).text)
   }
+
+  @Test
+  fun analyzePageSafelyReturnsEmptyAnalysisOnErrorAndFallsBackToOriginal() {
+    val fallbackAnalysis =
+      PdfPageAnalyzer.analyzePageSafely(4) {
+        throw OutOfMemoryError("Simulated PDFBox OOM on page 4")
+      }
+    assertEquals(4, fallbackAnalysis.pageIndex)
+    assertEquals(0, fallbackAnalysis.charCount)
+    assertTrue(fallbackAnalysis.textLines.isEmpty())
+    assertTrue(fallbackAnalysis.imageBlocks.isEmpty())
+
+    val reflowResult = PdfReflowEngine.buildReflowPage(fallbackAnalysis)
+    assertEquals(
+      ReflowPageResult.FallbackOriginal(ReflowFallbackReason.NO_TEXT),
+      reflowResult,
+    )
+  }
+
+  @Test(expected = kotlinx.coroutines.CancellationException::class)
+  fun analyzePageSafelyRethrowsCancellationException() {
+    PdfPageAnalyzer.analyzePageSafely(1) {
+      throw kotlinx.coroutines.CancellationException("Cancelled")
+    }
+  }
 }

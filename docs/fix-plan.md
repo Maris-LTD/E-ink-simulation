@@ -40,6 +40,51 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 27. U8 + U9 — Launcher pins, empty state, sort, cạnh trái ẩn, phím âm lượng, đồng hồ 12h
 - [x] 28. U10 + U11 — Chuỗi cứng, plurals, privacy policy
 
+## Đợt 5 — Sửa theo re-audit (nguồn: `docs/audit-2026-11-19.md`)
+Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-audit — xem ở đó để biết file/dòng, kịch bản lỗi và cách sửa chi tiết.
+
+### 5A — Chặn đọc sách / sai vị trí / build gate
+- [x] 29. H1 — PDF Reflow kẹt spinner: fallback trang gốc (hoặc lỗi + nút "Về trang gốc") khi phân tích rỗng, tap giữa mở toolbar trên 2 màn spinner, `analyzeAllPages` bắt lỗi theo từng trang
+- [ ] 30. H3 — Bookmark EPUB so theo `href` + khoảng progression của trang hiện tại (dùng `PaginationListener`), chỉ so `position` cho PDF/CBZ/fixed-layout
+- [ ] 31. M1 + M2 + L3 — Notification màn khoá: `deleteIntent`/PREV/NEXT dùng intent tường minh; snippet rỗng không giữ session cũ; lưu `capturedAt` làm `EXTRA_LOCATOR_CREATED_AT`; `stepSnippet` trả `null` khi không đổi; `LockScreenReadingStore` ghi tuần tự (`limitedParallelism(1)`, `_state.update`)
+- [ ] 32. Lint gate — sửa 24 `LocalContextGetResourceValueCall` + `MissingPermission` (`areNotificationsEnabled`); `bundle.language.enableSplit = false`; kiểm `bcpkix` TrustAll có còn trong APK release; `HardcodedText` "‹ ›", `SmallSp` widget, dọn `UnusedResources` → `lintDebug` xanh
+
+### 5B — Đồng bộ Google Drive & an toàn dữ liệu
+- [ ] 33. H2 — `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần (cân nhắc nâng `play-services-auth` ≥ 21.4.0: `clearToken` / `revokeAccess`)
+- [ ] 34. M3 + M4 — Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi
+- [ ] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
+- [ ] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
+- [ ] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
+- [ ] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
+- [ ] 39. M9 + L2 + L8 — Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`
+- [ ] 40. L5 + L7 + L9 + L22 (`updatedAt`) — Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ
+
+### 5C — PDF
+- [ ] 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder (bỏ code chết `seedAnalyses`/`analysisCache` nếu không dùng), prefetch trang kề; GUIDED chặn lật khi chưa có regions và giữ `pendingBackwardLandingPage`; smart tap-zoom ở SMART phân tích trang hiện tại; trích chữ bằng 1 lần `getText` + `startPage/endPage`
+- [ ] 42. M12 + L13 — Tap-zoom khi autoCrop đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị
+- [ ] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
+- [ ] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
+- [ ] 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file
+- [ ] 46. L15 — Trang fallback trong Reflow: `cd_pdf_page`, spinner/lỗi/retry, cho zoom; ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở
+
+### 5D — Khởi động & Reader EPUB
+- [ ] 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO
+- [ ] 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s)
+- [ ] 49. L16 + L21 — Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM)
+- [ ] 50. L17 + L18 — Dialog ghi chú: `dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống; quyền thông báo: xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo
+- [ ] 51. L19 + L20 + L22 (reader) + L23 — Ghost chỉ áp filter ở fallback API 24–25, bỏ `recycle()`, chỉ đảo slot khi capture thành công; throttle tiến độ: phần ghi `NonCancellable`, hẹn lại khi còn pending; `retryLoad` bỏ qua khi đang Loading; footer clock theo lifecycle
+
+### 5E — Thư viện, Launcher, Wallpaper, Widget, l10n, a11y
+- [ ] 52. M19 + M20 — Bìa ở Launcher áp grayscale theo setting; khu app ghim cuộn được / giới hạn hàng + "Xem thêm"
+- [ ] 53. M21 + L27 — Chặn pop làm rỗng back stack; tab Stats `rememberSaveable`
+- [ ] 54. M22 + L26 — TutorialOverlay chặn touch bằng `pointerInput` + ẩn semantics phía dưới; a11y còn lại (swatch tone Launcher, vùng chạm < 48 dp, `Role.RadioButton`/`selected` cho chip/pill, `ToggleOptionRow` dùng `toggleable`, semantics chart/heatmap)
+- [ ] 55. L24 + L25 — Đồng hồ Launcher theo 12/24h hệ thống, AM/PM wallpaper theo locale app, xoá formatter chết; plurals `stats_heatmap_days` (+ các `PluralsCandidate` khác), bỏ "BOOK" cứng, thứ/đơn vị theo resource/`DayOfWeek.getDisplayName`, xoá chuỗi không dùng, sort tên bằng `Collator`
+- [ ] 56. L28 + L29 — Widget refresh khi qua ngày / đổi múi giờ, ngôn ngữ / sau sync; wallpaper cache context, formatter, rank, `Paint`/`StaticLayout`, `removeCallbacks` ở `onDestroy`, decode cover ngoài main
+- [ ] 57. L30 + L31 — `docs/privacy-policy.md` bổ sung (snippet trên màn khoá, nút "Dịch ngoài", device-transfer, giới hạn text từ điển); `.gitignore` chặn `*.jks`/`*.keystore`
+
+### 5F — Nghiệm thu
+- [ ] 58. `testDebugUnitTest` + `lintDebug` xanh; chạy bản release R8 trên máy; cài AAB (bundletool) kiểm ngôn ngữ; backup/restore; đi qua danh sách test tay mục 5 của `docs/audit-2026-11-19.md`
+
 ---
 
 ## Nhật ký
@@ -509,3 +554,22 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`).
 
 **Kết thúc kế hoạch:** 28/28 mục trong `docs/fix-plan.md` đã hoàn thành (`[x]`). Còn lại việc test tay các luồng UI trên máy thật/emulator và `lintDebug` nếu cần trước khi phát hành.
+
+### 29. H1 — PDF Reflow không kẹt spinner, bắt lỗi theo từng trang & mở toolbar khi chờ — 2026-11-19
+**Nguyên nhân:**
+- `PdfPageAnalyzer.analyzeAllPages` (cùng `analyzePages`, `analyzeSamplePages`) bọc toàn bộ vòng lặp trong một `runCatching` → chỉ cần 1 trang bị lỗi parse hoặc `OutOfMemoryError` là cả hàm trả về `emptyList()`.
+- Trong `PdfPagerReader.kt`, khi `computed` trả về rỗng, `allAnalyses` không được gán nên `loadedAnalyses` giữ `null` mãi → kẹt ở màn hình spinner "Đang mở sách…".
+- Cả 2 màn hình spinner chờ (`loadedAnalyses == null` và `reflowScreensState == null`) đều không gắn `pointerInput` cho `onCenterTap`, trong khi `chromeVisible` mặc định `false`, khiến người dùng không thể mở thanh công cụ để thoát hoặc đổi chế độ đọc (và vì `HYBRID_REFLOW` đã lưu nên mở lại sách vẫn kẹt).
+
+**Đã sửa:**
+- `reader/pdf/PdfPageAnalyzer.kt`: thêm `emptyPageAnalysis(pageIndex)` và `analyzePageSafely(pageIndex)` bắt `Throwable` (trừ `CancellationException` được rethrow) theo **từng trang** trong `analyzeAllPages`, `analyzePages`, `analyzeSamplePages`. Trang lỗi trả về `PdfPageAnalysis` rỗng để `PdfReflowEngine` tự chuyển trang đó sang `FallbackOriginal` thay vì làm hỏng cả cuốn sách; nếu `PDDocument.load(file)` lỗi ngay từ đầu thì trả về `emptyList()`.
+- `ui/reader/PdfPagerReader.kt`:
+  - Khi `isReflowMode` phân tích trả về rỗng nhưng coroutine vẫn `isActive`, gán `allAnalyses = emptyList()` để thoát trạng thái `loadedAnalyses == null` và tự động fallback xuống nhánh pager hiển thị trang gốc (`SMART_ORIGINAL` layout), giúp sách luôn đọc được.
+  - Thêm `.pointerInput(onCenterTap) { detectTapGestures(onTap = { onCenterTap() }) }` vào `Box` gốc của cả 2 màn hình spinner (`loadedAnalyses == null` và `reflowScreensState == null`) để chạm màn hình luôn bật/tắt được thanh công cụ.
+- `test/.../reader/pdf/PdfReflowEngineTest.kt`: thêm 2 unit test `analyzePageSafelyReturnsEmptyAnalysisOnErrorAndFallsBackToOriginal` và `analyzePageSafelyRethrowsCancellationException`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay: mở PDF nặng hoặc lỗi ở chế độ Reflow → trong lúc spinner quay chạm vào màn hình mở được toolbar; nếu PDFBox không đọc được file thì tự hiển thị trang gốc thay vì quay spinner vĩnh viễn.
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 30 — H3: Bookmark EPUB so theo `href` + khoảng progression của trang hiện tại (dùng `PaginationListener`), chỉ so `position` cho PDF/CBZ/fixed-layout.
