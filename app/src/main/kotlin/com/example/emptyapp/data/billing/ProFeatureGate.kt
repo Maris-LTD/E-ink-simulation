@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class ProFeatureGate(
   private val store: EntitlementStore,
+  private val isIntegrityValid: () -> Boolean = { true },
 ) {
   private val lock = Any()
   private val mutableEntitlement = MutableStateFlow(store.read())
@@ -13,7 +14,7 @@ class ProFeatureGate(
   val entitlement: StateFlow<ProEntitlement> = mutableEntitlement.asStateFlow()
 
   val isPro: Boolean
-    get() = mutableEntitlement.value.isPro
+    get() = mutableEntitlement.value.isPro && isIntegrityValid()
 
   fun hasAccess(feature: ProFeature, pdfPageIndexZeroBased: Int? = null): Boolean {
     if (isPro) return true

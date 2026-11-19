@@ -1,5 +1,17 @@
--keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*,SourceFile,LineNumberTable
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*,LineNumberTable
 -renamesourcefileattribute SourceFile
+-repackageclasses 'o'
+-allowaccessmodification
+
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int i(...);
+    public static int w(...);
+    public static int d(...);
+    public static int e(...);
+    public static int wtf(...);
+}
 
 -keep class org.readium.** { *; }
 -keep interface org.readium.** { *; }

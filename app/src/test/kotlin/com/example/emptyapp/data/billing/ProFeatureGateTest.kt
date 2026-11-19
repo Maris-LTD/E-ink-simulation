@@ -112,4 +112,21 @@ class ProFeatureGateTest {
     assertEquals(ProEntitlement(), store.read())
     assertFalse(gate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, pdfPageIndexZeroBased = 5))
   }
+
+  @Test
+  fun tamperedBuildDeniesProAccessEvenWhenEntitlementIsPro() {
+    store.write(
+      ProEntitlement(
+        isPro = true,
+        productId = BillingConstants.PRODUCT_LIFETIME,
+        purchaseType = PurchaseType.LIFETIME,
+      )
+    )
+    val gate = ProFeatureGate(store) { false }
+
+    assertFalse(gate.isPro)
+    assertFalse(gate.hasAccess(ProFeature.DRIVE_SYNC))
+    assertFalse(gate.hasAccess(ProFeature.FOCUS_MODE))
+    assertFalse(gate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, pdfPageIndexZeroBased = 10))
+  }
 }

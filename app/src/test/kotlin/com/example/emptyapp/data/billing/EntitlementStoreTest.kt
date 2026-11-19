@@ -84,4 +84,30 @@ class EntitlementStoreTest {
 
     assertEquals(ProEntitlement(), store.read())
   }
+
+  @Test
+  fun encryptedStoreRoundTripAndTamperedFileFallsBackToFree() {
+    val xorCipher =
+      object : EntitlementCipher {
+        override fun encrypt(plainText: String): ByteArray =
+          plainText.toByteArray(Charsets.UTF_8).map { (it.toInt() xor 0x3C).toByte() }.toByteArray()
+
+        override fun decrypt(cipherBytes: ByteArray): String? =
+          if (cipherBytes.isEmpty()) null
+          else String(cipherBytes.map { (it.toInt() xor 0x3C).toByte() }.toByteArray(), Charsets.UTF_8)
+      }
+    val store = EntitlementStore(dir, EntitlementStore.ENCRYPTED_FILE_NAME, xorCipher)
+    val pro =
+      ProEntitlement(
+        isPro = true,
+        productId = BillingConstants.PRODUCT_LIFETIME,
+        purchaseType = PurchaseType.LIFETIME,
+      )
+
+    store.write(pro)
+    assertEquals(pro, store.read())
+
+    File(dir, EntitlementStore.ENCRYPTED_FILE_NAME).writeBytes(byteArrayOf(0x01, 0x02, 0x03))
+    assertEquals(ProEntitlement(), store.read())
+  }
 }

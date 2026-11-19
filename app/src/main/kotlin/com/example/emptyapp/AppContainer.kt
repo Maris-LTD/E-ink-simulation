@@ -2,9 +2,11 @@ package com.example.emptyapp
 
 import android.content.Context
 import com.example.emptyapp.data.annotation.AnnotationRepository
+import com.example.emptyapp.data.billing.AndroidKeystoreEntitlementCipher
 import com.example.emptyapp.data.billing.EntitlementStore
 import com.example.emptyapp.data.billing.PlayBillingManager
 import com.example.emptyapp.data.billing.ProFeatureGate
+import com.example.emptyapp.security.AppIntegrityGuard
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
@@ -38,8 +40,16 @@ class AppContainer(context: Context) {
     GoogleDriveSyncManager(appContext, library, annotations, stats, syncTombstones, appScope)
   }
   val lockScreenReading: LockScreenReadingStore by lazy { LockScreenReadingStore(appContext) }
-  val entitlements: EntitlementStore by lazy { EntitlementStore(appContext.filesDir) }
-  val proGate: ProFeatureGate by lazy { ProFeatureGate(entitlements) }
+  val entitlements: EntitlementStore by lazy {
+    EntitlementStore(
+      appContext.filesDir,
+      fileName = EntitlementStore.ENCRYPTED_FILE_NAME,
+      cipher = AndroidKeystoreEntitlementCipher(),
+    )
+  }
+  val proGate: ProFeatureGate by lazy {
+    ProFeatureGate(entitlements) { AppIntegrityGuard.isIntegrityValid(appContext) }
+  }
   val billing: PlayBillingManager by lazy { PlayBillingManager(appContext, proGate, appScope) }
 
   fun warmUpForUiAsync() {
