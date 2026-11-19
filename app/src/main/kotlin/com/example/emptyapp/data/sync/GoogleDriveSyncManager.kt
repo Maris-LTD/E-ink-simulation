@@ -47,7 +47,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -476,27 +475,51 @@ class GoogleDriveSyncManager(
         httpDeleteFile(token, entry.id)
       }
     }
-    val syncFileId = entries.lastOrNull { it.name == SYNC_FILE_NAME }?.id ?: return null
-    val remote = downloadSyncPayload(token, syncFileId)
-    ensureSessionActive(expectedGeneration, requireSignedIn = true)
-    tombstones.mergeRemote(remote.bookTombstones, remote.annotationTombstones)
-    val tombstoneSnapshot = tombstones.snapshot()
-    val updatedPayload =
-      SyncTombstoneMerger.withoutDeleted(
-        payload = remote,
+    val syncResolution = SyncRemotePayloadMerger.resolveSyncFiles(entries, SYNC_FILE_NAME)
+    if (syncResolution.primaryEntry == null) return null
+    val remoteSnapshot =
+      DriveSyncUploadCoordinator.downloadAndMergeSyncFiles(
+        resolution = syncResolution,
+        now = System.currentTimeMillis(),
+        downloadPayload = { fileId -> downloadSyncPayload(token, fileId) },
+        ensureSessionActive = { ensureSessionActive(expectedGeneration, requireSignedIn = true) },
+      ) ?: return null
+
+    fun buildDeletePayload(remoteMerged: SyncPayload): SyncPayload {
+      ensureSessionActive(expectedGeneration, requireSignedIn = true)
+      tombstones.mergeRemote(remoteMerged.bookTombstones, remoteMerged.annotationTombstones)
+      val tombstoneSnapshot = tombstones.snapshot()
+      return SyncTombstoneMerger.withoutDeleted(
+        payload = remoteMerged,
         deletedBookHashes = tombstones.deletedBookHashes(),
         deletedAnnotationIds = tombstones.deletedAnnotationIds(),
       ).copy(
         updatedAt = System.currentTimeMillis(),
         bookTombstones = tombstoneSnapshot.books,
         annotationTombstones = tombstoneSnapshot.annotations,
+      ).canonicalized()
+    }
+
+    val initialUpdatedPayload = buildDeletePayload(remoteSnapshot.mergedPayload)
+    val transport =
+      createUploadTransport(
+        token = token,
+        expectedGeneration = expectedGeneration,
+        requireSignedIn = true,
+        rebuildMergedPayload = ::buildDeletePayload,
       )
-    val encoded = json.encodeToString(SyncPayload.serializer(), updatedPayload)
+    val uploadResult =
+      DriveSyncUploadCoordinator.uploadWithVersionCheckAndCleanup(
+        initialResolution = syncResolution,
+        initialMergedPayload = initialUpdatedPayload,
+        initialRemoteSnapshot = remoteSnapshot,
+        transport = transport,
+        allowCreateIfMissing = false,
+      )
     ensureSessionActive(expectedGeneration, requireSignedIn = true)
-    uploadSyncJson(token, syncFileId, encoded)
-    ensureSessionActive(expectedGeneration, requireSignedIn = true)
-    saveCloudBooks(updatedPayload.books)
-    return updatedPayload.books
+    if (!uploadResult.syncedFileExists) return null
+    saveCloudBooks(uploadResult.payload.books)
+    return uploadResult.payload.books
   }
 
   suspend fun deleteAllCloudData(): SyncActionResult {
@@ -638,10 +661,17 @@ class GoogleDriveSyncManager(
     ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     library.ensureContentHashes()
 
-    val rawAppDataFiles = listAppDataFiles(token)
+    val allEntries = listAppDataFileEntries(token)
     ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
-    val syncFileId = rawAppDataFiles[SYNC_FILE_NAME]
-    val rawRemote = syncFileId?.let { downloadSyncPayload(token, it) }
+    val syncResolution = SyncRemotePayloadMerger.resolveSyncFiles(allEntries, SYNC_FILE_NAME)
+    val remoteSnapshot =
+      DriveSyncUploadCoordinator.downloadAndMergeSyncFiles(
+        resolution = syncResolution,
+        now = System.currentTimeMillis(),
+        downloadPayload = { fileId -> downloadSyncPayload(token, fileId) },
+        ensureSessionActive = { ensureSessionActive(expectedGeneration, requireSignedIn = isBackground) },
+      )
+    val rawRemote = remoteSnapshot?.mergedPayload
     ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     if (rawRemote != null) {
       tombstones.mergeRemote(rawRemote.bookTombstones, rawRemote.annotationTombstones)
@@ -650,11 +680,11 @@ class GoogleDriveSyncManager(
     val deletedAnnotationIds = tombstones.deletedAnnotationIds()
     annotations.dropDeleted(deletedAnnotationIds)
 
-    for ((name, fileId) in rawAppDataFiles) {
-      if (deletedHashes.any { hash -> name.startsWith("book_${hash}.") }) {
+    for (entry in allEntries) {
+      if (deletedHashes.any { hash -> entry.name.startsWith("book_${hash}.") }) {
         ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
         try {
-          httpDeleteFile(token, fileId)
+          httpDeleteFile(token, entry.id)
         } catch (e: CancellationException) {
           throw e
         } catch (err: Throwable) {
@@ -662,12 +692,17 @@ class GoogleDriveSyncManager(
         }
       }
     }
-    val appDataFiles =
-      rawAppDataFiles.filterKeys { name ->
-        deletedHashes.none { hash -> name.startsWith("book_${hash}.") }
-      }
+    val appDataFiles = LinkedHashMap<String, String>()
+    for (entry in allEntries) {
+      val name = entry.name
+      if (name.isBlank() || name == SYNC_FILE_NAME) continue
+      if (deletedHashes.any { hash -> name.startsWith("book_${hash}.") }) continue
+      appDataFiles.putIfAbsent(name, entry.id)
+    }
     val remote =
-      rawRemote?.let { SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds) }
+      rawRemote?.let {
+        SyncTombstoneMerger.withoutDeleted(it, deletedHashes, deletedAnnotationIds).canonicalized()
+      }
 
     var failedBookUploads = 0
     if (state.value.syncBookFiles && allowBookFiles) {
@@ -682,20 +717,40 @@ class GoogleDriveSyncManager(
       mergeRemoteIntoLocal(remote)
     }
 
-    val mergedPayload = buildLocalPayload(remote, deletedHashes, deletedAnnotationIds)
-    val needsUpload =
-      syncFileId == null ||
-        remote == null ||
-        mergedPayload.copy(updatedAt = 0L) != remote.copy(updatedAt = 0L)
-    if (needsUpload) {
-      val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
-      ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
-      uploadSyncJson(token, syncFileId, encoded)
-    }
+    val mergedPayload = buildLocalPayload(remote, deletedHashes, deletedAnnotationIds).canonicalized()
+    val transport =
+      createUploadTransport(
+        token = token,
+        expectedGeneration = expectedGeneration,
+        requireSignedIn = isBackground,
+        rebuildMergedPayload = { latestRemoteMerged ->
+          ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
+          tombstones.mergeRemote(latestRemoteMerged.bookTombstones, latestRemoteMerged.annotationTombstones)
+          val latestDeletedHashes = tombstones.deletedBookHashes()
+          val latestDeletedAnnotationIds = tombstones.deletedAnnotationIds()
+          annotations.dropDeleted(latestDeletedAnnotationIds)
+          val filteredLatestRemote =
+            SyncTombstoneMerger.withoutDeleted(
+              latestRemoteMerged,
+              latestDeletedHashes,
+              latestDeletedAnnotationIds,
+            ).canonicalized()
+          mergeRemoteIntoLocal(filteredLatestRemote)
+          buildLocalPayload(filteredLatestRemote, latestDeletedHashes, latestDeletedAnnotationIds)
+        },
+      )
+    val uploadResult =
+      DriveSyncUploadCoordinator.uploadWithVersionCheckAndCleanup(
+        initialResolution = syncResolution,
+        initialMergedPayload = mergedPayload,
+        initialRemoteSnapshot = remoteSnapshot,
+        transport = transport,
+        allowCreateIfMissing = true,
+      )
     ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
-    saveCloudBooks(mergedPayload.books)
+    saveCloudBooks(uploadResult.payload.books)
     consecutiveBackgroundFailures = 0
-    return SyncRunSummary(books = mergedPayload.books, failedBookUploads = failedBookUploads)
+    return SyncRunSummary(books = uploadResult.payload.books, failedBookUploads = failedBookUploads)
   }
 
   private fun isSessionActive(expectedGeneration: Long, requireSignedIn: Boolean): Boolean =
@@ -1067,7 +1122,24 @@ class GoogleDriveSyncManager(
     )
   }
 
-  private data class DriveFileEntry(val id: String, val name: String)
+  private fun createUploadTransport(
+    token: String,
+    expectedGeneration: Long,
+    requireSignedIn: Boolean,
+    rebuildMergedPayload: suspend (latestRemoteMerged: SyncPayload) -> SyncPayload,
+  ): DriveUploadTransport =
+    DriveUploadTransport(
+      nowProvider = System::currentTimeMillis,
+      listSyncFiles = { SyncRemotePayloadMerger.resolveSyncFiles(listAppDataFileEntries(token), SYNC_FILE_NAME) },
+      fetchMetadata = { fileId -> fetchFileMetadata(token, fileId) },
+      downloadPayload = { fileId -> downloadSyncPayload(token, fileId) },
+      rebuildMergedPayload = rebuildMergedPayload,
+      patchFile = { fileId, encoded -> uploadSyncJson(token, fileId, encoded) },
+      createFile = { encoded -> uploadSyncJson(token, null, encoded) },
+      deleteFile = { fileId -> httpDeleteFile(token, fileId) },
+      encodePayload = { payload -> json.encodeToString(SyncPayload.serializer(), payload.canonicalized()) },
+      ensureSessionActive = { ensureSessionActive(expectedGeneration, requireSignedIn = requireSignedIn) },
+    )
 
   private fun listAppDataFileEntries(token: String): List<DriveFileEntry> {
     val entries = mutableListOf<DriveFileEntry>()
@@ -1076,35 +1148,29 @@ class GoogleDriveSyncManager(
       val url =
         buildString {
           append("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder")
-          append("&pageSize=$LIST_PAGE_SIZE&fields=nextPageToken,files(id,name)")
+          append("&pageSize=$LIST_PAGE_SIZE&fields=nextPageToken,files(id,name,createdTime,version,md5Checksum)")
           pageToken?.let { append("&pageToken=").append(URLEncoder.encode(it, "UTF-8")) }
         }
       val body = httpGet(url, token)
-      val root = runCatching { JSONObject(body) }.getOrElse { throw remoteReadError("list") }
-      val files = root.optJSONArray("files")
-      if (files != null) {
-        for (i in 0 until files.length()) {
-          val obj = files.getJSONObject(i)
-          val id = obj.optString("id")
-          val name = obj.optString("name")
-          if (id.isNotBlank()) {
-            entries += DriveFileEntry(id = id, name = name)
-          }
-        }
-      }
-      pageToken = root.optString("nextPageToken").takeIf { it.isNotBlank() }
+      val page = DriveSyncMetadataParser.parseFileListPage(body) ?: throw remoteReadError("list")
+      entries += page.entries
+      pageToken = page.nextPageToken
     } while (pageToken != null)
     return entries
   }
 
-  private fun listAppDataFiles(token: String): Map<String, String> {
-    val map = LinkedHashMap<String, String>()
-    for (entry in listAppDataFileEntries(token)) {
-      if (entry.name.isNotBlank()) {
-        map[entry.name] = entry.id
+  private fun fetchFileMetadata(token: String, fileId: String): DriveFileEntry? {
+    val body =
+      try {
+        httpGet(
+          "https://www.googleapis.com/drive/v3/files/$fileId?fields=id,name,createdTime,version,md5Checksum",
+          token,
+        )
+      } catch (err: DriveRemoteReadException) {
+        if (err.statusCode == 404) return null
+        throw err
       }
-    }
-    return map
+    return DriveSyncMetadataParser.parseFileEntry(body) ?: throw remoteReadError("metadata")
   }
 
   private suspend fun downloadMissingBooks(
@@ -1247,48 +1313,50 @@ class GoogleDriveSyncManager(
   private fun remoteReadError(reason: String, statusCode: Int? = null): DriveRemoteReadException =
     DriveRemoteReadException(str(R.string.sync_remote_read_failed, reason), statusCode)
 
-  private fun uploadSyncJson(token: String, existingFileId: String?, jsonBody: String) {
+  private fun uploadSyncJson(token: String, existingFileId: String?, jsonBody: String): DriveFileEntry? {
+    val requestUrl: String
+    val method: String
+    val contentType: String
+    val bodyBytes: ByteArray
+    val errorPrefix: String
     if (existingFileId == null) {
       val boundary = "eink_sync_boundary_${System.currentTimeMillis()}"
-      val url = URL("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
-      val conn = (url.openConnection() as HttpURLConnection).apply {
-        requestMethod = "POST"
-        doOutput = true
-        connectTimeout = 15_000
-        readTimeout = 30_000
-        setRequestProperty("Authorization", "Bearer $token")
-        setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
-      }
+      requestUrl =
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime,version,md5Checksum"
+      method = "POST"
+      contentType = "multipart/related; boundary=$boundary"
       val metadata = """{"name":"$SYNC_FILE_NAME","parents":["appDataFolder"]}"""
-      val payload = ByteArrayOutputStream().apply {
-        write("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$metadata\r\n".toByteArray(StandardCharsets.UTF_8))
-        write("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$jsonBody\r\n".toByteArray(StandardCharsets.UTF_8))
-        write("--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8))
-      }.toByteArray()
-      try {
-        conn.outputStream.use { it.write(payload) }
-        val code = conn.responseCode
-        if (code !in 200..299) throw DriveHttpException(code, "Drive upload failed ($code)")
-      } finally {
-        conn.disconnect()
-      }
+      bodyBytes =
+        ByteArrayOutputStream().apply {
+          write("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$metadata\r\n".toByteArray(StandardCharsets.UTF_8))
+          write("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$jsonBody\r\n".toByteArray(StandardCharsets.UTF_8))
+          write("--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8))
+        }.toByteArray()
+      errorPrefix = "Drive upload failed"
     } else {
-      val url = URL("https://www.googleapis.com/upload/drive/v3/files/$existingFileId?uploadType=media")
-      val conn = (url.openConnection() as HttpURLConnection).apply {
-        requestMethod = "PATCH"
-        doOutput = true
-        connectTimeout = 15_000
-        readTimeout = 30_000
-        setRequestProperty("Authorization", "Bearer $token")
-        setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-      }
-      try {
-        conn.outputStream.use { it.write(jsonBody.toByteArray(StandardCharsets.UTF_8)) }
-        val code = conn.responseCode
-        if (code !in 200..299) throw DriveHttpException(code, "Drive update failed ($code)")
-      } finally {
-        conn.disconnect()
-      }
+      requestUrl =
+        "https://www.googleapis.com/upload/drive/v3/files/$existingFileId?uploadType=media&fields=id,name,createdTime,version,md5Checksum"
+      method = "PATCH"
+      contentType = "application/json; charset=UTF-8"
+      bodyBytes = jsonBody.toByteArray(StandardCharsets.UTF_8)
+      errorPrefix = "Drive update failed"
+    }
+    val conn = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
+      requestMethod = method
+      doOutput = true
+      connectTimeout = 15_000
+      readTimeout = 30_000
+      setRequestProperty("Authorization", "Bearer $token")
+      setRequestProperty("Content-Type", contentType)
+    }
+    return try {
+      conn.outputStream.use { it.write(bodyBytes) }
+      val code = conn.responseCode
+      if (code !in 200..299) throw DriveHttpException(code, "$errorPrefix ($code)")
+      val responseBody = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+      DriveSyncMetadataParser.parseFileEntry(responseBody)
+    } finally {
+      conn.disconnect()
     }
   }
 

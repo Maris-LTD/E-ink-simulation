@@ -53,7 +53,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 33. H2 — `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần (cân nhắc nâng `play-services-auth` ≥ 21.4.0: `clearToken` / `revokeAccess`)
 - [x] 34. M3 + M4 — Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi
 - [x] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
-- [ ] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
+- [x] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
 - [ ] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
 - [ ] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
 - [ ] 39. M9 + L2 + L8 — Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`
@@ -709,3 +709,32 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** gom và merge các file `eink_sync_v1.json` trùng tên, kiểm tra `version` trước PATCH và sort payload trước khi so sánh/ghi sẽ xử lý ở mục 36 (M6 + L1 + L6).
 
 **Bước tiếp theo:** mục 36 — M6 + L1 + L6: Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi.
+
+### 36. M6 + L1 + L6 — Gom & merge `eink_sync_v1.json` trùng tên, kiểm `version` trước PATCH & chuẩn hoá thứ tự payload — 2026-11-19
+**Nguyên nhân:**
+- **M6:** `listAppDataFiles` đưa toàn bộ file `appDataFolder` vào `Map<String, String>` (`map[name] = id`, bản sau đè bản trước) và không yêu cầu `createdTime`/`version`. Nếu Drive có nhiều file `eink_sync_v1.json` trùng tên (do 2 máy sync lần đầu cùng lúc hoặc lỗi D1 trước đây), các máy có thể đọc/ghi vào các file khác nhau gây phân nhánh dữ liệu; `deleteBookWithToken` cũng chỉ lấy `lastOrNull`.
+- **L1:** Sync thực hiện read-modify-write không điều kiện (đọc `eink_sync_v1.json`, tải/upload sách tốn thời gian, rồi PATCH/POST trực tiếp mà không kiểm tra `version`/`md5Checksum` hay kiểm tra file trùng vừa được máy khác POST), nên 2 máy sync đồng thời có thể ghi đè mất cập nhật của nhau.
+- **L6:** So sánh `mergedPayload.copy(updatedAt = 0L) != remote.copy(updatedAt = 0L)` và JSON serialize phụ thuộc thứ tự phần tử của các list (`books`, `bookmarks`, `highlights`, `stats.dailyStats`, `bookTombstones`, `annotationTombstones`) vốn khác nhau giữa các máy, khiến từ 2 máy trở lên hầu như lượt sync nào cũng PATCH dù dữ liệu không đổi.
+
+**Đã sửa:**
+- Mới `data/sync/SyncPayloadCanonicalizer.kt`:
+  - Thêm `SyncPayloadCanonicalizer.canonicalize(payload)` / `SyncPayload.canonicalized()` sắp xếp ổn định toàn bộ các danh sách trong `SyncPayload` (`books` theo `contentHash`/`title`/`updatedAt`, `bookmarks` theo `id`, `highlights` theo `id`, `stats.dailyStats` theo `date`, `bookTombstones` và `annotationTombstones` theo `key`).
+  - Thêm `hasPayloadChanged(localMerged, remote)` chuẩn hoá cả hai phía và bỏ qua `updatedAt` trước khi so sánh.
+- Mới `data/sync/SyncRemotePayloadMerger.kt`:
+  - Thêm `DriveFileRevision`, `DriveFileEntry`, `SyncFileResolution` và `SyncRemotePayloadMerger.resolveSyncFiles(...)` gom tất cả entry `eink_sync_v1.json`, chọn `primaryEntry` theo `createdTime` cũ nhất (parse ISO-8601 `Instant`/`OffsetDateTime`, tie-break theo `id` nhỏ nhất) và trả về danh sách `duplicateEntries`.
+  - Thêm `mergePayloads(payloads, now, today)` merge nhiều `SyncPayload` trùng theo quy tắc LWW cho `books`, `bookmarks`, `highlights`, `stats` (`dailyStats` max theo ngày, `dailyGoalMinutes` LWW theo `dailyGoalUpdatedAt`, tính lại streak), `bookTombstones` và `annotationTombstones`, lọc `withoutDeleted` và trả về dạng `.canonicalized()`.
+- Mới `data/sync/DriveSyncMetadataParser.kt`:
+  - Parse thuần Kotlin (`kotlinx.serialization.json`) cho phản hồi `files.list` và `files.get` (`id`, `name`, `createdTime`, `version`, `md5Checksum`, `nextPageToken`).
+- Mới `data/sync/DriveSyncUploadCoordinator.kt`:
+  - `downloadAndMergeSyncFiles(...)`: tải và merge toàn bộ file `eink_sync_v1.json` trùng (khi file trùng trả 404 do máy khác vừa xoá sau merge thì tải lại `primaryEntry` để không bỏ sót dữ liệu).
+  - `uploadWithVersionCheckAndCleanup(...)` + `DriveUploadTransport`: kiểm tra `version`/`md5Checksum` của `primaryEntry.id` trước khi PATCH; nếu đổi thì tải lại `SyncPayload` mới nhất, merge lại (tối đa `maxRetries = 2` lần, quá ngưỡng ném `DriveSyncConflictException`), rồi mới PATCH `primaryEntry.id` và chỉ xoá các `duplicateEntries` sau khi PATCH thành công. Khi tạo file mới (`primaryEntry == null`), kiểm tra lại trước khi POST và sau khi POST để gom/merge ngay nếu có máy khác vừa POST trùng. Khi có file trùng cần gộp (`duplicateEntries.isNotEmpty()`) vẫn bắt buộc PATCH + xoá bản thừa ngay cả khi nội dung đã khớp.
+- `data/sync/GoogleDriveSyncManager.kt`:
+  - Cập nhật `listAppDataFileEntries` lấy `files(id,name,createdTime,version,md5Checksum)` qua `DriveSyncMetadataParser`; thêm `fetchFileMetadata` (`GET .../drive/v3/files/$fileId?fields=id,name,createdTime,version,md5Checksum`) và cập nhật `uploadSyncJson` trả về `DriveFileEntry?`.
+  - Tích hợp `SyncRemotePayloadMerger`, `DriveSyncUploadCoordinator`, `SyncPayloadCanonicalizer` và `createUploadTransport` vào cả `syncOnceWithToken` lẫn `deleteBookWithToken`, xoá đủ các file `book_<hash>.*` trùng từ `allEntries`, và chỉ lưu `canonicalized()` lên Drive.
+- Mới `test/.../data/sync/SyncPayloadCanonicalizerTest.kt` (3 tests), `test/.../data/sync/SyncRemotePayloadMergerTest.kt` (5 tests), `test/.../data/sync/DriveSyncUploadCoordinatorTest.kt` (5 tests) và `test/.../data/sync/DriveSyncUploadRaceTest.kt` (4 tests) bao phủ chuẩn hoá thứ tự & `hasPayloadChanged`, chọn `primaryEntry` theo `createdTime`/`id`, merge LWW nhiều payload trùng, parser metadata Drive, bỏ qua PATCH khi không đổi, PATCH trước khi xoá bản thừa (không xoá khi PATCH lỗi), phát hiện đổi `version` & giới hạn retry, xử lý race pre-POST/post-POST/404 và giữ `CancellationException`/401.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **138/138 pass**, gồm **17/17** test mới thuộc 4 file test sync; `lintDebug`: **0 errors**). Kiểm tra tay đề nghị với 2 máy: cho 2 máy mới đồng bộ lần đầu cùng lúc → tự gộp về 1 file `eink_sync_v1.json`; đồng bộ lặp lại khi không đọc thêm → không còn PATCH thừa.
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 37 — M7: Tải/import sách từ cloud (`runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy).
