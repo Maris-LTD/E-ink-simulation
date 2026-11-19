@@ -141,6 +141,7 @@ fun LibraryScreen(
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
+  val writeError by viewModel.writeError.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.ALL) }
@@ -149,11 +150,25 @@ fun LibraryScreen(
   var query by rememberSaveable { mutableStateOf("") }
   var pendingDeleteBook by remember { mutableStateOf<BookEntry?>(null) }
   var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.LIST) }
+  var pickerLaunching by remember { mutableStateOf(false) }
   val picker =
     rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+      pickerLaunching = false
       uri?.let(viewModel::import)
     }
+  fun launchImportPicker(mimes: Array<String> = SUPPORTED_MIMES) {
+    if (importing || pickerLaunching) return
+    pickerLaunching = true
+    runCatching { picker.launch(mimes) }.onFailure { pickerLaunching = false }
+  }
+  val importEnabled = !importing && !pickerLaunching
+  val saveErrorMsg = stringResource(com.example.emptyapp.R.string.error_save_data)
   LaunchedEffect(Unit) { viewModel.messages.collect { snackbarHostState.showSnackbar(it) } }
+  LaunchedEffect(writeError) {
+    if (writeError) {
+      snackbarHostState.showSnackbar(saveErrorMsg, duration = SnackbarDuration.Short)
+    }
+  }
 
   val tabBooks =
     remember(books, selectedTab) {
@@ -346,7 +361,8 @@ fun LibraryScreen(
         } else if (filteredBooks.isEmpty()) {
           EmptyLibrary(
             hasAnyBooks = books.isNotEmpty(),
-            onImportBook = { picker.launch(SUPPORTED_MIMES) },
+            importEnabled = importEnabled,
+            onImportBook = { launchImportPicker() },
           )
         } else if (viewMode == LibraryViewMode.LIST) {
           BookList(
@@ -379,9 +395,10 @@ fun LibraryScreen(
         query = query,
         searchPlaceholder = searchPlaceholder,
         importing = importing,
+        importEnabled = importEnabled,
         onCycleViewMode = { viewMode = viewMode.next() },
         onQueryChange = { query = it },
-        onAddBook = { picker.launch(SUPPORTED_MIMES) },
+        onAddBook = { launchImportPicker() },
       )
     }
     pendingDeleteBook?.let { bookToDelete ->
@@ -440,7 +457,7 @@ fun LibraryScreen(
         settings = settings,
         onUpdateSettings = onUpdateSettings,
         onImportBook = {
-          picker.launch(arrayOf("application/epub+zip", "application/pdf", "application/vnd.comicbook+zip", "application/x-cbz"))
+          launchImportPicker(arrayOf("application/epub+zip", "application/pdf", "application/vnd.comicbook+zip", "application/x-cbz"))
         },
         onMarkSeen = ::markTutorialSeen,
         onDismiss = ::dismissTutorial,
@@ -497,6 +514,7 @@ private fun LibraryBottomBar(
   query: String,
   searchPlaceholder: String,
   importing: Boolean,
+  importEnabled: Boolean,
   onCycleViewMode: () -> Unit,
   onQueryChange: (String) -> Unit,
   onAddBook: () -> Unit,
@@ -543,7 +561,7 @@ private fun LibraryBottomBar(
           Modifier.size(40.dp)
             .clip(CircleShape)
             .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-            .clickable(enabled = !importing, onClick = onAddBook)
+            .clickable(enabled = importEnabled, onClick = onAddBook)
             .semantics { contentDescription = addBookCd },
         contentAlignment = Alignment.Center,
       ) {
@@ -752,6 +770,7 @@ private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
 @Composable
 private fun EmptyLibrary(
   hasAnyBooks: Boolean,
+  importEnabled: Boolean,
   onImportBook: () -> Unit,
 ) {
   Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -767,7 +786,10 @@ private fun EmptyLibrary(
         color = MaterialTheme.colorScheme.secondary,
       )
       if (!hasAnyBooks) {
-        androidx.compose.material3.OutlinedButton(onClick = onImportBook) {
+        androidx.compose.material3.OutlinedButton(
+          onClick = onImportBook,
+          enabled = importEnabled,
+        ) {
           EInkText(stringResource(com.example.emptyapp.R.string.lib_import_first_book))
         }
       }

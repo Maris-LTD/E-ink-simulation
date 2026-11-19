@@ -56,7 +56,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
 - [x] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
 - [x] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
-- [ ] 39. M9 + L2 + L8 — Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`
+- [x] 39. M9 + L2 + L8 — Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`
 - [ ] 40. L5 + L7 + L9 + L22 (`updatedAt`) — Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ
 
 ### 5C — PDF
@@ -792,3 +792,33 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 39 — M9 + L2 + L8: Bắt `IOException` khi ghi (giữ "dirty", báo UI, receiver `runCatching`); `AtomicJsonFile` cách ly file khi lỗi đọc, khôi phục từ `.tmp`, fsync thư mục; ghi tombstone trước commit annotation; mutex quanh import + disable nút khi `importing` (đếm job); `backfillMissingCovers` lưu id trước khi thử + bắt `Throwable`.
+
+### 39. M9 + L2 + L8 — Chịu lỗi ghi đĩa (`dirty` + báo UI), `AtomicJsonFile` khôi phục `.tmp`/cách ly khi lỗi đọc/fsync thư mục, tombstone trước commit, mutex import & `backfillMissingCovers` an toàn — 2026-11-19
+**Nguyên nhân:**
+- **M9:** `LibraryRepository.commit`, `AnnotationRepository.commitBookmarks`/`commitHighlights`, `ReadingStatsRepository`, `SyncTombstoneStore.mutate` chỉ cập nhật state trong bộ nhớ rồi gọi thẳng `store.write(...)` không bắt `IOException` — khi đầy đĩa sẽ làm crash coroutine caller (`viewModelScope`, `LockScreenNavReceiver`), đồng thời lần ghi kế tiếp có thể bỏ qua nếu transform không làm đổi state (`next == data`). `LockScreenNavReceiver.onReceive` không bọc `try/catch` trong `goAsync()` nên lỗi bất ngờ làm sập process.
+- **L2:** `AtomicJsonFile.read()` bỏ qua khôi phục từ `<name>.tmp` khi `!file.exists()`, chỉ cách ly file sang `.corrupt-<ts>` khi lỗi `decode` mà bỏ sót lỗi I/O khi `file.readText()` (dẫn tới lần ghi sau ghi rỗng đè mất dữ liệu cũ), và không `fsync` thư mục cha sau `renameTo`.
+- **L8:** `AnnotationRepository.removeBookmark`/`removeHighlight` gọi `commitBookmarks`/`commitHighlights` trước khi ghi tombstone; `LibraryRepository.import` và `importFromSyncedFile` chưa có mutex chung quanh bước kiểm tra `existingHashes` → import → commit; `LibraryViewModel.import` dùng boolean đơn nên 2 job gối nhau tắt `importing` sớm; `LibraryScreen` chưa chặn bấm đúp nút `+ Nhập sách` ở empty state và trạng thái đang mở picker; `LibraryRepository.backfillMissingCovers` chỉ lưu `attempted_ids` sau cả vòng lặp và không bọc `try/catch (Throwable)` quanh từng sách.
+
+**Đã sửa:**
+- `data/storage/AtomicJsonFile.kt` (**L2**):
+  - Trong `read(defaultValue)`: nếu `!file.exists()` nhưng `<name>.tmp` tồn tại và đọc/parse thành công thì tự động khôi phục (`renameTo` + `fsync` thư mục cha, fallback `copyTo` + xoá `.tmp`) và trả về dữ liệu khôi phục; khi `file.exists()` mà gặp bất kỳ `Throwable` nào (trừ `CancellationException`) ở `readText` hoặc `decodeFromString`, luôn cách ly file sang `<name>.corrupt-<timestamp>`; nếu cách ly thất bại thì giữ cờ `unquarantinedReadError = true` để `write` từ chối ghi đè (ném `IOException`) thay vì làm mất dữ liệu cũ.
+  - Sau `renameTo` thành công trong `write`, gọi `defaultFsyncDirectory(file.parentFile)` dùng `Os.open(..., O_RDONLY)` + `Os.fsync` trên Android (fallback `FileChannel.force(true)` trên API 26+, bọc `runCatching` an toàn trên Windows/FS không hỗ trợ).
+- `data/book/LibraryRepository.kt`, `data/annotation/AnnotationRepository.kt`, `data/stats/ReadingStatsRepository.kt`, `data/sync/SyncTombstoneStore.kt` (**M9**):
+  - Bọc bước ghi đĩa trong `try/catch (Throwable)` (rethrow `CancellationException`), giữ cờ `dirty` (`bookmarksDirty`/`highlightsDirty` ở `AnnotationRepository`) để lần ghi kế tiếp vẫn flush ngay cả khi state không đổi, và phát `lastWriteError: StateFlow<Boolean>`.
+- `reader/LockScreenNavReceiver.kt` (**M9**):
+  - Bọc khối xử lý `ACTION_DISMISSED` bằng `runCatching` và bọc toàn bộ khối xử lý `ACTION_PREV`/`ACTION_NEXT` trong `try/catch (Throwable)` (rethrow `CancellationException`) bên trong `try ... finally { pendingResult.finish() }`.
+- `ui/library/LibraryViewModel.kt`, `ui/library/LibraryScreen.kt`, `ui/reader/ReaderViewModel.kt`, `ui/reader/ReaderScreen.kt`, `ui/library/ReadingStatsSheet.kt`, `Navigation.kt`, `res/values*/strings.xml` (**M9 + L8**):
+  - Thêm chuỗi `error_save_data` (vi/en), tổng hợp `writeError: StateFlow<Boolean>` trong `LibraryViewModel` & `ReaderViewModel`, hiển thị Snackbar (`LibraryScreen`, `ReaderScreen`) / Toast (`ReadingStatsScreen`) khi ghi file thất bại.
+  - `LibraryViewModel`: dùng bộ đếm `activeImportCount` (đồng bộ qua lock + `job.invokeOnCompletion`) để `importing` chỉ về `false` khi job cuối cùng kết thúc.
+  - `LibraryScreen`: theo dõi thêm `pickerLaunching` để vô hiệu hoá cả nút `+ Nhập sách` (`EmptyLibrary`), nút `+` (`LibraryBottomBar`) và `TutorialOverlay` ngay khi đang mở picker hoặc đang `importing`.
+- `data/annotation/AnnotationRepository.kt` (**L8**):
+  - Trong `removeBookmark`, `restoreBookmark`, `removeHighlight`, `restoreHighlight`: gọi `tombstones?.markAnnotations(...)` bên trong `writeMutex.withLock` **trước** khi cập nhật `StateFlow` và ghi `bookmarks.json`/`highlights.json`.
+- `data/book/LibraryRepository.kt` (**L8**):
+  - Thêm `importMutex` bọc quanh `import` (`importWithHashes`) và `importFromSyncedFile`; `backfillMissingCovers` lưu `attempted_ids` (`commit()`) trước khi mở từng sách và bọc mỗi sách trong `try/catch (Throwable)` (rethrow `CancellationException`, đóng `Publication` trong `finally`, dọn cover dở dang).
+- Unit test mới & bổ sung: `AtomicJsonFileTest` (+4), `AnnotationRepositoryTest` (+3), `LibraryRepositoryTest` (+5), `SyncTombstoneStoreTest` (+1), `ReadingStatsTest` (+1), `LibraryViewModelErrorTest` (+1).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **174/174 pass** gồm 15 test mới; `lintDebug`: **0 errors**).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 40 — L5 + L7 + L9 + L22 (`updatedAt`): Tombstone chặn `changedAt` tương lai; sync thủ công hỏi trước khi tải/đăng sách qua mạng trả phí; từ điển cắt ~500 ký tự + `langpair=auto|<target>`; `savePdfReadingMode` không đổi `updatedAt`, `saveProgress` bỏ qua locator không đổi, override locator đánh dấu bằng saved state thay vì so đồng hồ.

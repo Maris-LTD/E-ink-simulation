@@ -240,6 +240,7 @@
 
     <string name="error_open_system_settings">Could not open system settings on this device</string>
     <string name="error_open_browser">No browser app found to open translation</string>
+    <string name="error_save_data">Could not save data. Please check available storage.</string>
     <string name="notif_rationale_title">Enable lock-screen reading?</string>
     <string name="notif_rationale_message">Allow notifications to read excerpts and turn pages directly from your lock screen.</string>
     <string name="notif_rationale_allow">Allow</string>

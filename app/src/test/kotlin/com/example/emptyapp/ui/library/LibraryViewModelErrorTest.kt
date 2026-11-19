@@ -1,7 +1,21 @@
 package com.example.emptyapp.ui.library
 
+import com.example.emptyapp.data.annotation.AnnotationRepository
+import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.book.BookFormat
+import com.example.emptyapp.data.book.LibraryRepository
+import com.example.emptyapp.data.stats.ReadingStatsRepository
+import java.io.File
 import java.io.IOException
+import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -76,5 +90,57 @@ class LibraryViewModelErrorTest {
   @Test(expected = CancellationException::class)
   fun rethrowsCancellationException() {
     format(CancellationException("import cancelled"))
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun overlappingImportsKeepImportingTrueUntilLastJobCompletes() = runTest {
+    val dispatcher = UnconfinedTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    val dir = createTempDirectory("lib_vm_import_count_test").toFile()
+    try {
+      val repo =
+        LibraryRepository(
+          appFilesDir = dir,
+          engineProvider = { error("Not used") },
+          importFromUri = { _, _ -> Result.failure(UnsupportedOperationException()) },
+          verifyAndExtractSyncedCover = { _, _, _ -> false },
+          extractBackfillCover = { _, _, _ -> false },
+          readAttemptedCoverIds = { emptySet() },
+          persistAttemptedCoverIds = {},
+          autoBackfill = false,
+        )
+      val annotations = AnnotationRepository(File(dir, "bookmarks.json"), File(dir, "highlights.json"))
+      val stats = ReadingStatsRepository(File(dir, "reading_stats.json"))
+      val vm = LibraryViewModel(repo, annotations, stats, context = null)
+
+      val gate1 = CompletableDeferred<Unit>()
+      val gate2 = CompletableDeferred<Unit>()
+      val entry1 = BookEntry("1", "Book 1", "Author", "1.epub", BookFormat.EPUB)
+      val entry2 = BookEntry("2", "Book 2", "Author", "2.epub", BookFormat.EPUB)
+
+      vm.launchImportJob {
+        gate1.await()
+        Result.success(entry1)
+      }
+      assertTrue(vm.importing.value)
+
+      vm.launchImportJob {
+        gate2.await()
+        Result.success(entry2)
+      }
+      assertTrue(vm.importing.value)
+
+      gate1.complete(Unit)
+      testScheduler.advanceUntilIdle()
+      assertTrue(vm.importing.value)
+
+      gate2.complete(Unit)
+      testScheduler.advanceUntilIdle()
+      assertFalse(vm.importing.value)
+    } finally {
+      Dispatchers.resetMain()
+      dir.deleteRecursively()
+    }
   }
 }

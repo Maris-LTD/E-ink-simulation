@@ -124,6 +124,19 @@ class ReaderViewModel(
   val dictionaryState: StateFlow<DictionaryUiState?> = mutableDictionaryState.asStateFlow()
   val searchState: StateFlow<SearchUiState> = mutableSearchState.asStateFlow()
   val settings: StateFlow<EInkSettings> = settingsStore.settings
+  val writeError: StateFlow<Boolean> =
+    combine(
+      repository.lastWriteError,
+      annotations.lastWriteError,
+      statsRepository.lastWriteError,
+    ) { libErr, annErr, statsErr -> libErr || annErr || statsErr }
+      .stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        repository.lastWriteError.value ||
+          annotations.lastWriteError.value ||
+          statsRepository.lastWriteError.value,
+      )
 
   val pdfConfig: StateFlow<PdfBookConfig> =
     (pdfBookConfigs?.configs ?: MutableStateFlow(emptyMap()))

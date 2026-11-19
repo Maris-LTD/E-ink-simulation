@@ -116,6 +116,7 @@ fun ReaderScreen(
   val isBookmarked by viewModel.isCurrentPageBookmarked.collectAsStateWithLifecycle()
   val dictionaryState by viewModel.dictionaryState.collectAsStateWithLifecycle()
   val searchState by viewModel.searchState.collectAsStateWithLifecycle()
+  val writeError by viewModel.writeError.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val density = LocalDensity.current
 
@@ -214,6 +215,12 @@ fun ReaderScreen(
   val libHighlightDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_highlight_deleted)
   val undoActionLabel = stringResource(com.example.emptyapp.R.string.action_undo)
   val openBrowserErrorMsg = stringResource(com.example.emptyapp.R.string.error_open_browser)
+  val saveErrorMsg = stringResource(com.example.emptyapp.R.string.error_save_data)
+  LaunchedEffect(writeError) {
+    if (writeError) {
+      snackbarHostState.showSnackbar(saveErrorMsg, duration = SnackbarDuration.Short)
+    }
+  }
 
   fun handleToggleFocusMode(next: Boolean) {
     viewModel.updateSettings { it.copy(focusMode = next) }

@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,17 +44,24 @@ class ReadingStatsRepository(
 
   private val store = AtomicJsonFile(statsFile, ReadingStatsData.serializer())
   private val mutex = Mutex()
+  @Volatile private var dirty = false
+  private val mutableLastWriteError = MutableStateFlow(false)
   private val state = MutableStateFlow(recompute(readInitial()))
 
   val stats: StateFlow<ReadingStatsData> = state.asStateFlow()
+  val lastWriteError: StateFlow<Boolean> = mutableLastWriteError.asStateFlow()
 
   suspend fun recordReading(deltaSeconds: Int, deltaPages: Int = 0) {
-    if (deltaSeconds <= 0 && deltaPages <= 0) return
+    if (deltaSeconds <= 0 && deltaPages <= 0 && !dirty) return
     val safeSeconds = deltaSeconds.coerceAtLeast(0)
     val safePages = deltaPages.coerceAtLeast(0)
     val today = todayProvider()
     val todayKey = today.toString()
     mutex.withLock {
+      if (safeSeconds == 0 && safePages == 0) {
+        persistLocked(state.value)
+        return
+      }
       val current = state.value
       val updatedList = current.dailyStats.toMutableList()
       val existingIndex = updatedList.indexOfFirst { it.date == todayKey }
@@ -76,8 +84,7 @@ class ReadingStatsRepository(
           ),
           today = today,
         )
-      state.value = next
-      write(next)
+      persistLocked(next)
     }
   }
 
@@ -91,8 +98,7 @@ class ReadingStatsRepository(
           state.value.copy(dailyGoalMinutes = clamped, dailyGoalUpdatedAt = updatedAt),
           today = today,
         )
-      state.value = next
-      write(next)
+      persistLocked(next)
     }
   }
 
@@ -136,8 +142,26 @@ class ReadingStatsRepository(
           ),
           today = today,
         )
+      persistLocked(next)
+    }
+  }
+
+  private suspend fun persistLocked(next: ReadingStatsData) {
+    val changed = next != state.value
+    if (!changed && !dirty) return
+    if (changed) {
       state.value = next
-      write(next)
+      dirty = true
+    }
+    try {
+      write(state.value)
+      dirty = false
+      mutableLastWriteError.value = false
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: Throwable) {
+      dirty = true
+      mutableLastWriteError.value = true
     }
   }
 

@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.example.emptyapp.EmptyApplication
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -11,7 +12,7 @@ import kotlinx.coroutines.launch
 class LockScreenNavReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action == ACTION_DISMISSED) {
-      LockScreenReadingNotifier.setDismissedByUser(context, true)
+      runCatching { LockScreenReadingNotifier.setDismissedByUser(context, true) }
       return
     }
     val delta =
@@ -24,28 +25,33 @@ class LockScreenNavReceiver : BroadcastReceiver() {
     val pendingResult = goAsync()
     CoroutineScope(Dispatchers.IO).launch {
       try {
-        val updated = app.container.lockScreenReading.stepSnippet(delta) ?: return@launch
-        val updatedLoc = updated.locatorJson
-        if (updatedLoc != null) {
-          app.container.library.saveProgress(updated.bookId, updatedLoc, updated.progress)
+        try {
+          val updated = app.container.lockScreenReading.stepSnippet(delta) ?: return@launch
+          val updatedLoc = updated.locatorJson
+          if (updatedLoc != null) {
+            app.container.library.saveProgress(updated.bookId, updatedLoc, updated.progress)
+          }
+          val coverPath =
+            app.container.library.books.value
+              .firstOrNull { it.id == updated.bookId }
+              ?.let { app.container.library.coverFileOf(it)?.absolutePath }
+          LockScreenReadingNotifier.show(
+            context = context.applicationContext,
+            bookId = updated.bookId,
+            title = updated.title,
+            progress = updated.progress,
+            author = updated.author,
+            coverPath = coverPath,
+            snippet = updated.currentSnippet,
+            snippetIndex = updated.currentSnippetIndex,
+            snippetCount = updated.snippets.size,
+            locatorJson = updated.locatorJson,
+            locatorCreatedAt = updated.capturedAt,
+          )
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Throwable) {
         }
-        val coverPath =
-          app.container.library.books.value
-            .firstOrNull { it.id == updated.bookId }
-            ?.let { app.container.library.coverFileOf(it)?.absolutePath }
-        LockScreenReadingNotifier.show(
-          context = context.applicationContext,
-          bookId = updated.bookId,
-          title = updated.title,
-          progress = updated.progress,
-          author = updated.author,
-          coverPath = coverPath,
-          snippet = updated.currentSnippet,
-          snippetIndex = updated.currentSnippetIndex,
-          snippetCount = updated.snippets.size,
-          locatorJson = updated.locatorJson,
-          locatorCreatedAt = updated.capturedAt,
-        )
       } finally {
         pendingResult.finish()
       }

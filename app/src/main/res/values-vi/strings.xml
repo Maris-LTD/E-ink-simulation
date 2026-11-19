@@ -240,6 +240,7 @@
 
     <string name="error_open_system_settings">Không mở được cài đặt hệ thống trên thiết bị này</string>
     <string name="error_open_browser">Không tìm thấy trình duyệt để mở trang dịch</string>
+    <string name="error_save_data">Không thể lưu dữ liệu. Vui lòng kiểm tra dung lượng trống trên máy.</string>
     <string name="notif_rationale_title">Bật thông báo đọc màn hình khóa?</string>
     <string name="notif_rationale_message">Cấp quyền thông báo để hiển thị đoạn đang đọc và lật trang ngay trên màn hình khóa.</string>
     <string name="notif_rationale_allow">Cho phép</string>

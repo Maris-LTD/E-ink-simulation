@@ -41,6 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -132,11 +133,18 @@ fun ReadingStatsScreen(
   onUpdateSettings: ((EInkSettings) -> EInkSettings) -> Unit = {},
   currentLanguage: AppLanguage = AppLanguage.SYSTEM,
   onChangeLanguage: (AppLanguage) -> Unit = {},
+  writeError: Boolean = false,
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
+  val saveErrorMsg = stringResource(R.string.error_save_data)
+  LaunchedEffect(writeError) {
+    if (writeError) {
+      Toast.makeText(context, saveErrorMsg, Toast.LENGTH_SHORT).show()
+    }
+  }
   val consentLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
       if (onLaunchHandleSyncConsent != null) {

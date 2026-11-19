@@ -18,7 +18,13 @@ fun MainNavigation() {
   val container = (context.applicationContext as EmptyApplication).container
   val backStack = rememberNavBackStack(Library)
   val viewModel = viewModel {
-    LibraryViewModel(container.library, container.annotations, container.stats, context.applicationContext)
+    LibraryViewModel(
+      repository = container.library,
+      annotations = container.annotations,
+      statsRepository = container.stats,
+      context = context.applicationContext,
+      tombstones = container.syncTombstones,
+    )
   }
 
   NavDisplay(
@@ -49,6 +55,7 @@ fun MainNavigation() {
           val stats by viewModel.stats.collectAsStateWithLifecycle()
           val settings by container.settings.settings.collectAsStateWithLifecycle()
           val syncState by container.sync.uiState.collectAsStateWithLifecycle()
+          val writeError by viewModel.writeError.collectAsStateWithLifecycle()
           ReadingStatsScreen(
             stats = stats,
             completedBooksCount = books.count { it.progress >= 0.99f },
@@ -72,6 +79,7 @@ fun MainNavigation() {
               container.settings.update { it.copy(appLanguage = lang) }
               (context as? android.app.Activity)?.recreate()
             },
+            writeError = writeError,
             onBack = { backStack.removeLastOrNull() },
           )
         }

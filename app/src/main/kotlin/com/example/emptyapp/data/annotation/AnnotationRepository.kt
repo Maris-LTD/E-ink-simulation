@@ -5,31 +5,40 @@ import com.example.emptyapp.data.storage.AtomicJsonFile
 import com.example.emptyapp.data.sync.SyncTombstoneStore
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 
 class AnnotationRepository(
-  context: Context,
-  private val tombstones: SyncTombstoneStore,
+  bookmarksFile: File,
+  highlightsFile: File,
+  private val tombstones: SyncTombstoneStore? = null,
 ) {
-  private val bookmarksStore =
-    AtomicJsonFile(File(context.filesDir, "bookmarks.json"), ListSerializer(BookmarkEntry.serializer()))
-  private val highlightsStore =
-    AtomicJsonFile(File(context.filesDir, "highlights.json"), ListSerializer(HighlightEntry.serializer()))
+  constructor(
+    context: Context,
+    tombstones: SyncTombstoneStore,
+  ) : this(
+    bookmarksFile = File(context.filesDir, "bookmarks.json"),
+    highlightsFile = File(context.filesDir, "highlights.json"),
+    tombstones = tombstones,
+  )
+
+  private val bookmarksData =
+    PersistedList(AtomicJsonFile(bookmarksFile, ListSerializer(BookmarkEntry.serializer())))
+  private val highlightsData =
+    PersistedList(AtomicJsonFile(highlightsFile, ListSerializer(HighlightEntry.serializer())))
   private val writeMutex = Mutex()
+  private val mutableLastWriteError = MutableStateFlow(false)
 
-  private val bookmarkState = MutableStateFlow(bookmarksStore.read(emptyList()))
-  private val highlightState = MutableStateFlow(highlightsStore.read(emptyList()))
-
-  val bookmarks: StateFlow<List<BookmarkEntry>> = bookmarkState.asStateFlow()
-  val highlights: StateFlow<List<HighlightEntry>> = highlightState.asStateFlow()
+  val bookmarks: StateFlow<List<BookmarkEntry>> = bookmarksData.state.asStateFlow()
+  val highlights: StateFlow<List<HighlightEntry>> = highlightsData.state.asStateFlow()
+  val lastWriteError: StateFlow<Boolean> = mutableLastWriteError.asStateFlow()
 
   suspend fun addBookmark(bookId: String, title: String, progress: Float, locatorJson: String) {
     val entry =
@@ -45,13 +54,13 @@ class AnnotationRepository(
   }
 
   suspend fun removeBookmark(id: String) {
-    commitBookmarks { list -> list.filterNot { it.id == id } }
-    markSyncDeleted(id, deleted = true)
+    commitBookmarks(beforeStateChange = { markSyncDeleted(id, deleted = true) }) { list ->
+      list.filterNot { it.id == id }
+    }
   }
 
   suspend fun restoreBookmark(entry: BookmarkEntry) {
-    markSyncDeleted(entry.id, deleted = false)
-    commitBookmarks { list ->
+    commitBookmarks(beforeStateChange = { markSyncDeleted(entry.id, deleted = false) }) { list ->
       if (list.any { it.id == entry.id }) list
       else (listOf(entry) + list).sortedByDescending { it.createdAt }
     }
@@ -80,13 +89,13 @@ class AnnotationRepository(
   }
 
   suspend fun removeHighlight(id: String) {
-    commitHighlights { list -> list.filterNot { it.id == id } }
-    markSyncDeleted(id, deleted = true)
+    commitHighlights(beforeStateChange = { markSyncDeleted(id, deleted = true) }) { list ->
+      list.filterNot { it.id == id }
+    }
   }
 
   suspend fun restoreHighlight(entry: HighlightEntry) {
-    markSyncDeleted(entry.id, deleted = false)
-    commitHighlights { list ->
+    commitHighlights(beforeStateChange = { markSyncDeleted(entry.id, deleted = false) }) { list ->
       if (list.any { it.id == entry.id }) list
       else (listOf(entry) + list).sortedByDescending { it.createdAt }
     }
@@ -101,7 +110,7 @@ class AnnotationRepository(
     remoteBookmarks: List<BookmarkEntry>,
     remoteHighlights: List<HighlightEntry>,
   ) {
-    if (remoteBookmarks.isNotEmpty()) {
+    if (remoteBookmarks.isNotEmpty() || bookmarksData.dirty) {
       commitBookmarks { local ->
         val byId = LinkedHashMap<String, BookmarkEntry>()
         (local + remoteBookmarks)
@@ -110,7 +119,7 @@ class AnnotationRepository(
         byId.values.toList()
       }
     }
-    if (remoteHighlights.isNotEmpty()) {
+    if (remoteHighlights.isNotEmpty() || highlightsData.dirty) {
       commitHighlights { local ->
         val byId = LinkedHashMap<String, HighlightEntry>()
         (local + remoteHighlights)
@@ -122,32 +131,69 @@ class AnnotationRepository(
   }
 
   suspend fun dropDeleted(ids: Set<String>) {
-    if (ids.isEmpty()) return
-    if (bookmarkState.value.any { it.id in ids }) {
+    if (ids.isEmpty() && !bookmarksData.dirty && !highlightsData.dirty) return
+    if (bookmarksData.dirty || bookmarksData.state.value.any { it.id in ids }) {
       commitBookmarks { list -> list.filterNot { it.id in ids } }
     }
-    if (highlightState.value.any { it.id in ids }) {
+    if (highlightsData.dirty || highlightsData.state.value.any { it.id in ids }) {
       commitHighlights { list -> list.filterNot { it.id in ids } }
     }
   }
 
   private suspend fun markSyncDeleted(id: String, deleted: Boolean) {
-    withContext(Dispatchers.IO) { tombstones.markAnnotations(listOf(id), deleted) }
+    withContext(Dispatchers.IO) { tombstones?.markAnnotations(listOf(id), deleted) }
   }
 
-  private suspend fun commitBookmarks(transform: (List<BookmarkEntry>) -> List<BookmarkEntry>) {
+  private suspend fun commitBookmarks(
+    beforeStateChange: (suspend () -> Unit)? = null,
+    transform: (List<BookmarkEntry>) -> List<BookmarkEntry>,
+  ) {
     writeMutex.withLock {
-      bookmarkState.update(transform)
-      val snapshot = bookmarkState.value
-      withContext(Dispatchers.IO) { bookmarksStore.write(snapshot) }
+      bookmarksData.commit(beforeStateChange, transform)
+      mutableLastWriteError.value = bookmarksData.writeError || highlightsData.writeError
     }
   }
 
-  private suspend fun commitHighlights(transform: (List<HighlightEntry>) -> List<HighlightEntry>) {
+  private suspend fun commitHighlights(
+    beforeStateChange: (suspend () -> Unit)? = null,
+    transform: (List<HighlightEntry>) -> List<HighlightEntry>,
+  ) {
     writeMutex.withLock {
-      highlightState.update(transform)
-      val snapshot = highlightState.value
-      withContext(Dispatchers.IO) { highlightsStore.write(snapshot) }
+      highlightsData.commit(beforeStateChange, transform)
+      mutableLastWriteError.value = bookmarksData.writeError || highlightsData.writeError
+    }
+  }
+
+  private class PersistedList<E>(
+    private val store: AtomicJsonFile<List<E>>,
+  ) {
+    val state = MutableStateFlow(store.read(emptyList()))
+    @Volatile var dirty: Boolean = false
+    var writeError: Boolean = false
+
+    suspend fun commit(
+      beforeStateChange: (suspend () -> Unit)? = null,
+      transform: (List<E>) -> List<E>,
+    ) {
+      beforeStateChange?.invoke()
+      val previous = state.value
+      val next = transform(previous)
+      val changed = next != previous
+      if (!changed && !dirty) return
+      if (changed) {
+        state.value = next
+        dirty = true
+      }
+      try {
+        withContext(Dispatchers.IO) { store.write(state.value) }
+        dirty = false
+        writeError = false
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
+        dirty = true
+        writeError = true
+      }
     }
   }
 }

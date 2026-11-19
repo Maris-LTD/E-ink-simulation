@@ -6,8 +6,11 @@ import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import java.io.File
 import java.time.LocalDate
+import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReadingStatsTest {
@@ -119,5 +122,33 @@ class ReadingStatsTest {
     repo.mergeFromRemote(ReadingStatsData(dailyGoalMinutes = 35, dailyGoalUpdatedAt = 0L))
     assertEquals(35, repo.stats.value.dailyGoalMinutes)
     tempFile.delete()
+  }
+
+  @Test
+  fun writeIoExceptionDoesNotCrashKeepsDirtyAndFlushesOnZeroDelta(): Unit = runBlocking {
+    val dir = createTempDirectory("stats_write_error_test").toFile()
+    try {
+      val statsFile = File(dir, "reading_stats.json")
+      val today = LocalDate.of(2026, 11, 14)
+      val repo = ReadingStatsRepository(statsFile, todayProvider = { today })
+
+      statsFile.mkdirs()
+      File(statsFile, "blocker").writeText("x")
+
+      repo.recordReading(deltaSeconds = 120, deltaPages = 5)
+      assertEquals(120L, repo.stats.value.totalSeconds)
+      assertEquals(5, repo.stats.value.totalPagesTurned)
+      assertTrue(repo.lastWriteError.value)
+
+      statsFile.deleteRecursively()
+      repo.recordReading(deltaSeconds = 0, deltaPages = 0)
+      assertFalse(repo.lastWriteError.value)
+
+      val reloaded = ReadingStatsRepository(statsFile, todayProvider = { today })
+      assertEquals(120L, reloaded.stats.value.totalSeconds)
+      assertEquals(5, reloaded.stats.value.totalPagesTurned)
+    } finally {
+      dir.deleteRecursively()
+    }
   }
 }
