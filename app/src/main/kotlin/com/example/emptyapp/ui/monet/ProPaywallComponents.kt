@@ -64,8 +64,6 @@ internal fun PaywallContextHeader(feature: ProFeature?) {
     when (feature) {
       ProFeature.ADAPTIVE_PDF_REFLOW -> R.string.paywall_header_pdf_reflow to R.string.paywall_sub_pdf_reflow
       ProFeature.DRIVE_SYNC -> R.string.paywall_header_drive_sync to R.string.paywall_sub_drive_sync
-      ProFeature.LOCKSCREEN_WALLPAPER -> R.string.paywall_header_lockscreen to R.string.paywall_sub_lockscreen
-      ProFeature.EINK_LAUNCHER -> R.string.paywall_header_launcher to R.string.paywall_sub_launcher
       ProFeature.FOCUS_MODE -> R.string.paywall_header_focus to R.string.paywall_sub_focus
       null -> R.string.paywall_header_general to R.string.paywall_sub_general
     }
@@ -85,8 +83,6 @@ internal fun PaywallFeatureList() {
     listOf(
       R.string.paywall_feat_pdf_title to R.string.paywall_feat_pdf_desc,
       R.string.paywall_feat_sync_title to R.string.paywall_feat_sync_desc,
-      R.string.paywall_feat_lockscreen_title to R.string.paywall_feat_lockscreen_desc,
-      R.string.paywall_feat_launcher_title to R.string.paywall_feat_launcher_desc,
       R.string.paywall_feat_focus_title to R.string.paywall_feat_focus_desc,
     )
   Column(

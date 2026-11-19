@@ -48,8 +48,6 @@ class ProFeatureGateTest {
     val nonPdfFeatures =
       listOf(
         ProFeature.DRIVE_SYNC,
-        ProFeature.LOCKSCREEN_WALLPAPER,
-        ProFeature.EINK_LAUNCHER,
         ProFeature.FOCUS_MODE,
       )
 

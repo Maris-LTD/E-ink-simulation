@@ -164,16 +164,10 @@ fun TutorialOverlay(
                 wallpaperActive = wallpaperActive,
                 notificationActive = notificationGranted && settings.lockScreenReader,
                 onSetWallpaper = {
-                  if (proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
-                    onRequirePro(ProFeature.LOCKSCREEN_WALLPAPER)
-                  } else {
-                    EInkSystemSetupHelper.openLiveWallpaperPicker(context)
-                  }
+                  EInkSystemSetupHelper.openLiveWallpaperPicker(context)
                 },
                 onEnableNotification = {
-                  if (proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
-                    onRequirePro(ProFeature.LOCKSCREEN_WALLPAPER)
-                  } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     !LockScreenReadingNotifier.hasPermission(context)
                   ) {
                     notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -187,13 +181,9 @@ fun TutorialOverlay(
               StepLauncherSetup(
                 launcherActive = launcherActive,
                 onSetLauncher = {
-                  if (proGate != null && !proGate.hasAccess(ProFeature.EINK_LAUNCHER)) {
-                    onRequirePro(ProFeature.EINK_LAUNCHER)
-                  } else {
-                    onMarkSeen()
-                    scope.launch { pagerState.scrollToPage(3) }
-                    EInkSystemSetupHelper.openHomeLauncherSettings(context)
-                  }
+                  onMarkSeen()
+                  scope.launch { pagerState.scrollToPage(3) }
+                  EInkSystemSetupHelper.openHomeLauncherSettings(context)
                 },
                 onSkipStep = {
                   scope.launch { pagerState.animateScrollToPage(3) }

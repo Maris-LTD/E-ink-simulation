@@ -12,9 +12,9 @@ Tất cả các `productId` dưới đây phải được tạo ở trạng thá
 
 | Product ID | Loại (Play Console) | Chu kỳ / Offer | Giá tham khảo | Ghi chú cấu hình & Xử lý trong App |
 | :--- | :--- | :--- | :--- | :--- |
-| `inkify_pro_monthly` | Subscription (`SUBS`) | 1 Month (`P1M`) | ~$2.49 / tháng (~59.000đ) | Base plan tự động gia hạn; app gọi `acknowledgePurchase` ngay khi `PURCHASED`. |
-| `inkify_pro_annual` | Subscription (`SUBS`) | 1 Year (`P1Y`) + **Offer: 7-day Free Trial** (`P7D`, `priceAmountMicros = 0`) | ~$11.99 / năm (~249.000đ) | `BillingCatalogHelper.selectBestSubscriptionOffer` ưu tiên chọn offer có phase `0L` (Free Trial). Paywall phải hiển thị rõ giá sau dùng thử & cách hủy. |
-| `inkify_pro_lifetime` | In-app product (`INAPP`, Non-consumable) | Mua 1 lần | ~$27.99 (~599.000đ) | `acknowledgePurchase` (không consume). Ưu tiên cao nhất trong `resolveProEntitlement` (`PurchaseType.LIFETIME`). |
+| `inkify_pro_monthly` | Subscription (`SUBS`) | 1 Month (`P1M`) | ~$0.79 / tháng (~19.000đ) | Base plan tự động gia hạn; app gọi `acknowledgePurchase` ngay khi `PURCHASED`. |
+| `inkify_pro_annual` | Subscription (`SUBS`) | 1 Year (`P1Y`) + **Offer: 7-day Free Trial** (`P7D`, `priceAmountMicros = 0`) | ~$3.99 / năm (~79.000đ) | `BillingCatalogHelper.selectBestSubscriptionOffer` ưu tiên chọn offer có phase `0L` (Free Trial). Paywall phải hiển thị rõ giá sau dùng thử & cách hủy. |
+| `inkify_pro_lifetime` | In-app product (`INAPP`, Non-consumable) | Mua 1 lần | ~$8.99 (~199.000đ) | `acknowledgePurchase` (không consume). Ưu tiên cao nhất trong `resolveProEntitlement` (`PurchaseType.LIFETIME`). |
 | `inkify_tip_coffee` | In-app product (`INAPP`, Consumable) | Mua nhiều lần | Tùy cấu hình (ví dụ ~$1.99) | Gọi `consumeAsync` để cho phép mua lại nhiều lần; không thay đổi trạng thái `ProEntitlement`. |
 | `inkify_tip_book` | In-app product (`INAPP`, Consumable) | Mua nhiều lần | Tùy cấu hình (ví dụ ~$4.99) | Gọi `consumeAsync` để cho phép mua lại nhiều lần; không thay đổi trạng thái `ProEntitlement`. |
 

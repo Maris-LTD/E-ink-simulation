@@ -679,11 +679,7 @@ private fun SystemEInkModeCard(
     )
     OutlinedButton(
       onClick = {
-        if (proGate != null && !proGate.hasAccess(ProFeature.EINK_LAUNCHER)) {
-          onRequirePro(ProFeature.EINK_LAUNCHER)
-        } else {
-          com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context)
-        }
+        com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context)
       },
       modifier = Modifier.fillMaxWidth(),
     ) {
@@ -691,11 +687,7 @@ private fun SystemEInkModeCard(
     }
     OutlinedButton(
       onClick = {
-        if (proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
-          onRequirePro(ProFeature.LOCKSCREEN_WALLPAPER)
-        } else {
-          com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context)
-        }
+        com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context)
       },
       modifier = Modifier.fillMaxWidth(),
     ) {

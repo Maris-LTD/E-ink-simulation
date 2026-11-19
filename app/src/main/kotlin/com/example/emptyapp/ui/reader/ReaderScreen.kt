@@ -307,10 +307,6 @@ fun ReaderScreen(
   }
 
   fun handleToggleLockScreenReader(next: Boolean) {
-    if (next && proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
-      paywallFeature = ProFeature.LOCKSCREEN_WALLPAPER
-      return
-    }
     viewModel.updateSettings { it.copy(lockScreenReader = next) }
   }
 

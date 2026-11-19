@@ -396,7 +396,7 @@
     <string name="paywall_title">Inkify Pro</string>
     <string name="paywall_badge_pro">PRO</string>
     <string name="paywall_header_general">Đọc sâu hơn trên màn hình E-Ink</string>
-    <string name="paywall_sub_general">Mở khóa toàn bộ Adaptive PDF, đồng bộ đám mây, đọc trên màn hình khóa và Focus Mode.</string>
+    <string name="paywall_sub_general">Mở khóa toàn bộ Adaptive PDF, đồng bộ Google Drive riêng tư và Focus Mode.</string>
     <string name="paywall_header_pdf_reflow">Mở khóa Adaptive PDF toàn phần</string>
     <string name="paywall_sub_pdf_reflow">Bạn vừa xem thử 5 trang đầu. Nâng cấp để dàn chữ, lọc hình/bảng và đọc theo vùng cho toàn bộ tài liệu.</string>
     <string name="paywall_header_drive_sync">Đồng bộ giữa mọi thiết bị</string>
@@ -426,14 +426,14 @@
     <string name="paywall_tier_annual_title">Gói Năm</string>
     <string name="paywall_tier_annual_badge">TIẾT KIỆM NHẤT</string>
     <string name="paywall_tier_annual_trial">Dùng thử 7 ngày miễn phí</string>
-    <string name="paywall_tier_annual_fallback_price">249.000đ / năm</string>
+    <string name="paywall_tier_annual_fallback_price">79.000đ / năm</string>
     <string name="paywall_tier_lifetime_title">Trọn đời</string>
     <string name="paywall_tier_lifetime_badge">MUA ĐỨT</string>
     <string name="paywall_tier_lifetime_desc">Thanh toán 1 lần, sở hữu mãi mãi</string>
-    <string name="paywall_tier_lifetime_fallback_price">599.000đ</string>
+    <string name="paywall_tier_lifetime_fallback_price">199.000đ</string>
     <string name="paywall_tier_monthly_title">Gói Tháng</string>
     <string name="paywall_tier_monthly_desc">Gia hạn linh hoạt từng tháng</string>
-    <string name="paywall_tier_monthly_fallback_price">59.000đ / tháng</string>
+    <string name="paywall_tier_monthly_fallback_price">19.000đ / tháng</string>
 
     <string name="paywall_cta_trial">Dùng thử 7 ngày miễn phí</string>
     <string name="paywall_cta_subscribe">Đăng ký %1$s</string>
@@ -467,7 +467,7 @@
     <string name="pro_card_plan_lifetime">Trọn đời</string>
     <string name="pro_card_plan_subscription">Thuê bao</string>
     <string name="pro_card_status_pending">Đang chờ thanh toán…</string>
-    <string name="pro_card_upgrade_desc">Mở khóa Adaptive PDF Reflow, Đồng bộ Drive, Đọc màn hình khóa, eInk Launcher &amp; Focus Mode.</string>
+    <string name="pro_card_upgrade_desc">Mở khóa Adaptive PDF Reflow, Đồng bộ Google Drive &amp; Focus Mode.</string>
     <string name="pro_card_cta_upgrade">Nâng cấp</string>
     <string name="pro_card_cta_manage">Chi tiết</string>
     <string name="pro_compact_free">Bản miễn phí · Nâng cấp Inkify Pro ›</string>
@@ -479,6 +479,6 @@
     <string name="pdf_pro_preview_standard">Dùng PDF chuẩn</string>
 
     <string name="milestone_nudge_title">Thói quen đọc tuyệt vời!</string>
-    <string name="milestone_nudge_desc">Bạn thích Inkify? Mở khóa Adaptive PDF, Đồng bộ Drive, Đọc màn hình khóa &amp; Focus Mode với Inkify Pro.</string>
+    <string name="milestone_nudge_desc">Bạn thích Inkify? Mở khóa Adaptive PDF, Đồng bộ Drive &amp; Focus Mode với Inkify Pro.</string>
     <string name="milestone_nudge_cta">Xem Inkify Pro</string>
 </resources>

@@ -21,9 +21,9 @@ Cộng đồng người dùng thiết bị E-Ink (Boox, Bigme, Hisense, Kindle A
 
 | Gói | Product ID (Play Console) | Loại | Vai trò tâm lý & Đề xuất giá tham khảo |
 | :--- | :--- | :--- | :--- |
-| **Inkify Pro — Tháng** | `inkify_pro_monthly` | Subscription | **Gói neo giá (Anchor):** ~$2.49 / tháng (~59.000đ). Giúp gói Năm & Trọn đời trông cực kỳ hời. |
-| **Inkify Pro — Năm** *(Best Value)* | `inkify_pro_annual` | Subscription + **7-day Free Trial** | **Gói chủ lực:** ~$11.99 / năm (~249.000đ, tiết kiệm ~60%). Có **Dùng thử 7 ngày miễn phí** để xóa rào cản bấm mua lần đầu. |
-| **Inkify Pro — Trọn đời** | `inkify_pro_lifetime` | One-time IAP (Non-consumable) | **Gói chốt đơn giá trị cao:** ~$27.99 (~599.000đ, chỉ bằng ~2.3 năm). Cực hút khách hàng E-Ink thích "mua đứt dùng mãi". |
+| **Inkify Pro — Tháng** | `inkify_pro_monthly` | Subscription | **Gói neo giá (Anchor):** ~$0.79 / tháng (~19.000đ). Giúp gói Năm & Trọn đời trông cực kỳ hời. |
+| **Inkify Pro — Năm** *(Best Value)* | `inkify_pro_annual` | Subscription + **7-day Free Trial** | **Gói chủ lực:** ~$3.99 / năm (~79.000đ, tiết kiệm ~65%). Có **Dùng thử 7 ngày miễn phí** để xóa rào cản bấm mua lần đầu. |
+| **Inkify Pro — Trọn đời** | `inkify_pro_lifetime` | One-time IAP (Non-consumable) | **Gói chốt đơn giá trị cao:** ~$8.99 (~199.000đ, chỉ bằng ~2.3 năm). Cực hút khách hàng E-Ink thích "mua đứt dùng mãi". |
 | **Ủng hộ tác giả (Tip Jar)** *(Tùy chọn)* | `inkify_tip_coffee`, `inkify_tip_book` | Consumable IAP | Hiện sau khi người dùng đã lên Pro hoặc đạt cột mốc đọc cao (`ReadingGamification`), tạo thêm doanh thu tự nguyện. |
 
 ### 2.2. Các điểm kích hoạt Paywall đúng "Aha! Moment" (High-Intent Triggers)
@@ -56,7 +56,7 @@ Thay vì hiện popup ngẫu nhiên gây khó chịu, Paywall chỉ xuất hiệ
 | **Đọc sách cốt lõi** | EPUB, PDF chuẩn, Bookmark, Highlight, Mục lục, Tìm kiếm, Tra từ điển | Không giới hạn | `ReadiumEngine`, `PdfPagerReader`, `AnnotationRepository`, `DictionaryService` |
 | **Adaptive PDF Engine** | Cắt lề thủ công + dùng thử Reflow **5 trang đầu/file** | Full **PDF Reflow**, **Graphic/Table Masking**, **Guided Region Nav**, Auto Margin Crop | `PdfReflowEngine`, `PdfGraphicMasker`, `PdfRegionNavigator`, `PdfMarginCropper` |
 | **Đồng bộ đám mây** | Lưu trữ cục bộ + Android Backup cơ bản | Full **Google Drive Sync** (tiến độ, bookmark, highlight, file sách) | `GoogleDriveSyncManager` |
-| **Hệ thống E-Ink** | Widget đọc sách cơ bản | **Lock-Screen Live Wallpaper**, **Lock-Screen Nav**, **eInk Home Launcher** | `EInkWallpaperService`, `LockScreenReadingNotifier`, `LauncherActivity` |
+| **Hệ thống E-Ink & Điện thoại tối giản** | **Miễn phí toàn bộ:** **Lock-Screen Live Wallpaper**, **Lock-Screen Nav**, **eInk Home Launcher**, Widget | Giữ nguyên miễn phí (trải nghiệm cốt lõi của điện thoại tối giản) | `EInkWallpaperService`, `LockScreenReadingNotifier`, `LauncherActivity` |
 | **Focus & Thống kê** | Thống kê tổng quan cơ bản | **Focus Mode (DND)**, chi tiết Streak & Gamification | `FocusModeController`, `ReadingStatsRepository`, `ReadingGamification` |
 
 ---

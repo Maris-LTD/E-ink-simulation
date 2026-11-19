@@ -400,7 +400,7 @@
     <string name="paywall_title">Inkify Pro</string>
     <string name="paywall_badge_pro">PRO</string>
     <string name="paywall_header_general">Read Deeper on E-Ink</string>
-    <string name="paywall_sub_general">Unlock full Adaptive PDF, cloud sync, lock-screen reading, and Focus Mode.</string>
+    <string name="paywall_sub_general">Unlock full Adaptive PDF Reflow, private Google Drive sync, and Focus Mode.</string>
     <string name="paywall_header_pdf_reflow">Unlock Full Adaptive PDF</string>
     <string name="paywall_sub_pdf_reflow">You\'ve previewed the first 5 pages. Upgrade to reflow, mask graphics, and navigate regions across entire PDFs.</string>
     <string name="paywall_header_drive_sync">Sync Across All Devices</string>
@@ -430,14 +430,14 @@
     <string name="paywall_tier_annual_title">Annual</string>
     <string name="paywall_tier_annual_badge">BEST VALUE</string>
     <string name="paywall_tier_annual_trial">Includes 7-day free trial</string>
-    <string name="paywall_tier_annual_fallback_price">$11.99 / year</string>
+    <string name="paywall_tier_annual_fallback_price">$3.99 / year</string>
     <string name="paywall_tier_lifetime_title">Lifetime</string>
     <string name="paywall_tier_lifetime_badge">ONE-TIME</string>
     <string name="paywall_tier_lifetime_desc">Pay once, own Inkify Pro forever</string>
-    <string name="paywall_tier_lifetime_fallback_price">$27.99</string>
+    <string name="paywall_tier_lifetime_fallback_price">$8.99</string>
     <string name="paywall_tier_monthly_title">Monthly</string>
     <string name="paywall_tier_monthly_desc">Flexible monthly access</string>
-    <string name="paywall_tier_monthly_fallback_price">$2.49 / month</string>
+    <string name="paywall_tier_monthly_fallback_price">$0.79 / month</string>
 
     <string name="paywall_cta_trial">Start 7-Day Free Trial</string>
     <string name="paywall_cta_subscribe">Continue with %1$s</string>
@@ -471,7 +471,7 @@
     <string name="pro_card_plan_lifetime">Lifetime</string>
     <string name="pro_card_plan_subscription">Subscription</string>
     <string name="pro_card_status_pending">Payment pending…</string>
-    <string name="pro_card_upgrade_desc">Unlock full Adaptive PDF Reflow, Google Drive Sync, Lock-Screen Reader, eInk Launcher &amp; Focus Mode.</string>
+    <string name="pro_card_upgrade_desc">Unlock full Adaptive PDF Reflow, Google Drive Sync &amp; Focus Mode.</string>
     <string name="pro_card_cta_upgrade">Upgrade</string>
     <string name="pro_card_cta_manage">Details</string>
     <string name="pro_compact_free">Inkify Free · Upgrade to Pro ›</string>
@@ -483,6 +483,6 @@
     <string name="pdf_pro_preview_standard">Use Standard PDF</string>
 
     <string name="milestone_nudge_title">Nice reading habit!</string>
-    <string name="milestone_nudge_desc">Enjoying Inkify? Unlock Adaptive PDF, Drive Sync, Lock-Screen Reader &amp; Focus Mode with Inkify Pro.</string>
+    <string name="milestone_nudge_desc">Enjoying Inkify? Unlock Adaptive PDF Reflow, Drive Sync &amp; Focus Mode with Inkify Pro.</string>
     <string name="milestone_nudge_cta">Explore Pro</string>
 </resources>
