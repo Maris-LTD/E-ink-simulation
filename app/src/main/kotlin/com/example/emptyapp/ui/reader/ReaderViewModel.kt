@@ -449,7 +449,19 @@ class ReaderViewModel(
     val store = pdfBookConfigs ?: return
     if (store.get(bookId)?.category != null) return
     viewModelScope.launch {
-      val result = withContext(Dispatchers.IO) { PdfDocumentClassifier.classifyFile(file) } ?: return@launch
+      val result =
+        withContext(Dispatchers.IO) {
+          val cached =
+            context?.let {
+              com.example.emptyapp.reader.pdf.PdfDocumentCache(File(it.filesDir, "pdf_cache")).load(file)
+            }
+          if (!cached.isNullOrEmpty()) {
+            PdfDocumentClassifier.classifyCached(cached)
+          } else {
+            context?.let { com.example.emptyapp.reader.pdf.PdfPageAnalyzer.ensureInitialized(it) }
+            PdfDocumentClassifier.classifyFile(file)
+          }
+        } ?: return@launch
       val updated =
         store.update(bookId) { current ->
           current.copy(

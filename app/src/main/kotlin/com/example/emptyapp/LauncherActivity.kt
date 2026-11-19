@@ -123,6 +123,7 @@ class LauncherActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     appliedLanguage = LocaleHelper.getSavedLanguage(this)
     super.onCreate(savedInstanceState)
+    (application as EmptyApplication).container.warmUpForUiAsync()
     enableEdgeToEdge()
     setContent {
       val container = (application as EmptyApplication).container

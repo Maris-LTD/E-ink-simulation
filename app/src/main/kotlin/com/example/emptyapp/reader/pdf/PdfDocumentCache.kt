@@ -54,6 +54,10 @@ class PdfDocumentCache(private val cacheDir: File) {
     }
   }
 
+  fun delete(file: File) {
+    runCatching { cacheFileFor(file).delete() }
+  }
+
   private fun cacheFileFor(file: File): File {
     val safeName = file.name.replace(Regex("""[^A-Za-z0-9._-]"""), "_")
     return File(cacheDir, "$safeName.${file.length()}.json")

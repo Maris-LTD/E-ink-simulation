@@ -55,8 +55,11 @@ internal class PdfRendererHolder(
   suspend fun renderRegion(index: Int, region: PdfRect, maxWidth: Int): ImageBitmap? =
     withContext(Dispatchers.IO) {
       if (closed) return@withContext null
+      val cacheKey = "reg:$index:${region.left}:${region.top}:${region.right}:${region.bottom}:$maxWidth"
+      pageBitmapCache.get(cacheKey)?.let { return@withContext it }
       mutex.withLock {
         if (closed || index !in 0 until pageCount) return@withContext null
+        pageBitmapCache.get(cacheKey)?.let { return@withContext it }
         renderWithMemoryRetry {
           renderer.openPage(index).use { page ->
             val leftPt = page.width * region.left
@@ -67,7 +70,7 @@ internal class PdfRendererHolder(
             val scale = requestedScale * budget.downscaleFactor(widthPt * requestedScale, heightPt * requestedScale)
             renderScaled(page, leftPt, topPt, widthPt, heightPt, scale)
           }
-        }
+        }?.also { pageBitmapCache.put(cacheKey, it) }
       }
     }
 

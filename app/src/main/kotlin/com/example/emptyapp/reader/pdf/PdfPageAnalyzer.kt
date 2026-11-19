@@ -1,7 +1,9 @@
 package com.example.emptyapp.reader.pdf
 
+import android.content.Context
 import android.graphics.Path
 import android.graphics.PointF
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.contentstream.PDFGraphicsStreamEngine
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -13,21 +15,38 @@ import java.io.File
 import kotlin.math.abs
 
 object PdfPageAnalyzer {
+  @Volatile private var initialized = false
+
+  fun ensureInitialized(context: Context) {
+    if (initialized) return
+    synchronized(this) {
+      if (!initialized) {
+        PDFBoxResourceLoader.init(context.applicationContext)
+        initialized = true
+      }
+    }
+  }
+
   private const val BODY_TOP_MIN = 0.08f
   private const val BODY_BOTTOM_MAX = 0.92f
   private const val MIN_LINES_FOR_COLUMN_CHECK = 6
+  private const val MAX_VECTOR_SEGMENTS_PER_PAGE = 400
+  private const val MAX_FILLED_RECTS_PER_PAGE = 100
 
   fun analyzeAllPages(
     file: File,
+    shouldContinue: () -> Boolean = { true },
     onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
   ): List<PdfPageAnalysis> {
     if (!file.exists()) return emptyList()
     return runCatching {
       PDDocument.load(file).use { document ->
         val total = document.numberOfPages
+        val stripper = ReusableLineStripper()
         val results = ArrayList<PdfPageAnalysis>(total)
         for (index in 0 until total) {
-          results += analyzePage(document, index)
+          if (!shouldContinue()) return emptyList()
+          results += analyzePage(document, index, stripper)
           onProgress(index + 1, total)
         }
         results
@@ -40,23 +59,47 @@ object PdfPageAnalyzer {
     return runCatching {
       PDDocument.load(file).use { document ->
         val total = document.numberOfPages
+        val stripper = ReusableLineStripper()
         pageIndices
           .asSequence()
           .filter { it in 0 until total }
           .distinct()
-          .map { index -> analyzePage(document, index) }
+          .map { index -> analyzePage(document, index, stripper) }
           .toList()
       }
     }.getOrDefault(emptyList())
   }
 
-  fun analyzePage(document: PDDocument, pageIndex: Int): PdfPageAnalysis {
+  fun analyzeSamplePages(
+    file: File,
+    indicesForCount: (Int) -> List<Int>,
+  ): List<PdfPageAnalysis> {
+    if (!file.exists()) return emptyList()
+    return runCatching {
+      PDDocument.load(file).use { document ->
+        val total = document.numberOfPages
+        val stripper = ReusableLineStripper()
+        indicesForCount(total)
+          .asSequence()
+          .filter { it in 0 until total }
+          .distinct()
+          .map { index -> analyzePage(document, index, stripper) }
+          .toList()
+      }
+    }.getOrDefault(emptyList())
+  }
+
+  fun analyzePage(
+    document: PDDocument,
+    pageIndex: Int,
+    stripper: ReusableLineStripper = ReusableLineStripper(),
+  ): PdfPageAnalysis {
     val page = document.getPage(pageIndex)
     val mediaBox = page.cropBox ?: page.mediaBox
     val pageWidth = mediaBox.width.coerceAtLeast(1f)
     val pageHeight = mediaBox.height.coerceAtLeast(1f)
 
-    val textLines = extractTextLines(document, pageIndex, pageWidth, pageHeight)
+    val textLines = stripper.extract(document, pageIndex, pageWidth, pageHeight)
     val graphicsStats = extractGraphicsStats(page, mediaBox.lowerLeftX, mediaBox.lowerLeftY, pageWidth, pageHeight)
     val charCount = textLines.sumOf { it.text.count { ch -> !ch.isWhitespace() } }
     val columnCount = detectColumnCount(textLines)
@@ -105,85 +148,95 @@ object PdfPageAnalyzer {
     return 1
   }
 
-  private fun extractTextLines(
-    document: PDDocument,
-    pageIndex: Int,
-    pageWidth: Float,
-    pageHeight: Float,
-  ): List<PdfTextLine> {
-    val collected = ArrayList<PdfTextLine>()
-    val stripper =
-      object : PDFTextStripper() {
-        override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
-          if (text.isBlank() || textPositions.isEmpty()) return
-          val chunk = ArrayList<TextPosition>(textPositions.size)
+  class ReusableLineStripper : PDFTextStripper() {
+    private var pageWidth = 1f
+    private var pageHeight = 1f
+    private var collected = ArrayList<PdfTextLine>()
 
-          fun emitChunk() {
-            if (chunk.isEmpty()) return
-            val chunkText = chunk.joinToString("") { it.unicode.orEmpty() }.trim()
-            if (chunkText.isEmpty()) {
-              chunk.clear()
-              return
-            }
-            var minX = Float.MAX_VALUE
-            var minY = Float.MAX_VALUE
-            var maxX = Float.MIN_VALUE
-            var maxY = Float.MIN_VALUE
-            var fontSum = 0f
-            for (pos in chunk) {
-              val x = pos.xDirAdj
-              val w = pos.widthDirAdj
-              val h = pos.heightDir.coerceAtLeast(1f)
-              val yBottom = pos.yDirAdj
-              val yTop = yBottom - h
-              if (x < minX) minX = x
-              if (x + w > maxX) maxX = x + w
-              if (yTop < minY) minY = yTop
-              if (yBottom > maxY) maxY = yBottom
-              fontSum += pos.fontSizeInPt
-            }
-            if (maxX > minX && maxY > minY) {
-              val bounds =
-                PdfRect(
-                  left = (minX / pageWidth).coerceIn(0f, 1f),
-                  top = (minY / pageHeight).coerceIn(0f, 1f),
-                  right = (maxX / pageWidth).coerceIn(0f, 1f),
-                  bottom = (maxY / pageHeight).coerceIn(0f, 1f),
-                )
-              collected +=
-                PdfTextLine(
-                  text = chunkText,
-                  bounds = bounds,
-                  fontSizePt = fontSum / chunk.size,
-                )
-            }
-            chunk.clear()
-          }
+    init {
+      sortByPosition = true
+    }
 
-          var prevNonSpace: TextPosition? = null
-          for (pos in textPositions) {
-            val isSpaceChar = pos.unicode.isNullOrBlank()
-            val prev = prevNonSpace
-            if (!isSpaceChar && prev != null) {
-              val gap = pos.xDirAdj - (prev.xDirAdj + prev.widthDirAdj)
-              val splitThreshold = maxOf(prev.widthOfSpace * 2.5f, prev.fontSizeInPt * 0.85f)
-              if (gap > splitThreshold) {
-                emitChunk()
-              }
-            }
-            chunk += pos
-            if (!isSpaceChar) {
-              prevNonSpace = pos
-            }
+    fun extract(
+      document: PDDocument,
+      pageIndex: Int,
+      pageWidth: Float,
+      pageHeight: Float,
+    ): List<PdfTextLine> {
+      this.pageWidth = pageWidth
+      this.pageHeight = pageHeight
+      val out = ArrayList<PdfTextLine>()
+      this.collected = out
+      startPage = pageIndex + 1
+      endPage = pageIndex + 1
+      runCatching { getText(document) }
+      return out
+    }
+
+    override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
+      if (text.isBlank() || textPositions.isEmpty()) return
+      val chunk = ArrayList<TextPosition>(textPositions.size)
+
+      fun emitChunk() {
+        if (chunk.isEmpty()) return
+        val chunkText = chunk.joinToString("") { it.unicode.orEmpty() }.trim()
+        if (chunkText.isEmpty()) {
+          chunk.clear()
+          return
+        }
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+        var maxX = Float.MIN_VALUE
+        var maxY = Float.MIN_VALUE
+        var fontSum = 0f
+        for (pos in chunk) {
+          val x = pos.xDirAdj
+          val w = pos.widthDirAdj
+          val h = pos.heightDir.coerceAtLeast(1f)
+          val yBottom = pos.yDirAdj
+          val yTop = yBottom - h
+          if (x < minX) minX = x
+          if (x + w > maxX) maxX = x + w
+          if (yTop < minY) minY = yTop
+          if (yBottom > maxY) maxY = yBottom
+          fontSum += pos.fontSizeInPt
+        }
+        if (maxX > minX && maxY > minY) {
+          val bounds =
+            PdfRect(
+              left = (minX / pageWidth).coerceIn(0f, 1f),
+              top = (minY / pageHeight).coerceIn(0f, 1f),
+              right = (maxX / pageWidth).coerceIn(0f, 1f),
+              bottom = (maxY / pageHeight).coerceIn(0f, 1f),
+            )
+          collected +=
+            PdfTextLine(
+              text = chunkText,
+              bounds = bounds,
+              fontSizePt = fontSum / chunk.size,
+            )
+        }
+        chunk.clear()
+      }
+
+      var prevNonSpace: TextPosition? = null
+      for (pos in textPositions) {
+        val isSpaceChar = pos.unicode.isNullOrBlank()
+        val prev = prevNonSpace
+        if (!isSpaceChar && prev != null) {
+          val gap = pos.xDirAdj - (prev.xDirAdj + prev.widthDirAdj)
+          val splitThreshold = maxOf(prev.widthOfSpace * 2.5f, prev.fontSizeInPt * 0.85f)
+          if (gap > splitThreshold) {
+            emitChunk()
           }
-          emitChunk()
+        }
+        chunk += pos
+        if (!isSpaceChar) {
+          prevNonSpace = pos
         }
       }
-    stripper.sortByPosition = true
-    stripper.startPage = pageIndex + 1
-    stripper.endPage = pageIndex + 1
-    runCatching { stripper.getText(document) }
-    return collected
+      emitChunk()
+    }
   }
 
   private data class GraphicsStats(
@@ -232,14 +285,30 @@ object PdfPageAnalyzer {
           }
         }
 
+        private fun addVectorSegment(seg: PdfVectorSegment) {
+          if (vectorSegments.size < MAX_VECTOR_SEGMENTS_PER_PAGE) {
+            vectorSegments += seg
+          }
+        }
+
+        private fun addFilledRect(rect: PdfRect) {
+          if (filledRects.size < MAX_FILLED_RECTS_PER_PAGE) {
+            filledRects += PdfFilledRect(rect)
+          }
+        }
+
         private fun flushStrokedPath() {
           vectorOps++
-          vectorSegments.addAll(pendingSegments)
+          for (seg in pendingSegments) {
+            if (vectorSegments.size >= MAX_VECTOR_SEGMENTS_PER_PAGE) break
+            vectorSegments += seg
+          }
           for (rect in pendingRects) {
-            vectorSegments += PdfVectorSegment(rect.left, rect.top, rect.right, rect.top)
-            vectorSegments += PdfVectorSegment(rect.left, rect.bottom, rect.right, rect.bottom)
-            vectorSegments += PdfVectorSegment(rect.left, rect.top, rect.left, rect.bottom)
-            vectorSegments += PdfVectorSegment(rect.right, rect.top, rect.right, rect.bottom)
+            if (vectorSegments.size >= MAX_VECTOR_SEGMENTS_PER_PAGE) break
+            addVectorSegment(PdfVectorSegment(rect.left, rect.top, rect.right, rect.top))
+            addVectorSegment(PdfVectorSegment(rect.left, rect.bottom, rect.right, rect.bottom))
+            addVectorSegment(PdfVectorSegment(rect.left, rect.top, rect.left, rect.bottom))
+            addVectorSegment(PdfVectorSegment(rect.right, rect.top, rect.right, rect.bottom))
           }
         }
 
@@ -249,14 +318,14 @@ object PdfPageAnalyzer {
             when {
               rect.height <= 0.008f && rect.width >= 0.05f -> {
                 val midY = (rect.top + rect.bottom) * 0.5f
-                vectorSegments += PdfVectorSegment(rect.left, midY, rect.right, midY)
+                addVectorSegment(PdfVectorSegment(rect.left, midY, rect.right, midY))
               }
               rect.width <= 0.008f && rect.height >= 0.02f -> {
                 val midX = (rect.left + rect.right) * 0.5f
-                vectorSegments += PdfVectorSegment(midX, rect.top, midX, rect.bottom)
+                addVectorSegment(PdfVectorSegment(midX, rect.top, midX, rect.bottom))
               }
               rect.area > 0.0005f -> {
-                filledRects += PdfFilledRect(rect)
+                addFilledRect(rect)
               }
             }
           }
@@ -269,10 +338,10 @@ object PdfPageAnalyzer {
             val h = maxY - minY
             if (h <= 0.008f && w >= 0.05f) {
               val midY = (minY + maxY) * 0.5f
-              vectorSegments += PdfVectorSegment(minX, midY, maxX, midY)
+              addVectorSegment(PdfVectorSegment(minX, midY, maxX, midY))
             } else if (w <= 0.008f && h >= 0.02f) {
               val midX = (minX + maxX) * 0.5f
-              vectorSegments += PdfVectorSegment(midX, minY, midX, maxY)
+              addVectorSegment(PdfVectorSegment(midX, minY, midX, maxY))
             }
           }
         }

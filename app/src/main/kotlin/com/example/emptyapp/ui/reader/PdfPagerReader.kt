@@ -100,6 +100,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -148,33 +149,41 @@ fun PdfPagerReader(
   }
 
   val pageCount = holder.pageCount
+  val isReflowMode = readingMode == PdfReadingMode.HYBRID_REFLOW
   val cache = remember(context) { PdfDocumentCache(File(context.filesDir, "pdf_cache")) }
   var allAnalyses by remember(file) { mutableStateOf<List<PdfPageAnalysis>?>(null) }
   var analyzeDone by remember(file) { mutableIntStateOf(0) }
   var analyzeTotal by remember(file) { mutableIntStateOf(pageCount) }
 
-  LaunchedEffect(file, holder) {
+  LaunchedEffect(file, holder, isReflowMode) {
+    if (allAnalyses != null) return@LaunchedEffect
     val cached = withContext(Dispatchers.IO) { cache.load(file) }
     if (cached != null && cached.size == pageCount) {
       holder.seedAnalyses(cached)
       allAnalyses = cached
-    } else {
+    } else if (isReflowMode) {
       val computed =
         withContext(Dispatchers.IO) {
-          PdfPageAnalyzer.analyzeAllPages(file) { done, total ->
+          PdfPageAnalyzer.ensureInitialized(context)
+          PdfPageAnalyzer.analyzeAllPages(
+            file = file,
+            shouldContinue = { isActive },
+          ) { done, total ->
             analyzeDone = done
             analyzeTotal = total
           }.also { pages ->
             if (pages.isNotEmpty()) cache.save(file, pages)
           }
         }
-      holder.seedAnalyses(computed)
-      allAnalyses = computed
+      if (computed.isNotEmpty()) {
+        holder.seedAnalyses(computed)
+        allAnalyses = computed
+      }
     }
   }
 
   val loadedAnalyses = allAnalyses
-  if (loadedAnalyses == null) {
+  if (isReflowMode && loadedAnalyses == null) {
     Box(
       modifier = modifier.fillMaxSize().background(Color(settings.tone.background)),
       contentAlignment = Alignment.Center,
@@ -206,11 +215,10 @@ fun PdfPagerReader(
 
   var currentPdfPage by remember(file) { mutableIntStateOf(initialPage.coerceIn(0, pageCount - 1)) }
 
-  val isReflowMode = readingMode == PdfReadingMode.HYBRID_REFLOW
   val reflowMetas by
     produceState<List<ReflowPageMeta>?>(null, loadedAnalyses, isReflowMode) {
       value =
-        if (isReflowMode) {
+        if (isReflowMode && loadedAnalyses != null) {
           withContext(Dispatchers.Default) { buildReflowMetas(loadedAnalyses) }
         } else {
           null
@@ -363,16 +371,18 @@ fun PdfPagerReader(
     }
     val reflowScreens = reflowScreensState.orEmpty()
 
-    // Pre-process & pre-warm adjacent pages (page - 1 and page + 1)
-    LaunchedEffect(currentPdfPage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop, readingMode) {
-      val autoCrop = settings.pdfAutoCrop && readingMode != PdfReadingMode.GUIDED_COLUMN
-      val mult = if (readingMode == PdfReadingMode.GUIDED_COLUMN) 2 else 1
-      holder.prefetchAdjacent(
-        centerIndex = currentPdfPage,
-        maxWidth = targetWidthPx * mult,
-        maxHeight = targetHeightPx * mult,
-        autoCrop = autoCrop,
-      )
+    // Pre-process & pre-warm adjacent pages (page - 1 and page + 1) when displaying page bitmaps
+    if (!isReflowMode) {
+      LaunchedEffect(currentPdfPage, targetWidthPx, targetHeightPx, settings.pdfAutoCrop, readingMode) {
+        val autoCrop = settings.pdfAutoCrop && readingMode != PdfReadingMode.GUIDED_COLUMN
+        val mult = if (readingMode == PdfReadingMode.GUIDED_COLUMN) 2 else 1
+        holder.prefetchAdjacent(
+          centerIndex = currentPdfPage,
+          maxWidth = targetWidthPx * mult,
+          maxHeight = targetHeightPx * mult,
+          autoCrop = autoCrop,
+        )
+      }
     }
 
     if (readingMode == PdfReadingMode.HYBRID_REFLOW && reflowScreens.isNotEmpty()) {
@@ -585,7 +595,25 @@ fun PdfPagerReader(
         var offset by remember(pageIndex, readingMode) { mutableStateOf(Offset.Zero) }
         val renderMultiplier = if (scale > 1.35f || readingMode == PdfReadingMode.GUIDED_COLUMN) 2 else 1
         val autoCrop = settings.pdfAutoCrop && readingMode != PdfReadingMode.GUIDED_COLUMN
-        val pageAnalysis = loadedAnalyses.getOrNull(pageIndex)
+        val pageAnalysis by
+          produceState<PdfPageAnalysis?>(
+            initialValue = loadedAnalyses?.getOrNull(pageIndex),
+            file,
+            pageIndex,
+            readingMode,
+            loadedAnalyses,
+          ) {
+            val fromAll = loadedAnalyses?.getOrNull(pageIndex)
+            if (fromAll != null) {
+              value = fromAll
+            } else if (readingMode == PdfReadingMode.GUIDED_COLUMN) {
+              value =
+                withContext(Dispatchers.IO) {
+                  PdfPageAnalyzer.ensureInitialized(context)
+                  PdfPageAnalyzer.analyzePages(file, listOf(pageIndex)).firstOrNull()
+                }
+            }
+          }
         var guidedRegionIndex by remember(pageIndex, readingMode) { mutableIntStateOf(0) }
         var bitmap by remember(holder, pageIndex, targetWidthPx, targetHeightPx, renderMultiplier, autoCrop) {
           mutableStateOf<ImageBitmap?>(null)

@@ -1,7 +1,5 @@
 package com.example.emptyapp.reader.pdf
 
-import android.graphics.pdf.PdfRenderer
-import android.os.ParcelFileDescriptor
 import java.io.File
 
 object PdfDocumentClassifier {
@@ -23,17 +21,16 @@ object PdfDocumentClassifier {
   }
 
   fun classifyFile(file: File): PdfClassificationResult? {
-    val pageCount =
-      runCatching {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-          PdfRenderer(fd).use { it.pageCount }
-        }
-      }.getOrNull() ?: return null
-
-    val indices = samplePageIndices(pageCount)
-    val analyses = PdfPageAnalyzer.analyzePages(file, indices)
+    val analyses = PdfPageAnalyzer.analyzeSamplePages(file, ::samplePageIndices)
     if (analyses.isEmpty()) return null
     return classify(analyses)
+  }
+
+  fun classifyCached(cachedPages: List<PdfPageAnalysis>): PdfClassificationResult? {
+    if (cachedPages.isEmpty()) return null
+    val samples = samplePageIndices(cachedPages.size).mapNotNull { cachedPages.getOrNull(it) }
+    if (samples.isEmpty()) return null
+    return classify(samples)
   }
 
   fun classify(samples: List<PdfPageAnalysis>): PdfClassificationResult {

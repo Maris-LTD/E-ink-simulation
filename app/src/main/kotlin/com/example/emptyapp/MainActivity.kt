@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-
+    (application as EmptyApplication).container.warmUpForUiAsync()
     enableEdgeToEdge()
     setContent {
       val settings by (application as EmptyApplication).container.settings.settings.collectAsStateWithLifecycle()

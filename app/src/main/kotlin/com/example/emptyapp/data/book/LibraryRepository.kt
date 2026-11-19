@@ -19,9 +19,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class LibraryRepository(context: Context, val engine: ReadiumEngine) {
-  private val booksDir = File(context.filesDir, "books")
-  private val coversDir = File(context.filesDir, "covers")
-  private val store = BookIndexStore(File(context.filesDir, "library.json"))
+  private val appFilesDir = context.applicationContext.filesDir
+  private val booksDir = File(appFilesDir, "books")
+  private val coversDir = File(appFilesDir, "covers")
+  private val store = BookIndexStore(File(appFilesDir, "library.json"))
   private val importer = BookImporter(context.applicationContext, engine, booksDir, coversDir)
   private val state = MutableStateFlow(store.read())
   private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -48,7 +49,9 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
   suspend fun remove(id: String) {
     val book = find(id) ?: return
     withContext(Dispatchers.IO) {
-      fileOf(book).delete()
+      val bookFile = fileOf(book)
+      com.example.emptyapp.reader.pdf.PdfDocumentCache(File(appFilesDir, "pdf_cache")).delete(bookFile)
+      bookFile.delete()
       coverFileOf(book)?.delete()
     }
     commit { list -> list.filterNot { it.id == id } }

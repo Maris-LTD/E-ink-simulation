@@ -225,6 +225,7 @@ class ReaderActivity : FragmentActivity() {
         if (cached != null && pageIdx in cached.indices) {
           listOfNotNull(cached.getOrNull(pageIdx), cached.getOrNull(pageIdx + 1))
         } else {
+          PdfPageAnalyzer.ensureInitialized(applicationContext)
           PdfPageAnalyzer.analyzePages(ready.file, listOf(pageIdx, pageIdx + 1))
         }
       val current = analyses.firstOrNull { it.pageIndex == pageIdx } ?: return emptyList<String>() to 0

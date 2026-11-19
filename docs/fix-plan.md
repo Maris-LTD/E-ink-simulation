@@ -24,8 +24,8 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 15. D9 — Import trùng, cover xám, locale, import crash, widget sách đã xoá, PdfRenderer close race, wallpaper crash
 
 ## Đợt 3 — Hiệu năng còn lại
-- [ ] 16. P6 — Cold start lazy/async, widget `updatePeriodMillis=0`
-- [ ] 17. P7 — PDF: phân tích lười, classifier dùng chung, prefetch, cache vector, region cache
+- [x] 16. P6 — Cold start lazy/async, widget `updatePeriodMillis=0`
+- [x] 17. P7 — PDF: phân tích lười, classifier dùng chung, prefetch, cache vector, region cache
 - [ ] 18. P8 — Reader EPUB: ghosting PixelCopy, lock-screen IO, JS inject, bookmark parse, recomposition
 - [ ] 19. P9 — Library/launcher: cover cache theo byte, remember stats, clock loop, wallpaper check, backfill cover, app list
 - [ ] 20. P10 — Wallpaper cache Paint/grain, sync WorkManager + backoff, upload sách chỉ Wi-Fi
@@ -318,3 +318,36 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** hết Đợt 2. Các hành vi UI/hệ thống (đổi ngôn ngữ `LauncherActivity`, widget, wallpaper, đóng PDF khi đang render) cần kiểm tra tay trên thiết bị/emulator.
 
 **Bước tiếp theo:** sang Đợt 3 — mục 16 (P6): tối ưu cold start (lazy/async init) và đặt widget `updatePeriodMillis = 0`.
+
+### 16. P6 — Tối ưu cold start (lazy/async) & tắt widget periodic wake — 2026-11-19
+**Nguyên nhân:**
+- `EmptyApplication.onCreate()` gọi `PDFBoxResourceLoader.init(applicationContext)` và tạo `AppContainer` đồng bộ trên main thread — khởi tạo `ReadiumEngine` và đọc toàn bộ JSON (library, bookmarks, highlights, stats, pdf config, sync tombstones, lockscreen) ngay cả khi process chỉ bật lên cho widget, wallpaper hoặc broadcast.
+- `eink_widget_info.xml` đặt `updatePeriodMillis="1800000"`, ép Android cold-start app mỗi 30 phút.
+
+**Đã sửa:**
+- `EmptyApplication.kt`: bỏ `PDFBoxResourceLoader.init` khỏi `onCreate()`.
+- `AppContainer.kt`: chuyển toàn bộ dependency (`engine`, `library`, `settings`, `pdfBookConfigs`, `syncTombstones`, `annotations`, `dictionary`, `stats`, `sync`, `lockScreenReading`) sang `by lazy`, và thêm `warmUpForUiAsync()` để pre-warm `settings`, `library`, `annotations`, `stats` song song trên `Dispatchers.IO`.
+- `MainActivity.kt` & `LauncherActivity.kt`: gọi `container.warmUpForUiAsync()` trong `onCreate()`.
+- `PdfPageAnalyzer.kt`: thêm `ensureInitialized(context)` (thread-safe, chạy 1 lần); gọi trên `Dispatchers.IO` tại các điểm dùng PDFBox (`PdfPagerReader.kt`, `ReaderActivity.kt`, `ReaderViewModel.kt`).
+- `eink_widget_info.xml`: đổi `android:updatePeriodMillis` từ `1800000` thành `0`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra cold start và mở sách PDF reflow trên máy thật/emulator để xác nhận PDFBox init lười hoạt động bình thường.
+
+**Còn để lại:** chưa gắn lịch refresh widget khi qua ngày mới (widget vẫn tự cập nhật khi mở/đọc sách và khi thêm/xoá sách).
+
+**Bước tiếp theo:** mục 17 — P7: tối ưu PDF (phân tích lười, dùng chung classifier, tắt prefetch ở reflow, tách/giới hạn cache `vectorSegments`, cache region reflow, tối ưu `PDFTextStripper`).
+
+### 17. P7 — Tối ưu hiệu năng PDF (phân tích lười, cache region, giới hạn vector, tái dùng stripper) — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Phân tích PDFBox chặn toàn bộ sách:** `PdfPagerReader.kt` trước đây chặn hiển thị cho tới khi `analyzeAllPages` xong toàn bộ sách, không check huỷ coroutine. Nay ở chế độ trang gốc (`SMART_ORIGINAL` / `GUIDED_COLUMN`), trang đầu hiển thị ngay; `analyzeAllPages` chỉ chạy khi ở `HYBRID_REFLOW` (hoặc load từ `PdfDocumentCache`), truyền `shouldContinue = { isActive }` để dừng ngay khi đóng/đổi chế độ; chế độ `GUIDED_COLUMN` phân tích lười từng trang đang xem qua `produceState` nếu chưa có cache toàn sách.
+- **Classifier mở file 2 lần:** `PdfDocumentClassifier` bỏ bước mở `ParcelFileDescriptor` + `PdfRenderer` riêng, dùng `PdfPageAnalyzer.analyzeSamplePages(file, ::samplePageIndices)` (mở `PDDocument` 1 lần); `ReaderViewModel.ensurePdfClassified` ưu tiên `PdfDocumentCache` trước khi chạy classifier.
+- **Prefetch thừa ở reflow:** `PdfPagerReader.kt` chỉ chạy `holder.prefetchAdjacent(...)` khi `!isReflowMode`.
+- **Cache vector không giới hạn & không dọn khi xoá sách:** `PdfPageAnalyzer.kt` giới hạn tối đa `400` `vectorSegments` và `100` `filledRects` mỗi trang; `PdfDocumentCache.delete(file)` được gọi trong `LibraryRepository.remove(id)` để dọn cache khi xoá sách.
+- **Region image reflow không cache:** `PdfRendererHolder.renderRegion` nay cache bitmap theo key `reg:$index:$left:$top:$right:$bottom:$maxWidth` trong `pageBitmapCache`.
+- **Tạo `PDFTextStripper` mới mỗi trang:** `PdfPageAnalyzer.kt` dùng chung `ReusableLineStripper` cho toàn bộ vòng lặp trang trong `analyzeAllPages`, `analyzePages`, `analyzeSamplePages`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator với sách PDF lớn (>300 trang): mở chế độ trang gốc hiện ngay không chờ, chuyển sang reflow có thể huỷ giữa chừng, vuốt qua lại giữa các trang reflow có ảnh inline không render lại.
+
+**Còn để lại:** `PdfDocumentCache` vẫn ghi/đọc một file JSON cho toàn sách khi dùng reflow (với số segment mỗi trang đã được giới hạn).
+
+**Bước tiếp theo:** mục 18 — P8: tối ưu Reader EPUB (ghosting reuse bitmap/`PixelCopy`, `LockScreenReadingStore` & `LockScreenNavReceiver` IO + `goAsync()`, chỉ inject JS khi đổi `href`, tránh parse JSON bookmark mỗi lần lật, thu hẹp recomposition `ReaderScreen`).
