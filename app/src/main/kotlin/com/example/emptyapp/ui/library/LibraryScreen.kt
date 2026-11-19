@@ -187,7 +187,21 @@ fun LibraryScreen(
         },
         onOpenStats = onOpenStats,
       )
-      val wallpaperActive = com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+      var wallpaperActive by remember {
+        mutableStateOf(com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context))
+      }
+      val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+      androidx.compose.runtime.DisposableEffect(lifecycleOwner, context) {
+        val observer =
+          androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+              wallpaperActive =
+                com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+            }
+          }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+      }
       val notifActive =
         com.example.emptyapp.reader.LockScreenReadingNotifier.hasPermission(context) &&
           settings.lockScreenReader

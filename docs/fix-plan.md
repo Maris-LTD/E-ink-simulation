@@ -26,8 +26,8 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 ## Đợt 3 — Hiệu năng còn lại
 - [x] 16. P6 — Cold start lazy/async, widget `updatePeriodMillis=0`
 - [x] 17. P7 — PDF: phân tích lười, classifier dùng chung, prefetch, cache vector, region cache
-- [ ] 18. P8 — Reader EPUB: ghosting PixelCopy, lock-screen IO, JS inject, bookmark parse, recomposition
-- [ ] 19. P9 — Library/launcher: cover cache theo byte, remember stats, clock loop, wallpaper check, backfill cover, app list
+- [x] 18. P8 — Reader EPUB: ghosting PixelCopy, lock-screen IO, JS inject, bookmark parse, recomposition
+- [x] 19. P9 — Library/launcher: cover cache theo byte, remember stats, clock loop, wallpaper check, backfill cover, app list
 - [ ] 20. P10 — Wallpaper cache Paint/grain, sync WorkManager + backoff, upload sách chỉ Wi-Fi
 
 ## Đợt 4 — UX
@@ -351,3 +351,32 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** `PdfDocumentCache` vẫn ghi/đọc một file JSON cho toàn sách khi dùng reflow (với số segment mỗi trang đã được giới hạn).
 
 **Bước tiếp theo:** mục 18 — P8: tối ưu Reader EPUB (ghosting reuse bitmap/`PixelCopy`, `LockScreenReadingStore` & `LockScreenNavReceiver` IO + `goAsync()`, chỉ inject JS khi đổi `href`, tránh parse JSON bookmark mỗi lần lật, thu hẹp recomposition `ReaderScreen`).
+
+### 18. P8 — Tối ưu Reader EPUB, ghosting & lock-screen — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Ghosting alloc bitmap & thiếu color filter:** `ReaderScreen.kt` tách `ReaderGhostAndFlashLayer`, tái sử dụng 2 buffer `Bitmap` luân phiên (tránh cấp phát mới mỗi lần lật trang), dùng `PixelCopy.request` trên API 26+ (fallback `Canvas.draw` trên API 24–25), và truyền `ghostColorFilter` vào `RefreshFlashOverlay` (`RefreshFlashOverlay.kt`).
+- **Lock-screen IO trên main thread:** `LockScreenReadingStore` chuyển `saveToDisk` / `clear` sang `Dispatchers.IO` qua `AtomicJsonFile` với `writeLock`; `LockScreenNavReceiver` dùng `goAsync()` và chạy toàn bộ cập nhật + lưu tiến độ trên `Dispatchers.IO`.
+- **Inject JS mỗi lần lật trang:** `ReaderScreen.kt` chỉ gọi `applyReaderStrokeStyle` trong `currentLocator.collect` khi `locator.href.toString()` thay đổi (vẫn giữ gọi khi đổi `epubPreferences`).
+- **Parse JSON mọi bookmark mỗi lần lật:** `ReaderViewModel.kt` thêm `parsedBookmarks` để parse `Locator` một lần khi danh sách `bookmarks` thay đổi, `isCurrentPageBookmarked` dùng `findMatchingBookmarkParsed` không parse lại mỗi lần lật.
+- **Recomposition toàn `ReaderScreen` khi lật trang:** bỏ `collectAsStateWithLifecycle()` cho `progress`, `flashTrigger`, `pageTurnTrigger`, `pagesSinceFlash` ở đầu `ReaderScreen`; tách `ReaderFooterBarContainer`, `ReaderGhostAndFlashLayer` và đọc `progress` cục bộ trong `ReaderBottomBar`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: bật ghosting lật trang EPUB (kiểm tra màu ghost khớp tone), chuyển chương kiểm tra stroke style, bấm prev/next trên notification màn khoá.
+
+**Còn để lại:** `ReaderScreen` vẫn nhận `bookmarks`/`highlights` dạng `List` ở cấp màn hình (chỉ thay đổi khi người dùng thêm/xoá bookmark hoặc highlight).
+
+**Bước tiếp theo:** mục 19 — P9: tối ưu Thư viện & Launcher (`CoverBitmapCache` theo KB, `remember` stats/gamification & resource ID, đồng hồ `repeatOnLifecycle(STARTED)`, bỏ `isLiveWallpaperActive()` trong composition, tránh `backfillMissingCovers` mở lại mọi sách mỗi lần khởi động, refresh app launcher khi cài/gỡ).
+
+### 19. P9 — Tối ưu Thư viện & Launcher — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **`CoverBitmapCache`:** đặt giới hạn `16 MB` theo `sizeOf` (tính theo `width * height * 2 / 1024` KB cho `RGB_565`) và siết `computeInSampleSize` (`width / (sample * 2) >= maxDim`) để thumbnail được downsample đúng mức.
+- **Tính lại stats/gamification & `LocaleHelper.wrap()` mỗi recomposition:** `ReadingGamification.str` dùng trực tiếp `context?.getString(resId)` (activity context đã wrap locale từ `attachBaseContext`); `ReadingStatsSheet.kt` và `LauncherActivity.kt` bọc `rankFor`, `badgesFor`, `recentDaysSeries`, `currentBook`, `completedCount`, `activeDaysCount`, `avgMinutes7d`, `pagesPerHour` trong `remember(...)`.
+- **Clock loop chạy nền ở Launcher:** `LauncherActivity.kt` chuyển vòng lặp đồng hồ/pin sang `lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED)` và căn `delay` tới đầu phút kế tiếp.
+- **Binder call `isLiveWallpaperActive()` trong composition:** `LibraryScreen.kt` lưu `wallpaperActive` trong `remember` và chỉ cập nhật lại ở `Lifecycle.Event.ON_RESUME`.
+- **`backfillMissingCovers` mở lại sách không bìa mỗi lần khởi động:** `LibraryRepository.kt` lưu danh sách `attempted_ids` vào `SharedPreferences("eink_cover_backfill")` để bỏ qua các sách đã thử tách bìa mà không có.
+- **Danh sách app Launcher:** bỏ `prewarmIcons` toàn bộ app; đăng ký `BroadcastReceiver` (`ACTION_PACKAGE_ADDED` / `REMOVED` / `CHANGED`) để tự làm mới danh sách và evict icon của app vừa đổi.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`). Kiểm tra tay trên thiết bị/emulator: gõ tìm kiếm trong thư viện (không giật), cài/gỡ app cập nhật drawer launcher, quay lại từ chọn wallpaper cập nhật banner.
+
+**Còn để lại:** chưa tách `ReadingGamification` sang trả `@StringRes` (để giữ nguyên signature cho unit test hiện có).
+
+**Bước tiếp theo:** mục 20 — P10: cache `Paint`/grain cho `EInkWallpaperService`, tối ưu sync nền (`GoogleDriveSyncManager` / `WorkManager` + chỉ upload file sách qua Wi-Fi).

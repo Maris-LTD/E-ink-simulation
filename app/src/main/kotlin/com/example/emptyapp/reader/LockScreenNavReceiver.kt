@@ -17,29 +17,34 @@ class LockScreenNavReceiver : BroadcastReceiver() {
         else -> return
       }
     val app = context.applicationContext as? EmptyApplication ?: return
-    val updated = app.container.lockScreenReading.stepSnippet(delta) ?: return
-    val updatedLoc = updated.locatorJson
-    if (updatedLoc != null) {
-      CoroutineScope(Dispatchers.IO).launch {
-        app.container.library.saveProgress(updated.bookId, updatedLoc, updated.progress)
+    val pendingResult = goAsync()
+    CoroutineScope(Dispatchers.IO).launch {
+      try {
+        val updated = app.container.lockScreenReading.stepSnippet(delta) ?: return@launch
+        val updatedLoc = updated.locatorJson
+        if (updatedLoc != null) {
+          app.container.library.saveProgress(updated.bookId, updatedLoc, updated.progress)
+        }
+        val coverPath =
+          app.container.library.books.value
+            .firstOrNull { it.id == updated.bookId }
+            ?.let { app.container.library.coverFileOf(it)?.absolutePath }
+        LockScreenReadingNotifier.show(
+          context = context.applicationContext,
+          bookId = updated.bookId,
+          title = updated.title,
+          progress = updated.progress,
+          author = updated.author,
+          coverPath = coverPath,
+          snippet = updated.currentSnippet,
+          snippetIndex = updated.currentSnippetIndex,
+          snippetCount = updated.snippets.size,
+          locatorJson = updated.locatorJson,
+        )
+      } finally {
+        pendingResult.finish()
       }
     }
-    val coverPath =
-      app.container.library.books.value
-        .firstOrNull { it.id == updated.bookId }
-        ?.let { app.container.library.coverFileOf(it)?.absolutePath }
-    LockScreenReadingNotifier.show(
-      context = context,
-      bookId = updated.bookId,
-      title = updated.title,
-      progress = updated.progress,
-      author = updated.author,
-      coverPath = coverPath,
-      snippet = updated.currentSnippet,
-      snippetIndex = updated.currentSnippetIndex,
-      snippetCount = updated.snippets.size,
-      locatorJson = updated.locatorJson,
-    )
   }
 
   companion object {

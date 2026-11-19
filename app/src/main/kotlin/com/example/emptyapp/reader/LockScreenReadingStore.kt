@@ -1,10 +1,15 @@
 package com.example.emptyapp.reader
 
 import android.content.Context
+import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -87,8 +92,11 @@ object LockScreenTextChunker {
 }
 
 class LockScreenReadingStore(context: Context) {
-  private val file = File(context.filesDir, "lockscreen_reading.json")
+  private val file = File(context.applicationContext.filesDir, "lockscreen_reading.json")
   private val json = Json { ignoreUnknownKeys = true }
+  private val store = AtomicJsonFile(file, LockScreenReadingState.serializer(), json)
+  private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private val writeLock = Any()
   private val _state = MutableStateFlow(loadFromDisk())
   val state: StateFlow<LockScreenReadingState?> = _state.asStateFlow()
 
@@ -132,7 +140,11 @@ class LockScreenReadingStore(context: Context) {
 
   fun clear() {
     _state.value = null
-    runCatching { if (file.exists()) file.delete() }
+    ioScope.launch {
+      synchronized(writeLock) {
+        runCatching { if (file.exists()) file.delete() }
+      }
+    }
   }
 
   private fun loadFromDisk(): LockScreenReadingState? =
@@ -142,9 +154,10 @@ class LockScreenReadingStore(context: Context) {
     }.getOrNull()
 
   private fun saveToDisk(value: LockScreenReadingState) {
-    runCatching {
-      file.parentFile?.mkdirs()
-      file.writeText(json.encodeToString(LockScreenReadingState.serializer(), value))
+    ioScope.launch {
+      synchronized(writeLock) {
+        runCatching { store.write(value) }
+      }
     }
   }
 }

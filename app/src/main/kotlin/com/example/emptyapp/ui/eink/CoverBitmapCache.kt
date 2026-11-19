@@ -8,7 +8,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 
 object CoverBitmapCache {
-  private val cache = LruCache<String, ImageBitmap>(64)
+  private const val CACHE_SIZE_KB = 16 * 1024
+  private val cache =
+    object : LruCache<String, ImageBitmap>(CACHE_SIZE_KB) {
+      override fun sizeOf(key: String, value: ImageBitmap): Int =
+        ((value.width.toLong() * value.height.toLong() * 2L) / 1024L)
+          .coerceIn(1L, Int.MAX_VALUE.toLong())
+          .toInt()
+    }
 
   fun get(path: String?): ImageBitmap? = path?.let { cache.get(it) }
 
@@ -37,7 +44,7 @@ object CoverBitmapCache {
   private fun computeInSampleSize(width: Int, height: Int, maxDim: Int): Int {
     if (width <= 0 || height <= 0) return 1
     var sample = 1
-    while (width / sample > maxDim * 2 || height / sample > maxDim * 2) {
+    while (width / (sample * 2) >= maxDim || height / (sample * 2) >= maxDim) {
       sample *= 2
     }
     return sample

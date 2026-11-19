@@ -143,16 +143,29 @@ fun ReadingStatsScreen(
   val todayMinutes = todaySeconds / 60
   val goalMinutes = stats.dailyGoalMinutes.coerceAtLeast(5)
   val progress = (todaySeconds.toFloat() / (goalMinutes * 60f)).coerceIn(0f, 1f)
-  val today = LocalDate.now()
-  val weekSeries = ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 7, today = today)
-  val heatmapDays = ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 84, today = today)
-  val activeDaysCount = stats.dailyStats.count { it.secondsRead > 0 }
-  val avgMinutes7d = (weekSeries.sumOf { it.secondsRead } / 60) / 7
+  val weekSeries =
+    remember(stats.dailyStats) {
+      ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 7, today = LocalDate.now())
+    }
+  val heatmapDays =
+    remember(stats.dailyStats) {
+      ReadingStatsRepository.recentDaysSeries(stats.dailyStats, days = 84, today = LocalDate.now())
+    }
+  val activeDaysCount = remember(stats.dailyStats) { stats.dailyStats.count { it.secondsRead > 0 } }
+  val avgMinutes7d = remember(weekSeries) { (weekSeries.sumOf { it.secondsRead } / 60) / 7 }
   val pagesPerHour =
-    if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
-    else 0
-  val rank = ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount, context)
-  val badges = ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
+    remember(stats.totalSeconds, stats.totalPagesTurned) {
+      if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
+      else 0
+    }
+  val rank =
+    remember(stats, completedBooksCount, highlightsCount) {
+      ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount, context)
+    }
+  val badges =
+    remember(stats, completedBooksCount, highlightsCount) {
+      ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
+    }
 
   var selectedTab by remember { mutableIntStateOf(0) }
   Column(

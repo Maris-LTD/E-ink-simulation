@@ -19,7 +19,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class LibraryRepository(context: Context, val engine: ReadiumEngine) {
-  private val appFilesDir = context.applicationContext.filesDir
+  private val appContext = context.applicationContext
+  private val appFilesDir = appContext.filesDir
   private val booksDir = File(appFilesDir, "books")
   private val coversDir = File(appFilesDir, "covers")
   private val store = BookIndexStore(File(appFilesDir, "library.json"))
@@ -58,8 +59,12 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
   }
 
   private suspend fun backfillMissingCovers() {
-    val missing = state.value.filter { it.coverFileName == null }
+    val prefs = appContext.getSharedPreferences("eink_cover_backfill", Context.MODE_PRIVATE)
+    val attempted = prefs.getStringSet("attempted_ids", emptySet()).orEmpty().toHashSet()
+    val missing = state.value.filter { it.coverFileName == null && it.id !in attempted }
+    if (missing.isEmpty()) return
     for (book in missing) {
+      attempted += book.id
       val bookFile = fileOf(book)
       if (!bookFile.exists()) continue
       val coverName = "${book.id}.jpg"
@@ -73,6 +78,7 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
         }
       }
     }
+    prefs.edit().putStringSet("attempted_ids", attempted).apply()
   }
 
   suspend fun saveProgress(id: String, locatorJson: String, progress: Float) {

@@ -1,7 +1,9 @@
 package com.example.emptyapp
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.ColorMatrix as AndroidColorMatrix
@@ -54,6 +56,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +66,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -186,12 +190,36 @@ private fun EInkHomePager(
   val pagerState = rememberPagerState(pageCount = { 2 })
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
-  val apps by
-    produceState(initialValue = LauncherAppCache.cachedAppsOrEmpty()) {
-      val loaded = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context) }
-      value = loaded
-      withContext(Dispatchers.IO) { LauncherAppCache.prewarmIcons(context, loaded) }
-    }
+  var apps by remember { mutableStateOf(LauncherAppCache.cachedAppsOrEmpty()) }
+  LaunchedEffect(context) {
+    apps = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context) }
+  }
+  DisposableEffect(context) {
+    val receiver =
+      object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+          val pkg = intent.data?.schemeSpecificPart
+          if (pkg != null) LauncherAppCache.evictIcon(pkg)
+          scope.launch {
+            apps = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context) }
+          }
+        }
+      }
+    val filter =
+      IntentFilter().apply {
+        addAction(Intent.ACTION_PACKAGE_ADDED)
+        addAction(Intent.ACTION_PACKAGE_REMOVED)
+        addAction(Intent.ACTION_PACKAGE_CHANGED)
+        addDataScheme("package")
+      }
+    androidx.core.content.ContextCompat.registerReceiver(
+      context,
+      receiver,
+      filter,
+      androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+    )
+    onDispose { runCatching { context.unregisterReceiver(receiver) } }
+  }
 
   var pinnedPackages by remember {
     mutableStateOf(prefs.getStringSet("pinned_packages", null))
@@ -292,24 +320,33 @@ private fun MinimalistHomePage(
   val context = LocalContext.current
   var now by remember { mutableStateOf(LocalDateTime.now()) }
   var batteryPct by remember { mutableStateOf(readBatteryPercent(context)) }
-  LaunchedEffect(Unit) {
-    while (true) {
-      now = LocalDateTime.now()
-      batteryPct = readBatteryPercent(context)
-      delay(15_000L)
+  val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+  LaunchedEffect(lifecycleOwner) {
+    lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+      while (true) {
+        val current = LocalDateTime.now()
+        now = current
+        batteryPct = readBatteryPercent(context)
+        val msUntilNextMinute =
+          ((60 - current.second) * 1000L - current.nano / 1_000_000L).coerceIn(1_000L, 60_000L)
+        delay(msUntilNextMinute)
+      }
     }
   }
 
   val timeText = remember(now) { now.format(LAUNCHER_TIME_FORMATTER) }
-  val langCode = LocaleHelper.effectiveLanguageCode(context)
+  val langCode = remember(context) { LocaleHelper.effectiveLanguageCode(context) }
   val dateText =
     remember(now, langCode) {
       val dateLocale = if (langCode == "en") Locale.ENGLISH else Locale("vi", "VN")
       now.format(DateTimeFormatter.ofPattern("EEEE, dd/MM", dateLocale))
     }
-  val currentBook = books.mostRecentlyReadBook()
-  val completedCount = books.count { it.progress >= 0.99f }
-  val rank = ReadingGamification.rankFor(stats, completedCount, highlightsCount, LocalContext.current)
+  val currentBook = remember(books) { books.mostRecentlyReadBook() }
+  val completedCount = remember(books) { books.count { it.progress >= 0.99f } }
+  val rank =
+    remember(stats, completedCount, highlightsCount) {
+      ReadingGamification.rankFor(stats, completedCount, highlightsCount, context)
+    }
   val todayMin = stats.todaySeconds() / 60
   val goalMin = stats.dailyGoalMinutes.coerceAtLeast(5)
   val goalProgress = (stats.todaySeconds().toFloat() / (goalMin * 60f)).coerceIn(0f, 1f)
@@ -826,18 +863,14 @@ private object LauncherAppCache {
 
   fun getIcon(packageName: String): ImageBitmap? = iconCache.get(packageName)
 
+  fun evictIcon(packageName: String) {
+    iconCache.remove(packageName)
+  }
+
   fun loadApps(context: Context): List<LaunchableApp> {
     val queried = queryLaunchableApps(context)
     cachedApps = queried
     return queried
-  }
-
-  fun prewarmIcons(context: Context, apps: List<LaunchableApp>) {
-    for (app in apps) {
-      if (iconCache.get(app.packageName) == null) {
-        loadIcon(context, app.packageName)
-      }
-    }
   }
 
   fun loadIcon(context: Context, packageName: String): ImageBitmap? {

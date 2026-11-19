@@ -131,14 +131,19 @@ class ReaderViewModel(
       .map { list -> list.filter { it.bookId == bookId } }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+  private val parsedBookmarks: StateFlow<List<Pair<BookmarkEntry, Locator?>>> =
+    bookmarks
+      .map { list -> list.map { it to parseLocator(it.locatorJson) } }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
   val highlights: StateFlow<List<HighlightEntry>> =
     annotations.highlights
       .map { list -> list.filter { it.bookId == bookId } }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
   val isCurrentPageBookmarked: StateFlow<Boolean> =
-    combine(bookmarks, currentLocatorFlow) { list, loc ->
-      findMatchingBookmark(list, loc) != null
+    combine(parsedBookmarks, currentLocatorFlow) { list, loc ->
+      findMatchingBookmarkParsed(list, loc) != null
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
   init {
@@ -288,12 +293,22 @@ class ReaderViewModel(
   }
 
   private fun findMatchingBookmark(list: List<BookmarkEntry>, locator: Locator?): BookmarkEntry? {
+    val cached = parsedBookmarks.value
+    if (cached.size == list.size) {
+      return findMatchingBookmarkParsed(cached, locator)
+    }
+    return findMatchingBookmarkParsed(list.map { it to parseLocator(it.locatorJson) }, locator)
+  }
+
+  private fun findMatchingBookmarkParsed(
+    list: List<Pair<BookmarkEntry, Locator?>>,
+    locator: Locator?,
+  ): BookmarkEntry? {
     if (locator == null) return null
     val locPos = locator.locations.position
     val locProg = locator.locations.progression
     val locTotal = (locator.locations.totalProgression ?: 0.0).toFloat()
-    return list.firstOrNull { entry ->
-      val parsed = parseLocator(entry.locatorJson)
+    return list.firstOrNull { (entry, parsed) ->
       if (parsed != null) {
         val sameHref = parsed.href == locator.href
         val entryPos = parsed.locations.position
@@ -306,7 +321,7 @@ class ReaderViewModel(
       } else {
         abs(entry.progress - locTotal) < 0.002f
       }
-    }
+    }?.first
   }
 
   fun removeBookmark(id: String) {

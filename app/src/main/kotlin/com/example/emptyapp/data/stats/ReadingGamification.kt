@@ -1,7 +1,6 @@
 package com.example.emptyapp.data.stats
 
 import android.content.Context
-import com.example.emptyapp.LocaleHelper
 import com.example.emptyapp.R
 
 data class ReaderRankInfo(
@@ -40,7 +39,7 @@ object ReadingGamification {
     )
 
   private fun str(context: Context?, resId: Int, fallback: String): String =
-    context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
+    context?.getString(resId) ?: fallback
 
   fun computeXp(
     stats: ReadingStatsData,

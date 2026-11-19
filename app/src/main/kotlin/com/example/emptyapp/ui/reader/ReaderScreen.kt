@@ -1,9 +1,17 @@
 package com.example.emptyapp.ui.reader
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -57,9 +67,13 @@ import com.example.emptyapp.ui.eink.PaperGrainOverlay
 import com.example.emptyapp.ui.eink.RefreshFlashOverlay
 import java.io.File
 import java.util.Locale
+import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.NavigatorFragment
@@ -95,10 +109,6 @@ fun ReaderScreen(
 ) {
   val settings by viewModel.settings.collectAsStateWithLifecycle()
   val pdfConfig by viewModel.pdfConfig.collectAsStateWithLifecycle()
-  val progress by viewModel.progress.collectAsStateWithLifecycle()
-  val flashTrigger by viewModel.flashTrigger.collectAsStateWithLifecycle()
-  val pageTurnTrigger by viewModel.pageTurnTrigger.collectAsStateWithLifecycle()
-  val pagesSinceFlash by viewModel.pagesSinceFlash.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val isBookmarked by viewModel.isCurrentPageBookmarked.collectAsStateWithLifecycle()
@@ -113,8 +123,6 @@ fun ReaderScreen(
   var searchOpen by remember { mutableStateOf(false) }
   var bottomBarHeightPx by remember { mutableStateOf(0) }
   var navigator by remember { mutableStateOf<NavigatorFragment?>(null) }
-  var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
-  var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
   var brightnessHudVisible by remember { mutableStateOf(false) }
   var edgeStripHeightPx by remember { mutableFloatStateOf(1f) }
   val latestBrightness by rememberUpdatedState(settings.brightness)
@@ -167,10 +175,15 @@ fun ReaderScreen(
       }
     }
     LaunchedEffect(nav) {
+      var lastStyledHref: String? = null
       nav.currentLocator.collect { locator ->
         viewModel.onLocatorChanged(locator)
         if (nav is EpubNavigatorFragment) {
-          applyReaderStrokeStyle(nav, viewModel.settings.value)
+          val hrefStr = locator.href.toString()
+          if (hrefStr != lastStyledHref) {
+            lastStyledHref = hrefStr
+            applyReaderStrokeStyle(nav, viewModel.settings.value)
+          }
         }
       }
     }
@@ -186,16 +199,7 @@ fun ReaderScreen(
         nav.applyDecorations(decorations, "highlights")
       }
     }
-    LaunchedEffect(nav, pageTurnTrigger, flashTrigger, settings.ghosting) {
-      activeGhost = if (settings.ghosting && pagesSinceFlash > 0) latestSnapshot else null
-      val view = nav.awaitView()
-      delay(220L)
-      if (settings.ghosting) latestSnapshot = captureGhostSnapshot(view)
-    }
   }
-
-  val ghostAlpha =
-    if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
 
   val effectivePdfMode = pdfConfig.mode ?: PdfReadingMode.SMART_ORIGINAL
 
@@ -228,16 +232,19 @@ fun ReaderScreen(
           onUpdate = { fragment -> if (navigator == null) navigator = fragment },
         )
     }
-    RefreshFlashOverlay(
-      ghostBitmap = activeGhost,
-      ghostAlpha = ghostAlpha,
-      flashTrigger = flashTrigger,
+    ReaderGhostAndFlashLayer(
+      navigator = navigator,
+      bookFormat = bookFormat,
+      settings = settings,
+      flashTriggerFlow = viewModel.flashTrigger,
+      pageTurnTriggerFlow = viewModel.pageTurnTrigger,
+      pagesSinceFlashFlow = viewModel.pagesSinceFlash,
     )
     if (settings.paperGrain) PaperGrainOverlay()
     if (!chromeVisible && settings.readerFooter && !settings.focusMode) {
-      ReaderFooterBar(
+      ReaderFooterBarContainer(
         title = title,
-        progress = progress,
+        progressFlow = viewModel.progress,
         inkColor = Color(settings.tone.text),
         modifier = Modifier.align(Alignment.BottomCenter),
       )
@@ -319,8 +326,9 @@ fun ReaderScreen(
         },
         modifier = Modifier.align(Alignment.TopCenter),
       )
+      val bottomBarProgress by viewModel.progress.collectAsStateWithLifecycle()
       ReaderBottomBar(
-        progress = progress,
+        progress = bottomBarProgress,
         seekEnabled = positions.isNotEmpty(),
         tone = settings.tone,
         brightness = settings.brightness,
@@ -578,18 +586,132 @@ private suspend fun applyReaderStrokeStyle(nav: EpubNavigatorFragment, settings:
   nav.evaluateJavascript(js)
 }
 
-private fun captureGhostSnapshot(view: View): ImageBitmap? {
+@Composable
+private fun ReaderFooterBarContainer(
+  title: String,
+  progressFlow: StateFlow<Float>,
+  inkColor: Color,
+  modifier: Modifier = Modifier,
+) {
+  val progress by progressFlow.collectAsStateWithLifecycle()
+  ReaderFooterBar(
+    title = title,
+    progress = progress,
+    inkColor = inkColor,
+    modifier = modifier,
+  )
+}
+
+@Composable
+private fun ReaderGhostAndFlashLayer(
+  navigator: NavigatorFragment?,
+  bookFormat: BookFormat,
+  settings: EInkSettings,
+  flashTriggerFlow: StateFlow<Int>,
+  pageTurnTriggerFlow: StateFlow<Int>,
+  pagesSinceFlashFlow: StateFlow<Int>,
+) {
+  val flashTrigger by flashTriggerFlow.collectAsStateWithLifecycle()
+  val pagesSinceFlash by pagesSinceFlashFlow.collectAsStateWithLifecycle()
+  var latestSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+  var activeGhost by remember { mutableStateOf<ImageBitmap?>(null) }
+  val bufferA = remember { arrayOfNulls<Bitmap>(1) }
+  val bufferB = remember { arrayOfNulls<Bitmap>(1) }
+  var useBufferA by remember { mutableStateOf(true) }
+
+  LaunchedEffect(navigator, settings.ghosting) {
+    val nav = navigator ?: return@LaunchedEffect
+    if (!settings.ghosting) {
+      activeGhost = null
+      latestSnapshot = null
+      return@LaunchedEffect
+    }
+    val view = nav.awaitView()
+    merge(pageTurnTriggerFlow, flashTriggerFlow).collect {
+      activeGhost = if (pagesSinceFlashFlow.value > 0) latestSnapshot else null
+      delay(220L)
+      val slot = if (useBufferA) bufferA else bufferB
+      useBufferA = !useBufferA
+      val captured = captureGhostSnapshot(view, slot)
+      if (captured != null) {
+        latestSnapshot = captured
+      }
+    }
+  }
+
+  val ghostAlpha =
+    if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
+  val ghostColorFilter =
+    remember(settings.grayscale, settings.contrast, settings.tone, bookFormat) {
+      ColorFilter.colorMatrix(
+        ColorMatrix(
+          EInkColorFilter.matrixOf(settings, contentAlreadyDark = bookFormat == BookFormat.EPUB).array,
+        ),
+      )
+    }
+
+  RefreshFlashOverlay(
+    ghostBitmap = activeGhost,
+    ghostAlpha = ghostAlpha,
+    flashTrigger = flashTrigger,
+    ghostColorFilter = ghostColorFilter,
+  )
+}
+
+private suspend fun captureGhostSnapshot(
+  view: View,
+  reusableSlot: Array<Bitmap?>,
+): ImageBitmap? {
   if (view.width <= 0 || view.height <= 0) return null
   val scaledWidth = (view.width / 4).coerceAtLeast(1)
   val scaledHeight = (view.height / 4).coerceAtLeast(1)
+  val existing = reusableSlot[0]
+  val bitmap =
+    if (existing != null && !existing.isRecycled && existing.width == scaledWidth && existing.height == scaledHeight) {
+      existing
+    } else {
+      existing?.recycle()
+      Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888).also { reusableSlot[0] = it }
+    }
+
+  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    val window = view.context.findActivity()?.window
+    if (window != null && view.isAttachedToWindow) {
+      val location = IntArray(2)
+      view.getLocationInWindow(location)
+      val srcRect = Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
+      if (!srcRect.isEmpty) {
+        val copied =
+          suspendCancellableCoroutine { cont ->
+            runCatching {
+              PixelCopy.request(
+                window,
+                srcRect,
+                bitmap,
+                { result -> cont.resume(result == PixelCopy.SUCCESS) },
+                Handler(Looper.getMainLooper()),
+              )
+            }.onFailure { cont.resume(false) }
+          }
+        if (copied) return bitmap.asImageBitmap()
+      }
+    }
+  }
+
   return runCatching {
-    val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     canvas.scale(0.25f, 0.25f)
     view.draw(canvas)
     bitmap.asImageBitmap()
   }.getOrNull()
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+  when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+  }
 
 private fun resolvePdfPageIndex(locator: Locator?, positions: List<Locator>): Int {
   locator?.locations?.position?.let { pos -> if (pos >= 1) return pos - 1 }
