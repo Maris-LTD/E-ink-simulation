@@ -20,12 +20,13 @@ import kotlinx.coroutines.launch
 class AppContainer(context: Context) {
   private val appContext = context.applicationContext
   val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-  val engine: ReadiumEngine by lazy { ReadiumEngine(appContext) }
-  val library: LibraryRepository by lazy { LibraryRepository(appContext, engine) }
+  private val engineLazy: Lazy<ReadiumEngine> = lazy { ReadiumEngine(appContext) }
+  val engine: ReadiumEngine by engineLazy
+  val library: LibraryRepository by lazy { LibraryRepository(appContext, engineLazy) }
   val settings: EInkSettingsStore by lazy { EInkSettingsStore(appContext) }
   val pdfBookConfigs: PdfBookConfigStore by lazy { PdfBookConfigStore(appContext) }
   val syncTombstones: SyncTombstoneStore by lazy {
-    SyncTombstoneStore(File(appContext.filesDir, "sync_tombstones.json"))
+    SyncTombstoneStore(File(appContext.filesDir, "sync_tombstones.json"), preloadInBackground = true)
   }
   val annotations: AnnotationRepository by lazy { AnnotationRepository(appContext, syncTombstones) }
   val dictionary: DictionaryService by lazy { DictionaryService(appContext) }
@@ -38,7 +39,11 @@ class AppContainer(context: Context) {
   fun warmUpForUiAsync() {
     appScope.launch(Dispatchers.IO) { settings }
     appScope.launch(Dispatchers.IO) { library }
+    appScope.launch(Dispatchers.IO) { pdfBookConfigs }
+    appScope.launch(Dispatchers.IO) { syncTombstones }
     appScope.launch(Dispatchers.IO) { annotations }
     appScope.launch(Dispatchers.IO) { stats }
+    appScope.launch(Dispatchers.IO) { lockScreenReading }
+    appScope.launch(Dispatchers.IO) { sync }
   }
 }

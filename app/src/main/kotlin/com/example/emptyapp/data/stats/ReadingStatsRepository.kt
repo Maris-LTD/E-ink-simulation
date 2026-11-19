@@ -5,10 +5,14 @@ import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -35,21 +39,70 @@ data class ReadingStatsData(
     dailyStats.firstOrNull { it.date == today }?.secondsRead ?: 0
 }
 
-class ReadingStatsRepository(
+class ReadingStatsRepository internal constructor(
   private val statsFile: File,
   private val todayProvider: () -> LocalDate = { LocalDate.now() },
   private val nowProvider: () -> Long = { System.currentTimeMillis() },
+  preloadInBackground: Boolean,
+  private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-  constructor(context: Context) : this(File(context.filesDir, "reading_stats.json"))
+  constructor(
+    statsFile: File,
+    todayProvider: () -> LocalDate = { LocalDate.now() },
+    nowProvider: () -> Long = { System.currentTimeMillis() },
+  ) : this(
+    statsFile = statsFile,
+    todayProvider = todayProvider,
+    nowProvider = nowProvider,
+    preloadInBackground = false,
+    ioDispatcher = Dispatchers.IO,
+  )
+
+  constructor(context: Context) : this(
+    statsFile = File(context.applicationContext.filesDir, "reading_stats.json"),
+    todayProvider = { LocalDate.now() },
+    nowProvider = { System.currentTimeMillis() },
+    preloadInBackground = true,
+    ioDispatcher = Dispatchers.IO,
+  )
 
   private val store = AtomicJsonFile(statsFile, ReadingStatsData.serializer())
   private val mutex = Mutex()
+  private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
   @Volatile private var dirty = false
+  @Volatile private var isLoaded = !preloadInBackground
+  private val mutableLoaded = MutableStateFlow(!preloadInBackground)
   private val mutableLastWriteError = MutableStateFlow(false)
-  private val state = MutableStateFlow(recompute(readInitial()))
+  private val state =
+    MutableStateFlow(if (preloadInBackground) ReadingStatsData() else recompute(readInitial()))
 
   val stats: StateFlow<ReadingStatsData> = state.asStateFlow()
+  val loaded: StateFlow<Boolean> = mutableLoaded.asStateFlow()
   val lastWriteError: StateFlow<Boolean> = mutableLastWriteError.asStateFlow()
+
+  init {
+    if (preloadInBackground) {
+      backgroundScope.launch {
+        awaitLoaded()
+      }
+    }
+  }
+
+  suspend fun awaitLoaded() {
+    if (isLoaded) return
+    withContext(ioDispatcher) {
+      mutex.withLock {
+        ensureLoadedLocked()
+      }
+    }
+  }
+
+  private fun ensureLoadedLocked() {
+    if (isLoaded) return
+    state.value = recompute(readInitial())
+    isLoaded = true
+    mutableLoaded.value = true
+  }
 
   suspend fun recordReading(deltaSeconds: Int, deltaPages: Int = 0) {
     if (deltaSeconds <= 0 && deltaPages <= 0 && !dirty) return
@@ -58,6 +111,9 @@ class ReadingStatsRepository(
     val today = todayProvider()
     val todayKey = today.toString()
     mutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
       if (safeSeconds == 0 && safePages == 0) {
         persistLocked(state.value)
         return
@@ -93,6 +149,9 @@ class ReadingStatsRepository(
     val today = todayProvider()
     val updatedAt = nowProvider()
     mutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
       val next =
         recompute(
           state.value.copy(dailyGoalMinutes = clamped, dailyGoalUpdatedAt = updatedAt),
@@ -105,6 +164,9 @@ class ReadingStatsRepository(
   suspend fun mergeFromRemote(remote: ReadingStatsData) {
     val today = todayProvider()
     mutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
       val local = state.value
       val byDate = LinkedHashMap<String, DailyReadingStat>()
       for (item in local.dailyStats) byDate[item.date] = item
@@ -179,7 +241,7 @@ class ReadingStatsRepository(
   private fun readInitial(): ReadingStatsData = store.read(ReadingStatsData())
 
   private suspend fun write(data: ReadingStatsData) {
-    withContext(Dispatchers.IO) { store.write(data) }
+    withContext(ioDispatcher) { store.write(data) }
   }
 
   companion object {

@@ -22,6 +22,7 @@ import com.example.emptyapp.reader.pdf.PdfBookConfigStore
 import com.example.emptyapp.reader.pdf.PdfDocumentClassifier
 import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -88,6 +89,7 @@ class ReaderViewModel(
   private val overrideLocatorCreatedAt: Long = 0L,
   private val context: Context? = null,
   private val elapsedRealtimeMs: () -> Long = { SystemClock.elapsedRealtime() },
+  private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
   private fun str(resId: Int, fallback: String): String =
     context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
@@ -524,20 +526,36 @@ class ReaderViewModel(
   }
 
   private suspend fun load() {
-    val book = repository.find(bookId)
-    if (book == null) {
+    val openOutcome =
+      withContext(ioDispatcher) {
+        repository.awaitLoaded()
+        pdfBookConfigs?.awaitLoaded()
+        annotations.awaitLoaded()
+        statsRepository.awaitLoaded()
+        val book = repository.find(bookId) ?: return@withContext null
+        val file = repository.fileOf(book)
+        if (!file.exists()) return@withContext Triple(book, file, null)
+        val openResult =
+          try {
+            repository.engine.open(file)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (t: Throwable) {
+            Result.failure(t)
+          }
+        Triple(book, file, openResult)
+      }
+    if (openOutcome == null) {
       mutableState.value = ReaderUiState.Error(str(R.string.reader_book_not_found, "Không tìm thấy sách"))
       return
     }
+    val (book, file, openResult) = openOutcome
     currentBookTitle = book.title
-    val file = repository.fileOf(book)
-    if (!file.exists()) {
+    if (openResult == null) {
       mutableState.value = ReaderUiState.Error(str(R.string.reader_book_not_found, "Không tìm thấy sách"))
       return
     }
-    repository
-      .engine
-      .open(file)
+    openResult
       .onSuccess { pub ->
         publication = pub
         bookmarkMatchModeFlow.value =
@@ -572,7 +590,7 @@ class ReaderViewModel(
     if (store.get(bookId)?.category != null) return
     viewModelScope.launch {
       val result =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
           val cache =
             context?.let {
               com.example.emptyapp.reader.pdf.PdfDocumentCache(File(it.filesDir, "pdf_cache"))
@@ -615,7 +633,7 @@ class ReaderViewModel(
     val modeToPersist = pdfBookConfigs?.get(bookId)?.mode
     val progressToPersist = pendingProgress
     if (modeToPersist != null || progressToPersist != null) {
-      kotlinx.coroutines.CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+      kotlinx.coroutines.CoroutineScope(ioDispatcher + NonCancellable).launch {
         progressToPersist?.let { (locator, total) ->
           repository.saveProgress(bookId, locator.toJSON().toString(), total)
         }

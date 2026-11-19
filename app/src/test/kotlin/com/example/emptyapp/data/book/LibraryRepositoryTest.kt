@@ -1,15 +1,19 @@
 package com.example.emptyapp.data.book
 
+import com.example.emptyapp.reader.ReadiumEngine
 import com.example.emptyapp.reader.pdf.PdfReadingMode
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -366,5 +370,105 @@ class LibraryRepositoryTest {
     assertEquals("""{"href":"ch5"}""", afterSync.lastLocatorJson)
     assertEquals(0.5f, afterSync.progress, 1e-6f)
     assertEquals(localNow, afterSync.updatedAt)
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun lazyEngineNotInitializedOnPreloadAwaitOrMetadataMutation() = runTest {
+    val existing =
+      BookEntry(
+        id = "book-lazy",
+        title = "Lazy Book",
+        author = "Author",
+        fileName = "book-lazy.pdf",
+        format = BookFormat.PDF,
+        contentHash = "hash-lazy",
+        progress = 0.2f,
+      )
+    BookIndexStore(File(dir, "library.json")).write(listOf(existing))
+
+    var engineInitCount = 0
+    val engineLazy: Lazy<ReadiumEngine> = lazy {
+      engineInitCount += 1
+      error("ReadiumEngine must not be constructed until opening a book")
+    }
+    val ioDispatcher = StandardTestDispatcher(testScheduler)
+    val repo =
+      LibraryRepository(
+        appFilesDir = dir,
+        engineLazy = engineLazy,
+        autoBackfill = false,
+        preloadInBackground = true,
+        ioDispatcher = ioDispatcher,
+      )
+
+    assertFalse(engineLazy.isInitialized())
+    assertEquals(0, engineInitCount)
+    assertFalse(repo.loaded.value)
+    assertTrue(repo.books.value.isEmpty())
+    assertNull(repo.find("book-lazy"))
+
+    repo.awaitLoaded()
+
+    assertTrue(repo.loaded.value)
+    assertNotNull(repo.find("book-lazy"))
+    assertFalse(engineLazy.isInitialized())
+    assertEquals(0, engineInitCount)
+
+    repo.saveProgress("book-lazy", """{"href":"p2"}""", 0.5f)
+    repo.savePdfReadingMode("book-lazy", PdfReadingMode.HYBRID_REFLOW)
+    assertFalse(engineLazy.isInitialized())
+    assertEquals(0, engineInitCount)
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun commitBeforePreloadCompletesLoadsExistingBooksAndPreservesThem() = runTest {
+    val bookA =
+      BookEntry(
+        id = "book-a",
+        title = "Book A",
+        author = "Author A",
+        fileName = "book-a.epub",
+        format = BookFormat.EPUB,
+        contentHash = "hash-a",
+        progress = 0.1f,
+      )
+    val bookB =
+      BookEntry(
+        id = "book-b",
+        title = "Book B",
+        author = "Author B",
+        fileName = "book-b.epub",
+        format = BookFormat.EPUB,
+        contentHash = "hash-b",
+        progress = 0.4f,
+      )
+    BookIndexStore(File(dir, "library.json")).write(listOf(bookA, bookB))
+
+    val ioDispatcher = StandardTestDispatcher(testScheduler)
+    val repo =
+      LibraryRepository(
+        appFilesDir = dir,
+        engineLazy = lazy { error("Not used") },
+        autoBackfill = false,
+        preloadInBackground = true,
+        ioDispatcher = ioDispatcher,
+      )
+
+    assertFalse(repo.loaded.value)
+
+    // Mutate before background preload has executed on ioDispatcher
+    repo.saveProgress("book-a", """{"href":"ch3"}""", 0.75f)
+
+    assertTrue(repo.loaded.value)
+    assertEquals(2, repo.books.value.size)
+    assertEquals(0.75f, repo.find("book-a")?.progress ?: 0f, 1e-6f)
+    assertEquals(0.4f, repo.find("book-b")?.progress ?: 0f, 1e-6f)
+
+    val persisted = BookIndexStore(File(dir, "library.json")).read()
+    assertEquals(2, persisted.size)
+    assertEquals(0.75f, persisted.first { it.id == "book-a" }.progress, 1e-6f)
+    assertEquals(0.4f, persisted.first { it.id == "book-b" }.progress, 1e-6f)
   }
 }

@@ -138,6 +138,7 @@ fun LibraryScreen(
   }
 
   val books by viewModel.books.collectAsStateWithLifecycle()
+  val booksLoaded by viewModel.booksLoaded.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
@@ -201,8 +202,8 @@ fun LibraryScreen(
       }
     }
   val authors = remember(tabBooks) { tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct() }
-  LaunchedEffect(authors) {
-    if (selectedAuthor != null && selectedAuthor !in authors) {
+  LaunchedEffect(booksLoaded, authors) {
+    if (booksLoaded && selectedAuthor != null && selectedAuthor !in authors) {
       selectedAuthor = null
     }
   }
@@ -358,6 +359,8 @@ fun LibraryScreen(
               }
             },
           )
+        } else if (!booksLoaded) {
+          Box(modifier = Modifier.fillMaxSize())
         } else if (filteredBooks.isEmpty()) {
           EmptyLibrary(
             hasAnyBooks = books.isNotEmpty(),

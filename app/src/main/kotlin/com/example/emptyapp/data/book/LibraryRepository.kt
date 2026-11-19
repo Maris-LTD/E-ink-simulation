@@ -8,6 +8,7 @@ import com.example.emptyapp.reader.pdf.PdfReadingMode
 import java.io.File
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,21 +30,49 @@ class LibraryRepository internal constructor(
   private val readAttemptedCoverIds: () -> Set<String>,
   private val persistAttemptedCoverIds: (Set<String>) -> Unit,
   autoBackfill: Boolean = true,
+  preloadInBackground: Boolean = false,
+  private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-  constructor(context: Context, engine: ReadiumEngine) : this(
+  internal constructor(
+    appFilesDir: File,
+    engineLazy: Lazy<ReadiumEngine>,
+    importFromUri: suspend (Uri, Set<String>) -> Result<BookEntry> = { _, _ ->
+      Result.failure(UnsupportedOperationException())
+    },
+    verifyAndExtractSyncedCover: suspend (File, BookFormat, File) -> Boolean = { _, _, _ -> false },
+    extractBackfillCover: suspend (BookEntry, File, File) -> Boolean = { _, _, _ -> false },
+    readAttemptedCoverIds: () -> Set<String> = { emptySet() },
+    persistAttemptedCoverIds: (Set<String>) -> Unit = {},
+    autoBackfill: Boolean = true,
+    preloadInBackground: Boolean = false,
+    ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+  ) : this(
+    appFilesDir = appFilesDir,
+    engineProvider = { engineLazy.value },
+    importFromUri = importFromUri,
+    verifyAndExtractSyncedCover = verifyAndExtractSyncedCover,
+    extractBackfillCover = extractBackfillCover,
+    readAttemptedCoverIds = readAttemptedCoverIds,
+    persistAttemptedCoverIds = persistAttemptedCoverIds,
+    autoBackfill = autoBackfill,
+    preloadInBackground = preloadInBackground,
+    ioDispatcher = ioDispatcher,
+  )
+
+  constructor(context: Context, engineLazy: Lazy<ReadiumEngine>) : this(
     appFilesDir = context.applicationContext.filesDir,
-    engineProvider = { engine },
+    engineProvider = { engineLazy.value },
     importFromUri = { uri, existingHashes ->
       val appCtx = context.applicationContext
       BookImporter(
         appCtx,
-        engine,
+        engineLazy.value,
         File(appCtx.filesDir, "books"),
         File(appCtx.filesDir, "covers"),
       ).import(uri, existingHashes)
     },
     verifyAndExtractSyncedCover = { bookFile, format, coverFile ->
-      val pub = if (format == BookFormat.PDF) null else engine.open(bookFile).getOrThrow()
+      val pub = if (format == BookFormat.PDF) null else engineLazy.value.open(bookFile).getOrThrow()
       try {
         try {
           CoverExtractor.extract(bookFile, format, pub, coverFile)
@@ -63,7 +92,7 @@ class LibraryRepository internal constructor(
     extractBackfillCover = { book, bookFile, coverFile ->
       var pub: Publication? = null
       try {
-        pub = if (book.format == BookFormat.PDF) null else engine.open(bookFile).getOrNull()
+        pub = if (book.format == BookFormat.PDF) null else engineLazy.value.open(bookFile).getOrNull()
         CoverExtractor.extract(bookFile, book.format, pub, coverFile)
       } finally {
         try {
@@ -89,7 +118,10 @@ class LibraryRepository internal constructor(
           .commit()
     },
     autoBackfill = true,
+    preloadInBackground = true,
   )
+
+  constructor(context: Context, engine: ReadiumEngine) : this(context, lazyOf(engine))
 
   val engine: ReadiumEngine
     get() = engineProvider()
@@ -97,20 +129,46 @@ class LibraryRepository internal constructor(
   private val booksDir = File(appFilesDir, "books")
   private val coversDir = File(appFilesDir, "covers")
   private val store = BookIndexStore(File(appFilesDir, "library.json"))
-  private val state = MutableStateFlow(store.read())
-  private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private val state = MutableStateFlow(if (preloadInBackground) emptyList() else store.read())
+  private val mutableLoaded = MutableStateFlow(!preloadInBackground)
+  @Volatile private var isLoaded = !preloadInBackground
+  private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
   private val writeMutex = Mutex()
   private val importMutex = Mutex()
   @Volatile private var dirty = false
   private val mutableLastWriteError = MutableStateFlow(false)
 
   val books: StateFlow<List<BookEntry>> = state.asStateFlow()
+  val loaded: StateFlow<Boolean> = mutableLoaded.asStateFlow()
   val lastWriteError: StateFlow<Boolean> = mutableLastWriteError.asStateFlow()
 
   init {
-    if (autoBackfill) {
+    if (preloadInBackground) {
+      backgroundScope.launch {
+        awaitLoaded()
+        if (autoBackfill) {
+          backfillMissingCovers()
+        }
+      }
+    } else if (autoBackfill) {
       backgroundScope.launch { backfillMissingCovers() }
     }
+  }
+
+  suspend fun awaitLoaded() {
+    if (isLoaded) return
+    withContext(ioDispatcher) {
+      writeMutex.withLock {
+        ensureLoadedLocked()
+      }
+    }
+  }
+
+  private fun ensureLoadedLocked() {
+    if (isLoaded) return
+    state.value = store.read()
+    isLoaded = true
+    mutableLoaded.value = true
   }
 
   fun find(id: String): BookEntry? = state.value.firstOrNull { it.id == id }
@@ -126,14 +184,16 @@ class LibraryRepository internal constructor(
     performImport: suspend (Set<String>) -> Result<BookEntry>,
   ): Result<BookEntry> =
     importMutex.withLock {
+      awaitLoaded()
       ensureContentHashes()
       val existingHashes = state.value.mapNotNull { it.contentHash?.lowercase() }.toSet()
       performImport(existingHashes).onSuccess { entry -> commit { it + entry } }
     }
 
   suspend fun remove(id: String) {
+    awaitLoaded()
     val book = find(id) ?: return
-    withContext(Dispatchers.IO) {
+    withContext(ioDispatcher) {
       val bookFile = fileOf(book)
       com.example.emptyapp.reader.pdf.PdfDocumentCache(File(appFilesDir, "pdf_cache")).delete(bookFile)
       bookFile.delete()
@@ -143,6 +203,7 @@ class LibraryRepository internal constructor(
   }
 
   internal suspend fun backfillMissingCovers() {
+    awaitLoaded()
     val attempted = readAttemptedCoverIds().toHashSet()
     val missing = state.value.filter { it.coverFileName == null && it.id !in attempted }
     if (missing.isEmpty()) return
@@ -169,6 +230,7 @@ class LibraryRepository internal constructor(
   }
 
   suspend fun saveProgress(id: String, locatorJson: String, progress: Float) {
+    awaitLoaded()
     val clamped = progress.coerceIn(0f, 1f)
     val current = find(id)
     if (current != null &&
@@ -195,6 +257,7 @@ class LibraryRepository internal constructor(
   }
 
   suspend fun savePdfReadingMode(id: String, mode: PdfReadingMode) {
+    awaitLoaded()
     val current = find(id)
     if (current != null && current.pdfReadingMode == mode && !dirty) {
       return
@@ -207,13 +270,14 @@ class LibraryRepository internal constructor(
   }
 
   suspend fun ensureContentHashes() {
+    awaitLoaded()
     val missing = state.value.filter { it.contentHash == null }
     if (missing.isEmpty()) {
       if (dirty) commit { it }
       return
     }
     val computed =
-      withContext(Dispatchers.IO) {
+      withContext(ioDispatcher) {
         missing.mapNotNull { book ->
           BookImporter.sha256Hex(fileOf(book))?.let { hash -> book.id to hash }
         }.toMap()
@@ -271,7 +335,8 @@ class LibraryRepository internal constructor(
     updatedAt: Long,
   ): Boolean =
     importMutex.withLock {
-      withContext(Dispatchers.IO) {
+      awaitLoaded()
+      withContext(ioDispatcher) {
         val clampedUpdatedAt = updatedAt.coerceAtMost(System.currentTimeMillis())
         val result =
           SyncedBookFileImporter.importSyncedBook(
@@ -319,6 +384,9 @@ class LibraryRepository internal constructor(
 
   private suspend fun commit(transform: (List<BookEntry>) -> List<BookEntry>) {
     writeMutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
       val previous = state.value
       val next = transform(previous)
       val changed = next != previous
@@ -328,7 +396,7 @@ class LibraryRepository internal constructor(
         dirty = true
       }
       try {
-        withContext(Dispatchers.IO) { store.write(state.value) }
+        withContext(ioDispatcher) { store.write(state.value) }
         dirty = false
         mutableLastWriteError.value = false
       } catch (e: CancellationException) {

@@ -6,39 +6,96 @@ import com.example.emptyapp.data.sync.SyncTombstoneStore
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 
-class AnnotationRepository(
+class AnnotationRepository internal constructor(
   bookmarksFile: File,
   highlightsFile: File,
-  private val tombstones: SyncTombstoneStore? = null,
+  private val tombstones: SyncTombstoneStore?,
+  preloadInBackground: Boolean,
+  private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+  constructor(
+    bookmarksFile: File,
+    highlightsFile: File,
+    tombstones: SyncTombstoneStore? = null,
+  ) : this(
+    bookmarksFile = bookmarksFile,
+    highlightsFile = highlightsFile,
+    tombstones = tombstones,
+    preloadInBackground = false,
+    ioDispatcher = Dispatchers.IO,
+  )
+
   constructor(
     context: Context,
     tombstones: SyncTombstoneStore,
   ) : this(
-    bookmarksFile = File(context.filesDir, "bookmarks.json"),
-    highlightsFile = File(context.filesDir, "highlights.json"),
+    bookmarksFile = File(context.applicationContext.filesDir, "bookmarks.json"),
+    highlightsFile = File(context.applicationContext.filesDir, "highlights.json"),
     tombstones = tombstones,
+    preloadInBackground = true,
+    ioDispatcher = Dispatchers.IO,
   )
 
   private val bookmarksData =
-    PersistedList(AtomicJsonFile(bookmarksFile, ListSerializer(BookmarkEntry.serializer())))
+    PersistedList(
+      AtomicJsonFile(bookmarksFile, ListSerializer(BookmarkEntry.serializer())),
+      preloadInBackground = preloadInBackground,
+      ioDispatcher = ioDispatcher,
+    )
   private val highlightsData =
-    PersistedList(AtomicJsonFile(highlightsFile, ListSerializer(HighlightEntry.serializer())))
+    PersistedList(
+      AtomicJsonFile(highlightsFile, ListSerializer(HighlightEntry.serializer())),
+      preloadInBackground = preloadInBackground,
+      ioDispatcher = ioDispatcher,
+    )
+  private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
   private val writeMutex = Mutex()
+  private val mutableLoaded = MutableStateFlow(!preloadInBackground)
+  @Volatile private var isLoaded = !preloadInBackground
   private val mutableLastWriteError = MutableStateFlow(false)
 
   val bookmarks: StateFlow<List<BookmarkEntry>> = bookmarksData.state.asStateFlow()
   val highlights: StateFlow<List<HighlightEntry>> = highlightsData.state.asStateFlow()
+  val loaded: StateFlow<Boolean> = mutableLoaded.asStateFlow()
   val lastWriteError: StateFlow<Boolean> = mutableLastWriteError.asStateFlow()
+
+  init {
+    if (preloadInBackground) {
+      backgroundScope.launch {
+        awaitLoaded()
+      }
+    }
+  }
+
+  suspend fun awaitLoaded() {
+    if (isLoaded) return
+    withContext(ioDispatcher) {
+      writeMutex.withLock {
+        ensureLoadedLocked()
+      }
+    }
+  }
+
+  private fun ensureLoadedLocked() {
+    if (isLoaded) return
+    bookmarksData.ensureLoadedLocked()
+    highlightsData.ensureLoadedLocked()
+    isLoaded = true
+    mutableLoaded.value = true
+  }
 
   suspend fun addBookmark(bookId: String, title: String, progress: Float, locatorJson: String) {
     val entry =
@@ -110,6 +167,7 @@ class AnnotationRepository(
     remoteBookmarks: List<BookmarkEntry>,
     remoteHighlights: List<HighlightEntry>,
   ) {
+    awaitLoaded()
     if (remoteBookmarks.isNotEmpty() || bookmarksData.dirty) {
       commitBookmarks { local ->
         val byId = LinkedHashMap<String, BookmarkEntry>()
@@ -131,6 +189,7 @@ class AnnotationRepository(
   }
 
   suspend fun dropDeleted(ids: Set<String>) {
+    awaitLoaded()
     if (ids.isEmpty() && !bookmarksData.dirty && !highlightsData.dirty) return
     if (bookmarksData.dirty || bookmarksData.state.value.any { it.id in ids }) {
       commitBookmarks { list -> list.filterNot { it.id in ids } }
@@ -141,7 +200,7 @@ class AnnotationRepository(
   }
 
   private suspend fun markSyncDeleted(id: String, deleted: Boolean) {
-    withContext(Dispatchers.IO) { tombstones?.markAnnotations(listOf(id), deleted) }
+    withContext(ioDispatcher) { tombstones?.markAnnotations(listOf(id), deleted) }
   }
 
   private suspend fun commitBookmarks(
@@ -149,6 +208,9 @@ class AnnotationRepository(
     transform: (List<BookmarkEntry>) -> List<BookmarkEntry>,
   ) {
     writeMutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
       bookmarksData.commit(beforeStateChange, transform)
       mutableLastWriteError.value = bookmarksData.writeError || highlightsData.writeError
     }
@@ -159,6 +221,9 @@ class AnnotationRepository(
     transform: (List<HighlightEntry>) -> List<HighlightEntry>,
   ) {
     writeMutex.withLock {
+      if (!isLoaded) {
+        withContext(ioDispatcher) { ensureLoadedLocked() }
+      }
       highlightsData.commit(beforeStateChange, transform)
       mutableLastWriteError.value = bookmarksData.writeError || highlightsData.writeError
     }
@@ -166,10 +231,19 @@ class AnnotationRepository(
 
   private class PersistedList<E>(
     private val store: AtomicJsonFile<List<E>>,
+    preloadInBackground: Boolean,
+    private val ioDispatcher: CoroutineDispatcher,
   ) {
-    val state = MutableStateFlow(store.read(emptyList()))
+    val state = MutableStateFlow(if (preloadInBackground) emptyList() else store.read(emptyList()))
     @Volatile var dirty: Boolean = false
     var writeError: Boolean = false
+    private var loaded: Boolean = !preloadInBackground
+
+    fun ensureLoadedLocked() {
+      if (loaded) return
+      state.value = store.read(emptyList())
+      loaded = true
+    }
 
     suspend fun commit(
       beforeStateChange: (suspend () -> Unit)? = null,
@@ -185,7 +259,7 @@ class AnnotationRepository(
         dirty = true
       }
       try {
-        withContext(Dispatchers.IO) { store.write(state.value) }
+        withContext(ioDispatcher) { store.write(state.value) }
         dirty = false
         writeError = false
       } catch (e: CancellationException) {

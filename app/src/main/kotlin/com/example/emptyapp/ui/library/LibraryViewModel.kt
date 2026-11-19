@@ -16,6 +16,7 @@ import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.data.sync.SyncTombstoneStore
 import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +42,7 @@ class LibraryViewModel(
   private val tombstoneErrorFlow = tombstones?.lastWriteError ?: MutableStateFlow(false)
 
   val books: StateFlow<List<BookEntry>> = repository.books
+  val booksLoaded: StateFlow<Boolean> = repository.loaded
   val bookmarks: StateFlow<List<BookmarkEntry>> = annotations.bookmarks
   val highlights: StateFlow<List<HighlightEntry>> = annotations.highlights
   val stats: StateFlow<ReadingStatsData> = statsRepository.stats
@@ -79,7 +81,11 @@ class LibraryViewModel(
           performImport()
             .onSuccess { entry ->
               val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
-              app?.container?.sync?.unmarkDeletedHash(entry.contentHash)
+              app?.container?.let { container ->
+                container.appScope.launch(Dispatchers.IO) {
+                  container.sync.unmarkDeletedHash(entry.contentHash)
+                }
+              }
               if (app != null) {
                 com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(app)
               }
@@ -124,12 +130,17 @@ class LibraryViewModel(
 
   fun remove(id: String, alsoDeleteFromCloud: Boolean = true) {
     viewModelScope.launch {
+      repository.awaitLoaded()
       val book = repository.find(id)
       repository.remove(id)
       annotations.removeAllForBook(id)
       val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
       if (alsoDeleteFromCloud && book?.contentHash != null) {
-        app?.container?.sync?.deleteBookFromCloudAsync(book.contentHash, book.title)
+        app?.container?.let { container ->
+          container.appScope.launch(Dispatchers.IO) {
+            container.sync.deleteBookFromCloudAsync(book.contentHash, book.title)
+          }
+        }
       }
       if (app?.container?.lockScreenReading?.state?.value?.bookId == id) {
         app.container.lockScreenReading.clear()

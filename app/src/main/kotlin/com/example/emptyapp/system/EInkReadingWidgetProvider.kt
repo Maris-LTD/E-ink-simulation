@@ -12,6 +12,8 @@ import com.example.emptyapp.MainActivity
 import com.example.emptyapp.R
 import com.example.emptyapp.ReaderActivity
 import com.example.emptyapp.data.book.mostRecentlyReadBook
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class EInkReadingWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(
@@ -19,6 +21,22 @@ class EInkReadingWidgetProvider : AppWidgetProvider() {
     appWidgetManager: AppWidgetManager,
     appWidgetIds: IntArray,
   ) {
+    val container = (context.applicationContext as? EmptyApplication)?.container
+    if (container != null && (!container.library.loaded.value || !container.stats.loaded.value)) {
+      val pendingResult = goAsync()
+      container.appScope.launch(Dispatchers.IO) {
+        try {
+          container.library.awaitLoaded()
+          container.stats.awaitLoaded()
+          appWidgetIds.forEach { widgetId ->
+            updateWidget(context, appWidgetManager, widgetId)
+          }
+        } finally {
+          pendingResult.finish()
+        }
+      }
+      return
+    }
     appWidgetIds.forEach { widgetId ->
       updateWidget(context, appWidgetManager, widgetId)
     }
@@ -26,6 +44,19 @@ class EInkReadingWidgetProvider : AppWidgetProvider() {
 
   companion object {
     fun refreshAll(context: Context) {
+      val container = (context.applicationContext as? EmptyApplication)?.container
+      if (container != null && (!container.library.loaded.value || !container.stats.loaded.value)) {
+        container.appScope.launch(Dispatchers.IO) {
+          container.library.awaitLoaded()
+          container.stats.awaitLoaded()
+          refreshAllNow(context)
+        }
+        return
+      }
+      refreshAllNow(context)
+    }
+
+    private fun refreshAllNow(context: Context) {
       val manager = AppWidgetManager.getInstance(context)
       val ids = manager.getAppWidgetIds(ComponentName(context, EInkReadingWidgetProvider::class.java))
       ids.forEach { updateWidget(context, manager, it) }

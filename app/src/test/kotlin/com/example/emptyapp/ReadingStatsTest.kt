@@ -7,7 +7,10 @@ import com.example.emptyapp.data.stats.ReadingStatsRepository
 import java.io.File
 import java.time.LocalDate
 import kotlin.io.path.createTempDirectory
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -147,6 +150,38 @@ class ReadingStatsTest {
       val reloaded = ReadingStatsRepository(statsFile, todayProvider = { today })
       assertEquals(120L, reloaded.stats.value.totalSeconds)
       assertEquals(5, reloaded.stats.value.totalPagesTurned)
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun asyncPreloadLoadsDiskStatsBeforeRecordReading() = runTest {
+    val dir = createTempDirectory("stats_async_preload_test").toFile()
+    try {
+      val statsFile = File(dir, "reading_stats.json")
+      val today = LocalDate.of(2026, 11, 14)
+      val seed = ReadingStatsRepository(statsFile, todayProvider = { today })
+      seed.recordReading(deltaSeconds = 300, deltaPages = 10)
+
+      val ioDispatcher = StandardTestDispatcher(testScheduler)
+      val repo =
+        ReadingStatsRepository(
+          statsFile = statsFile,
+          todayProvider = { today },
+          nowProvider = { 1_000L },
+          preloadInBackground = true,
+          ioDispatcher = ioDispatcher,
+        )
+
+      assertFalse(repo.loaded.value)
+      assertEquals(0L, repo.stats.value.totalSeconds)
+
+      repo.recordReading(deltaSeconds = 120, deltaPages = 3)
+      assertTrue(repo.loaded.value)
+      assertEquals(420L, repo.stats.value.totalSeconds)
+      assertEquals(13, repo.stats.value.totalPagesTurned)
     } finally {
       dir.deleteRecursively()
     }

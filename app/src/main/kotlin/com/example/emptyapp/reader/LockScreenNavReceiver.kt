@@ -30,6 +30,8 @@ class LockScreenNavReceiver : BroadcastReceiver() {
           val updatedLoc = updated.locatorJson
           if (updatedLoc != null) {
             app.container.library.saveProgress(updated.bookId, updatedLoc, updated.progress)
+          } else {
+            app.container.library.awaitLoaded()
           }
           val coverPath =
             app.container.library.books.value

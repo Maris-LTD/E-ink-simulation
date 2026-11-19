@@ -4,8 +4,10 @@ import com.example.emptyapp.data.sync.SyncTombstoneStore
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -153,5 +155,38 @@ class AnnotationRepositoryTest {
     val reloaded = AnnotationRepository(bookmarksFile, highlightsFile, tombstones)
     assertTrue(reloaded.bookmarks.value.isEmpty())
     assertEquals(1, reloaded.highlights.value.size)
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun asyncPreloadStartsEmptyAndLoadsBeforeCommitOrDropDeleted() = runTest {
+    val seed = AnnotationRepository(bookmarksFile, highlightsFile, null)
+    seed.addBookmark("book-1", "Existing BM", 0.3f, "{}")
+    seed.addHighlight("book-1", "Book", "Quote", "Note", 0.4f, "{}")
+    val existingBmId = seed.bookmarks.value.single().id
+
+    val ioDispatcher = StandardTestDispatcher(testScheduler)
+    val repo =
+      AnnotationRepository(
+        bookmarksFile = bookmarksFile,
+        highlightsFile = highlightsFile,
+        tombstones = null,
+        preloadInBackground = true,
+        ioDispatcher = ioDispatcher,
+      )
+
+    assertFalse(repo.loaded.value)
+    assertTrue(repo.bookmarks.value.isEmpty())
+    assertTrue(repo.highlights.value.isEmpty())
+
+    // Mutate before preload runs: must load existing annotations first so existing highlight isn't lost
+    repo.addBookmark("book-1", "New BM", 0.5f, "{}")
+    assertTrue(repo.loaded.value)
+    assertEquals(2, repo.bookmarks.value.size)
+    assertEquals(1, repo.highlights.value.size)
+
+    repo.dropDeleted(setOf(existingBmId))
+    assertEquals(1, repo.bookmarks.value.size)
+    assertEquals("New BM", repo.bookmarks.value.single().title)
   }
 }

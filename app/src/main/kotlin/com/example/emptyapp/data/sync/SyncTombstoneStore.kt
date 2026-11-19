@@ -3,9 +3,15 @@ package com.example.emptyapp.data.sync
 import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -15,25 +21,71 @@ data class SyncTombstoneData(
   val annotations: List<SyncTombstone> = emptyList(),
 )
 
-class SyncTombstoneStore(
+class SyncTombstoneStore internal constructor(
   file: File,
   private val clock: () -> Long = System::currentTimeMillis,
+  preloadInBackground: Boolean,
+  private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+  constructor(
+    file: File,
+    clock: () -> Long = System::currentTimeMillis,
+  ) : this(
+    file = file,
+    clock = clock,
+    preloadInBackground = false,
+    ioDispatcher = Dispatchers.IO,
+  )
+
   private val store = AtomicJsonFile(file, SyncTombstoneData.serializer())
   private val lock = Any()
+  private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
   private var dirty = false
+  @Volatile private var isLoaded = !preloadInBackground
+  private val mutableLoaded = MutableStateFlow(!preloadInBackground)
   private val mutableLastWriteError = MutableStateFlow(false)
 
   @Volatile
-  private var data: SyncTombstoneData = store.read(SyncTombstoneData())
+  private var data: SyncTombstoneData =
+    if (preloadInBackground) SyncTombstoneData() else store.read(SyncTombstoneData())
 
+  val loaded: StateFlow<Boolean> = mutableLoaded.asStateFlow()
   val lastWriteError: StateFlow<Boolean> = mutableLastWriteError.asStateFlow()
 
-  fun snapshot(): SyncTombstoneData = data
+  init {
+    if (preloadInBackground) {
+      backgroundScope.launch {
+        awaitLoaded()
+      }
+    }
+  }
 
-  fun deletedBookHashes(): Set<String> = SyncTombstoneMerger.deletedKeys(data.books)
+  suspend fun awaitLoaded() {
+    if (isLoaded) return
+    withContext(ioDispatcher) {
+      synchronized(lock) {
+        ensureLoadedLocked()
+      }
+    }
+  }
 
-  fun deletedAnnotationIds(): Set<String> = SyncTombstoneMerger.deletedKeys(data.annotations)
+  private fun ensureLoadedLocked() {
+    if (isLoaded) return
+    data = store.read(SyncTombstoneData())
+    isLoaded = true
+    mutableLoaded.value = true
+  }
+
+  fun snapshot(): SyncTombstoneData {
+    if (!isLoaded) {
+      synchronized(lock) { ensureLoadedLocked() }
+    }
+    return data
+  }
+
+  fun deletedBookHashes(): Set<String> = SyncTombstoneMerger.deletedKeys(snapshot().books)
+
+  fun deletedAnnotationIds(): Set<String> = SyncTombstoneMerger.deletedKeys(snapshot().annotations)
 
   fun markBooks(hashes: Collection<String>, deleted: Boolean) {
     if (hashes.isEmpty()) return
@@ -71,6 +123,7 @@ class SyncTombstoneStore(
 
   private fun mutate(transform: (SyncTombstoneData) -> SyncTombstoneData) {
     synchronized(lock) {
+      ensureLoadedLocked()
       val next = transform(data)
       val changed = next != data
       if (!changed && !dirty) return

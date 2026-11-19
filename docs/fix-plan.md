@@ -68,7 +68,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 - [x] 46. L15 — Trang fallback trong Reflow: `cd_pdf_page`, spinner/lỗi/retry, cho zoom; ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở
 
 ### 5D — Khởi động & Reader EPUB
-- [ ] 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO
+- [x] 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO
 - [ ] 48. M18 — Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s)
 - [ ] 49. L16 + L21 — Dải cạnh trái: tap = lùi trang hoặc chuyển drag sang `InputListener` Readium; phím âm lượng bỏ qua khi Search/Contents/Settings/toolbar đang mở (cờ `overlayOpen` trong VM)
 - [ ] 50. L17 + L18 — Dialog ghi chú: `dismissOnBackPress = false`/xác nhận, nháp + `pendingNoteLocator` vào ViewModel/SavedStateHandle, không toast khi quote trống; quyền thông báo: xin lại khi còn rationale, nếu không thì snackbar mở cài đặt thông báo
@@ -1005,3 +1005,30 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 47 — M17: Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO.
+
+### 47. M17 — Repository load trên IO + `loaded` flag (VM chờ); `warmUpForUiAsync` trong `ReaderActivity`; khởi tạo/gọi sync ngoài main; `LibraryRepository` nhận `Lazy<ReadiumEngine>`; `PdfBookConfigStore` ghi trên IO — 2026-11-19
+**Nguyên nhân:**
+- Cold start từ widget/notification vào `ReaderActivity` không gọi `warmUpForUiAsync()`; lazy `viewModel` truy cập `container.library` (đọc đồng bộ `library.json` và đánh giá ngay `engine` dựng `ReadiumEngine`), `pdfBookConfigs`, `annotations` (cùng `syncTombstones`), `stats` trên main thread. Ở `MainActivity`/`LauncherActivity`, `warmUpForUiAsync()` chạy song song nhưng `by lazy` (`SYNCHRONIZED`) vẫn chặn main chờ IO.
+- `ReaderActivity.onPause` (và `LibraryViewModel` sau import/xoá) chạm `container.sync` lần đầu trên main thread, dựng `GoogleDriveSyncManager` và chạy di trú/đọc prefs + `SyncTombstoneStore` trên main.
+- `PdfBookConfigStore.update` ghi đĩa + `fsync` đồng bộ ngay trên main thread trong khi đọc/đổi mode PDF.
+
+**Đã sửa:**
+- `data/book/LibraryRepository.kt`, `AppContainer.kt`:
+  - `LibraryRepository` thêm `constructor(context: Context, engineLazy: Lazy<ReadiumEngine>)` (giữ tương thích `constructor(context, engine)`), truyền `engineLazy` từ `AppContainer` để không khởi tạo `ReadiumEngine` cho tới khi mở/nhập sách.
+  - Khởi tạo state rỗng + `loaded: StateFlow<Boolean>` (`preloadInBackground = true` khi tạo từ `Context`), đọc `library.json` trên `Dispatchers.IO` qua `awaitLoaded()`/`ensureLoadedLocked()` trong `writeMutex` trước khi `backfillMissingCovers()` và mọi thao tác đọc/ghi (`importWithHashes`, `remove`, `saveProgress`, `savePdfReadingMode`, `ensureContentHashes`, `importFromSyncedFile`, `commit`).
+- `data/annotation/AnnotationRepository.kt`, `data/stats/ReadingStatsRepository.kt`, `data/sync/SyncTombstoneStore.kt`:
+  - Bổ sung `loaded: StateFlow<Boolean>`, `awaitLoaded()`, `ensureLoadedLocked()` và khởi tạo không chặn I/O khi tạo từ `AppContainer` (`preloadInBackground = true`), nạp JSON trên `Dispatchers.IO` và bảo vệ mọi hàm ghi/xoá/merge (`dropDeleted`, `mergeFromRemote`, `recordReading`, `setDailyGoalMinutes`, `snapshot`, `mutate`), đồng thời giữ tương thích đồng bộ mặc định cho các constructor test cũ.
+- `reader/pdf/PdfBookConfigStore.kt`:
+  - Thêm `loaded: StateFlow<Boolean>`, `awaitLoaded()` và `flushForTest()` + tham số `ioDispatcher` cho test; khi tạo từ `Context` (`AppContainer`), nạp trên `Dispatchers.IO.limitedParallelism(1)` và trong `update(bookId, transform)` cập nhật ngay `configs` trong bộ nhớ, đẩy việc ghi đĩa qua `CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))` tuần tự (giữ nguyên biến đổi phát sinh trước khi preload xong để không mất dữ liệu cũ).
+- `ui/reader/ReaderViewModel.kt`, `ReaderActivity.kt`, `ui/library/LibraryViewModel.kt`, `ui/library/LibraryScreen.kt`, `data/sync/GoogleDriveSyncManager.kt`, `reader/LockScreenNavReceiver.kt`, `system/EInkReadingWidgetProvider.kt`:
+  - `ReaderActivity.onCreate` gọi `container.warmUpForUiAsync()`; `AppContainer.warmUpForUiAsync()` khởi động trước cả `pdfBookConfigs`, `syncTombstones`, `lockScreenReading`, `sync`.
+  - `ReaderActivity.onPause` (và `LibraryViewModel` khi unmark/delete cloud) gọi `container.sync` qua `container.appScope.launch(Dispatchers.IO)`.
+  - `ReaderViewModel.load()` chạy trên `ioDispatcher` (`Dispatchers.IO`), gọi `awaitLoaded()` cho `repository`, `pdfBookConfigs`, `annotations`, `statsRepository` trước `repository.find(bookId)` và mở sách (`repository.engine.open(file)`).
+  - `GoogleDriveSyncManager` chuyển di trú legacy `KEY_DELETED_HASHES` sang `backgroundScope` (IO) và gọi `awaitLoaded()` trước khi sync/xoá cloud; `LibraryViewModel.remove`, `LockScreenNavReceiver`, `EInkReadingWidgetProvider` chờ `awaitLoaded()` khi chưa nạp xong; `LibraryScreen` giữ `selectedAuthor` và tránh nhấp nháy empty state trước khi `booksLoaded == true`.
+- Unit test mới & mở rộng (**+9 tests**): `LibraryRepositoryTest.kt` (+2), `PdfBookConfigStoreTest.kt` (+3), `AnnotationRepositoryTest.kt` (+1), `ReadingStatsTest.kt` (+1), và mới `ui/reader/ReaderViewModelLoadTest.kt` (2 tests).
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **240/240 tests pass** qua 42 file test, `0 lint errors`).
+
+**Còn để lại:** kiểm tra tay mục 14 trong `docs/audit-2026-11-19.md` (force-stop → chạm widget/notification với StrictMode).
+
+**Bước tiếp theo:** mục 48 — M18: Thay mốc 1 s bằng cờ một lần `expectRelayout`/`expectJump` (đặt ở `onConfigurationChanged` và trước `navigator.go`, timeout dự phòng ~3 s).

@@ -101,17 +101,20 @@ class GoogleDriveSyncManager(
     prefs.edit().putString(KEY_CLOUD_BOOKS_JSON, encoded).apply()
   }
 
-  init {
-    val legacyDeletedHashes = prefs.getStringSet(KEY_DELETED_HASHES, null)
-    if (legacyDeletedHashes != null) {
-      tombstones.markBooks(legacyDeletedHashes.toSet(), deleted = true)
-      prefs.edit().remove(KEY_DELETED_HASHES).apply()
+  private val legacyMigrationJob: Job? =
+    prefs.getStringSet(KEY_DELETED_HASHES, null)?.toSet()?.let { legacyDeletedHashes ->
+      backgroundScope.launch(Dispatchers.IO) {
+        tombstones.awaitLoaded()
+        tombstones.markBooks(legacyDeletedHashes, deleted = true)
+        prefs.edit().remove(KEY_DELETED_HASHES).apply()
+      }
     }
-  }
 
   fun unmarkDeletedHash(contentHash: String?) {
     if (contentHash.isNullOrBlank()) return
-    backgroundScope.launch {
+    backgroundScope.launch(Dispatchers.IO) {
+      legacyMigrationJob?.join()
+      tombstones.awaitLoaded()
       tombstones.markBooks(listOf(contentHash), deleted = false)
     }
   }
@@ -441,8 +444,10 @@ class GoogleDriveSyncManager(
         it.copy(cloudBooks = remaining)
       }
     }
-    backgroundScope.launch {
+    backgroundScope.launch(Dispatchers.IO) {
       if (!sessionGuard.isCurrent(expectedGeneration)) return@launch
+      legacyMigrationJob?.join()
+      tombstones.awaitLoaded()
       tombstones.markBooks(listOf(contentHash), deleted = true)
       if (signedIn && isSessionActive(expectedGeneration, requireSignedIn = true)) {
         deleteBookFromCloud(contentHash, title, expectedGeneration)
@@ -519,6 +524,8 @@ class GoogleDriveSyncManager(
     contentHash: String,
     expectedGeneration: Long,
   ): List<SyncedBookProgress>? {
+    legacyMigrationJob?.join()
+    tombstones.awaitLoaded()
     resolveAndBindAccount(token, expectedGeneration, requireSignedIn = true)
     ensureSessionActive(expectedGeneration, requireSignedIn = true)
     tombstones.markBooks(listOf(contentHash), deleted = true)
@@ -620,6 +627,7 @@ class GoogleDriveSyncManager(
           ) { _, usedToken ->
             val wipeGeneration = sessionGuard.advanceGeneration()
             cancelBackgroundSync()
+            legacyMigrationJob?.join()
             tombstones.clear()
             try {
               revokeAndClearSession(usedToken, latestAuthResult, accountEmail)
@@ -713,6 +721,11 @@ class GoogleDriveSyncManager(
     expectedGeneration: Long,
     isBackground: Boolean,
   ): SyncRunSummary {
+    legacyMigrationJob?.join()
+    tombstones.awaitLoaded()
+    library.awaitLoaded()
+    annotations.awaitLoaded()
+    stats.awaitLoaded()
     resolveAndBindAccount(token, expectedGeneration, requireSignedIn = isBackground)
     ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     library.ensureContentHashes()

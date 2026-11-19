@@ -61,7 +61,6 @@ import com.example.emptyapp.ui.reader.ReaderScreen
 import com.example.emptyapp.ui.reader.ReaderUiState
 import com.example.emptyapp.ui.reader.ReaderViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
@@ -132,6 +131,7 @@ class ReaderActivity : FragmentActivity() {
     overrideLocatorConsumedInState =
       savedInstanceState?.getBoolean(STATE_OVERRIDE_LOCATOR_CONSUMED, false) == true
     super.onCreate(null)
+    (application as EmptyApplication).container.warmUpForUiAsync()
     enableEdgeToEdge()
     hideSystemBars()
     setContent {
@@ -353,7 +353,10 @@ class ReaderActivity : FragmentActivity() {
     viewModel.onReaderForegroundChanged(false)
     postLockScreenNotification()
     EInkReadingWidgetProvider.refreshAll(this)
-    (application as EmptyApplication).container.sync.syncInBackgroundIfSignedIn()
+    val container = (application as EmptyApplication).container
+    container.appScope.launch(Dispatchers.IO) {
+      container.sync.syncInBackgroundIfSignedIn()
+    }
     super.onPause()
   }
 
