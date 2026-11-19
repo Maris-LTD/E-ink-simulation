@@ -52,7 +52,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 ### 5B — Đồng bộ Google Drive & an toàn dữ liệu
 - [x] 33. H2 — `clearToken` sau revoke và khi gặp 401 rồi `authorize()` lại 1 lần (cân nhắc nâng `play-services-auth` ≥ 21.4.0: `clearToken` / `revokeAccess`)
 - [x] 34. M3 + M4 — Import luôn ghi tombstone khôi phục; không xác định được email/`sub` thì dừng sync trước mọi thao tác ghi
-- [ ] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
+- [x] 35. M5 + L4 — "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock
 - [ ] 36. M6 + L1 + L6 — Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi
 - [ ] 37. M7 — Tải/import sách từ cloud: `runCatching` từng sách + đếm lỗi, dọn temp/`books/`/cover trong `finally`, kiểm SHA-256, `renameTo` thay copy
 - [ ] 38. M8 + L10 — Sync/xoá cloud chạy trên `appScope`, rethrow `CancellationException`; map lỗi thô sang chuỗi localized (import, search, `httpGet` ném `DriveHttpException`), xoá cloud gặp `hasResolution()` bật `needsReconnect`
@@ -686,3 +686,26 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 35 — M5 + L4: "Xoá toàn bộ Drive" xác minh list rỗng mới báo thành công/đăng xuất, kiểm mã revoke; `signOut`/wipe lấy `mutex`, revoke trước `Identity.signOut`, sync kiểm cờ phiên sau khi lấy lock.
+
+### 35. M5 + L4 — Xác minh rỗng khi xoá toàn bộ Drive, kiểm mã revoke & bảo vệ phiên sync qua `mutex`/`sessionGeneration` — 2026-11-19
+**Nguyên nhân:**
+- **M5:** `httpDeleteFile` nuốt mọi ngoại lệ (trừ 401) thành `false` và các caller bỏ qua giá trị trả về; vòng lặp `repeat(5)` trong `deleteAllCloudData` dùng `return@repeat` (chỉ bỏ qua 1 lượt lặp chứ không thoát vòng) và sau 5 vòng không kiểm tra lại xem Drive đã thực sự rỗng hay chưa mà vẫn xoá tombstone local, đăng xuất và báo `sync_all_cloud_deleted`. Ngoài ra `revokeToken` không kiểm tra HTTP response code trả về từ `https://oauth2.googleapis.com/revoke`.
+- **L4:** `signOut()` không lấy `mutex`, không tăng cờ phiên và không huỷ `backgroundSyncJob`, đồng thời gọi `Identity.getSignInClient(appContext).signOut()` ngay trên luồng gọi trước khi coroutine fire-and-forget kịp lấy token và gọi revoke. Một lượt sync hoặc `deleteBookFromCloud` đang chạy dở hoặc đang xếp hàng chờ `mutex` vẫn tiếp tục chạy sau khi `signOut()`/`deleteAllCloudData()` đã dọn state, ghi đè lại `KEY_EMAIL`, `KEY_LAST_SYNC`, `KEY_CLOUD_BOOKS_JSON` và `SyncUiState`.
+
+**Đã sửa:**
+- Mới `data/sync/DriveWipeCoordinator.kt`:
+  - `wipeAll(...)`: liệt kê toàn bộ ID file hiện có trong `appDataFolder`, thoát ngay (`return`) khi danh sách rỗng; thực hiện xoá lặp tối đa `maxPasses = 5` vòng (lan truyền ngay `CancellationException`, `SyncSessionInvalidatedException` và lỗi `401` cho `DriveAuthRetry`, ghi nhận lỗi xoá gần nhất nếu gặp lỗi mạng/HTTP khác) và luôn kiểm tra `listFileIds()` lần cuối — nếu vẫn còn file trên Drive thì ném lại lỗi xoá (hoặc `IOException`), đảm bảo không xoá tombstone, không đăng xuất và không báo thành công giả.
+  - Bổ sung `isRevokeResponseAccepted(statusCode)` (`code in 200..299 || code == 400`) và `isDeleteResponseSuccess(statusCode)` (`code in 200..299 || code == 404`).
+- Mới `data/sync/SyncSessionGuard.kt`:
+  - Quản lý `generation` (`AtomicLong`), `SyncSessionInvalidatedException`, theo dõi `activeSignOutJob` (`registerSignOutJob`/`clearSignOutJob`/`awaitPendingSignOut`), `runWithSessionLock(mutex, expectedGeneration, ...)` kiểm tra cả `generation` và điều kiện phiên cả trước lẫn sau khi lấy `mutex`, và `executeSignOutLocked(...)` lấy `mutex`, thực hiện revoke trước `Identity.signOut()`, dọn prefs và chỉ reset UI nếu cùng thế hệ phiên.
+- `data/sync/GoogleDriveSyncManager.kt`:
+  - Tích hợp `DriveWipeCoordinator.wipeAll` vào `deleteAllCloudData()` (kèm `listAppDataFileEntries` lấy đủ mọi file ID kể cả trùng tên), cập nhật `httpDeleteFile` ném `DriveHttpException` / `IOException` thay vì nuốt lỗi (riêng dọn file `book_<hash>` trong `syncOnceWithToken` giữ cơ chế bỏ qua lỗi non-401), và cập nhật `revokeToken(token)` trả về `Boolean` qua `isRevokeResponseAccepted`.
+  - Tích hợp `SyncSessionGuard`: `signOut()` tăng `sessionGeneration`, huỷ `backgroundSyncJob` (`cancelBackgroundSync`), xoá key tài khoản trong `prefs` và reset UI state ngay lập tức rồi chạy `executeSignOutLocked` trên `backgroundScope` lấy `mutex`, revoke + `clearCachedAccessToken` + `revokeClientAccess` **trước** `Identity.getSignInClient(appContext).signOut()` (đợi hoàn tất qua `awaitPendingSignOut()` nếu người dùng bấm đăng nhập lại ngay).
+  - Trong `signInAndSync`, `handleConsentResult`, `runBackgroundSyncOnce`, `completeSyncWithToken`, `syncOnceWithToken`, `deleteBookFromCloud`, `deleteBookWithToken`, `deleteAllCloudData`, `resolveAndBindAccount` và `finishRetryOutcome`: chụp `expectedGeneration` trước khi chờ `mutex`/mạng và kiểm tra lại bên trong `mutex` cũng như trước mọi bước ghi `tombstones`, `prefs` (`KEY_EMAIL`, `KEY_LAST_SYNC`, `KEY_CLOUD_BOOKS_JSON`) và `state`.
+- Mới `test/.../data/sync/DriveWipeCoordinatorTest.kt` (11 tests) và `test/.../data/sync/SyncSessionGuardTest.kt` (7 tests) bao phủ thoát sớm khi rỗng, xoá qua nhiều vòng, ném lỗi khi Drive còn file sau tối đa các vòng hoặc khi offline/5xx, tích hợp retry 401, kiểm mã revoke/delete, chặn sync đang chờ `mutex` hoặc đang chạy giữa chừng sau `signOut`/wipe, đảm bảo thứ tự `revoke` trước `Identity.signOut()`, và không để `signOut` cũ ghi đè lần đăng nhập mới.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, `testDebugUnitTest`: **121/121 pass**, gồm **11/11** trong `DriveWipeCoordinatorTest` và **7/7** trong `SyncSessionGuardTest`; `lintDebug`: **0 errors**).
+
+**Còn để lại:** gom và merge các file `eink_sync_v1.json` trùng tên, kiểm tra `version` trước PATCH và sort payload trước khi so sánh/ghi sẽ xử lý ở mục 36 (M6 + L1 + L6).
+
+**Bước tiếp theo:** mục 36 — M6 + L1 + L6: Gom & merge file `eink_sync_v1.json` trùng tên rồi xoá bản thừa; kiểm `version` trước PATCH (đổi thì merge lại); sort payload theo key trước khi so sánh/ghi.

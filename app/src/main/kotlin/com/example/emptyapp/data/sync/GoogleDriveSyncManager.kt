@@ -31,6 +31,7 @@ import java.net.UnknownHostException
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -42,8 +43,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.json.JSONObject
@@ -76,6 +77,7 @@ class GoogleDriveSyncManager(
   private val prefs = appContext.getSharedPreferences("eink_google_sync", Context.MODE_PRIVATE)
   private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private val mutex = Mutex()
+  private val sessionGuard = SyncSessionGuard()
   private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val backgroundSyncLock = Any()
   private var backgroundSyncJob: Job? = null
@@ -131,7 +133,15 @@ class GoogleDriveSyncManager(
   }
 
   suspend fun signInAndSync(): SyncActionResult {
-    state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_connecting)) }
+    val signInGeneration =
+      if (!state.value.isSignedIn) sessionGuard.advanceGeneration() else sessionGuard.currentGeneration()
+    updateStateIfActive(signInGeneration) {
+      it.copy(syncing = true, statusMessage = str(R.string.sync_connecting))
+    }
+    sessionGuard.awaitPendingSignOut()
+    if (!sessionGuard.isCurrent(signInGeneration)) {
+      return SyncActionResult.Error(str(R.string.sync_cancelled))
+    }
     val authResult =
       try {
         authorizeScopes()
@@ -139,13 +149,17 @@ class GoogleDriveSyncManager(
         throw e
       } catch (err: Throwable) {
         val msg = formatSyncError(err)
-        state.update { it.copy(syncing = false, statusMessage = msg) }
+        updateStateIfActive(signInGeneration) { it.copy(syncing = false, statusMessage = msg) }
         return SyncActionResult.Error(msg)
       }
 
+    if (!sessionGuard.isCurrent(signInGeneration)) {
+      return SyncActionResult.Error(str(R.string.sync_cancelled))
+    }
+
     if (authResult.hasResolution()) {
       val pending = authResult.pendingIntent
-      state.update { it.copy(syncing = false, statusMessage = null) }
+      updateStateIfActive(signInGeneration) { it.copy(syncing = false, statusMessage = null) }
       return if (pending != null) {
         SyncActionResult.NeedsConsent(pending)
       } else {
@@ -156,73 +170,111 @@ class GoogleDriveSyncManager(
     val token = authResult.accessToken
     if (token.isNullOrBlank()) {
       val msg = str(R.string.sync_no_token)
-      state.update { it.copy(syncing = false, statusMessage = msg) }
+      updateStateIfActive(signInGeneration) { it.copy(syncing = false, statusMessage = msg) }
       return SyncActionResult.Error(msg)
     }
 
-    return completeSyncWithToken(token)
+    return completeSyncWithToken(token, expectedGeneration = signInGeneration)
   }
 
   suspend fun handleConsentResult(data: Intent?): SyncActionResult {
+    val signInGeneration =
+      if (!state.value.isSignedIn) sessionGuard.advanceGeneration() else sessionGuard.currentGeneration()
     if (data == null) {
       val cancelled = str(R.string.sync_cancelled)
-      state.update { it.copy(syncing = false, statusMessage = cancelled) }
+      updateStateIfActive(signInGeneration) { it.copy(syncing = false, statusMessage = cancelled) }
       return SyncActionResult.Error(cancelled)
     }
-    state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_verifying)) }
+    updateStateIfActive(signInGeneration) {
+      it.copy(syncing = true, statusMessage = str(R.string.sync_verifying))
+    }
+    sessionGuard.awaitPendingSignOut()
+    if (!sessionGuard.isCurrent(signInGeneration)) {
+      return SyncActionResult.Error(str(R.string.sync_cancelled))
+    }
     val authResult =
       runCatching {
         Identity.getAuthorizationClient(appContext).getAuthorizationResultFromIntent(data)
       }.getOrElse { err ->
         val msg = formatSyncError(err)
-        state.update { it.copy(syncing = false, statusMessage = msg) }
+        updateStateIfActive(signInGeneration) { it.copy(syncing = false, statusMessage = msg) }
         return SyncActionResult.Error(msg)
       }
+    if (!sessionGuard.isCurrent(signInGeneration)) {
+      return SyncActionResult.Error(str(R.string.sync_cancelled))
+    }
     val token = authResult.accessToken
     if (token.isNullOrBlank()) {
       val msg = str(R.string.sync_no_drive_permission)
-      state.update { it.copy(syncing = false, statusMessage = msg) }
+      updateStateIfActive(signInGeneration) { it.copy(syncing = false, statusMessage = msg) }
       return SyncActionResult.Error(msg)
     }
-    return completeSyncWithToken(token)
+    return completeSyncWithToken(token, expectedGeneration = signInGeneration)
   }
 
   fun syncInBackgroundIfSignedIn() {
     if (!state.value.isSignedIn) return
     synchronized(backgroundSyncLock) {
+      val scheduledGeneration = sessionGuard.currentGeneration()
       backgroundSyncRequested = true
-      if (backgroundSyncJob != null) return
-      backgroundSyncJob =
-        backgroundScope.launch {
-          while (true) {
-            val backoffMs =
-              if (consecutiveBackgroundFailures <= 0) BACKGROUND_SYNC_DEBOUNCE_MS
-              else (BACKGROUND_SYNC_DEBOUNCE_MS shl consecutiveBackgroundFailures.coerceAtMost(5))
-                .coerceAtMost(MAX_BACKGROUND_BACKOFF_MS)
-            delay(backoffMs)
-            synchronized(backgroundSyncLock) { backgroundSyncRequested = false }
-            runBackgroundSyncOnce()
+      if (backgroundSyncJob?.isActive == true) return
+      val job =
+        backgroundScope.launch(start = CoroutineStart.LAZY) {
+          val self = coroutineContext[Job]
+          try {
+            while (true) {
+              val backoffMs =
+                if (consecutiveBackgroundFailures <= 0) BACKGROUND_SYNC_DEBOUNCE_MS
+                else (BACKGROUND_SYNC_DEBOUNCE_MS shl consecutiveBackgroundFailures.coerceAtMost(5))
+                  .coerceAtMost(MAX_BACKGROUND_BACKOFF_MS)
+              delay(backoffMs)
+              synchronized(backgroundSyncLock) {
+                if (!isSessionActive(scheduledGeneration, requireSignedIn = true)) {
+                  backgroundSyncRequested = false
+                  return@launch
+                }
+                backgroundSyncRequested = false
+              }
+              runBackgroundSyncOnce(scheduledGeneration)
+              synchronized(backgroundSyncLock) {
+                if (!backgroundSyncRequested || !isSessionActive(scheduledGeneration, requireSignedIn = true)) {
+                  return@launch
+                }
+              }
+            }
+          } finally {
             synchronized(backgroundSyncLock) {
-              if (!backgroundSyncRequested) {
+              if (backgroundSyncJob === self) {
                 backgroundSyncJob = null
-                return@launch
               }
             }
           }
         }
+      backgroundSyncJob = job
+      job.start()
     }
   }
 
-  private suspend fun runBackgroundSyncOnce() {
-    if (!state.value.isSignedIn) return
+  private fun cancelBackgroundSync() {
+    synchronized(backgroundSyncLock) {
+      backgroundSyncRequested = false
+      backgroundSyncJob?.cancel()
+      backgroundSyncJob = null
+    }
+    consecutiveBackgroundFailures = 0
+  }
+
+  private suspend fun runBackgroundSyncOnce(scheduledGeneration: Long) {
+    if (!isSessionActive(scheduledGeneration, requireSignedIn = true)) return
     var needsReconnectUpdate = false
     val result =
       try {
         val authResult = authorizeScopes()
+        if (!isSessionActive(scheduledGeneration, requireSignedIn = true)) return
         val token = authResult.accessToken
         if (authResult.hasResolution()) {
           needsReconnectUpdate = true
-          state.update {
+          updateStateIfActive(scheduledGeneration, requireSignedIn = true) {
             it.copy(
               needsReconnect = true,
               statusMessage = str(R.string.sync_needs_reconnect),
@@ -234,6 +286,7 @@ class GoogleDriveSyncManager(
             token = token,
             allowBookFiles = isUnmeteredNetwork(),
             isBackground = true,
+            expectedGeneration = scheduledGeneration,
           )
         } else {
           null
@@ -243,6 +296,7 @@ class GoogleDriveSyncManager(
       } catch (_: Throwable) {
         null
       }
+    if (!isSessionActive(scheduledGeneration, requireSignedIn = true)) return
     if (result is SyncActionResult.Synced) {
       consecutiveBackgroundFailures = 0
     } else if (needsReconnectUpdate || result is SyncActionResult.Error || result is SyncActionResult.NeedsConsent) {
@@ -256,103 +310,175 @@ class GoogleDriveSyncManager(
   }
 
   fun signOut() {
+    val signOutGeneration = sessionGuard.advanceGeneration()
+    cancelBackgroundSync()
     val wasSignedIn = state.value.isSignedIn
     val accountEmail = state.value.email
-    clearAccountState(statusMessage = null)
+    clearAccountPrefs()
+    resetAccountUiState(statusMessage = null)
     if (!wasSignedIn) return
-    backgroundScope.launch {
-      val authResult =
+    val job =
+      backgroundScope.launch(start = CoroutineStart.LAZY) {
         try {
-          authorizeScopes()
-        } catch (e: CancellationException) {
-          throw e
-        } catch (_: Throwable) {
-          null
+          sessionGuard.executeSignOutLocked(
+            mutex = mutex,
+            signOutGeneration = signOutGeneration,
+            wasSignedIn = true,
+            revokeSession = {
+              val authResult =
+                try {
+                  authorizeScopes()
+                } catch (e: CancellationException) {
+                  throw e
+                } catch (_: Throwable) {
+                  null
+                }
+              val token = authResult?.accessToken
+              if (authResult != null && !authResult.hasResolution() && !token.isNullOrBlank()) {
+                revokeAndClearSession(token, authResult, accountEmail)
+              } else {
+                if (!token.isNullOrBlank()) clearCachedAccessToken(token)
+                revokeClientAccess(authResult, accountEmail)
+              }
+            },
+            identitySignOut = { signOutIdentityClient() },
+            clearAccountPrefs = { clearAccountPrefs() },
+            resetUiStateIfStillCurrent = { resetAccountUiState(statusMessage = null) },
+          )
+        } finally {
+          coroutineContext[Job]?.let(sessionGuard::clearSignOutJob)
         }
-      val token = authResult?.accessToken
-      if (authResult != null && !authResult.hasResolution() && !token.isNullOrBlank()) {
-        revokeAndClearSession(token, authResult, accountEmail)
-      } else {
-        if (!token.isNullOrBlank()) clearCachedAccessToken(token)
-        revokeClientAccess(authResult, accountEmail)
       }
-    }
+    sessionGuard.registerSignOutJob(job)
+    job.start()
   }
 
-  private fun clearAccountState(statusMessage: String?) {
-    val keepSyncBooks = state.value.syncBookFiles
-    prefs.edit().clear().putBoolean(KEY_SYNC_BOOKS, keepSyncBooks).apply()
-    state.value = SyncUiState(syncBookFiles = keepSyncBooks, statusMessage = statusMessage)
-    runCatching { Identity.getSignInClient(appContext).signOut() }
+  private fun clearAccountPrefs() {
+    prefs.edit()
+      .remove(KEY_EMAIL)
+      .remove(KEY_NAME)
+      .remove(KEY_LAST_SYNC)
+      .remove(KEY_CLOUD_BOOKS_JSON)
+      .remove(KEY_DELETED_HASHES)
+      .apply()
+  }
+
+  private fun resetAccountUiState(statusMessage: String?) {
+    state.update {
+      it.copy(
+        email = null,
+        displayName = null,
+        lastSyncedAt = 0L,
+        syncing = false,
+        needsReconnect = false,
+        statusMessage = statusMessage,
+        cloudBooks = emptyList(),
+      )
+    }
   }
 
   fun deleteBookFromCloudAsync(contentHash: String?, title: String? = null) {
     if (contentHash.isNullOrBlank()) return
-    val remaining = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
-    saveCloudBooks(remaining)
-    state.update { it.copy(cloudBooks = remaining) }
+    val expectedGeneration = sessionGuard.currentGeneration()
     val signedIn = state.value.isSignedIn
+    if (signedIn) {
+      val remaining = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
+      saveCloudBooks(remaining)
+      updateStateIfActive(expectedGeneration, requireSignedIn = true) {
+        it.copy(cloudBooks = remaining)
+      }
+    }
     backgroundScope.launch {
+      if (!sessionGuard.isCurrent(expectedGeneration)) return@launch
       tombstones.markBooks(listOf(contentHash), deleted = true)
-      if (signedIn) deleteBookFromCloud(contentHash, title)
+      if (signedIn && isSessionActive(expectedGeneration, requireSignedIn = true)) {
+        deleteBookFromCloud(contentHash, title, expectedGeneration)
+      }
     }
   }
 
   suspend fun deleteBookFromCloud(contentHash: String, title: String? = null): SyncActionResult =
-    mutex.withLock {
-      withContext(Dispatchers.IO) {
-        tombstones.markBooks(listOf(contentHash), deleted = true)
-        val remainingLocalCloud = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
-        saveCloudBooks(remainingLocalCloud)
-        state.update {
-          it.copy(
-            syncing = true,
-            cloudBooks = remainingLocalCloud,
-            statusMessage = str(R.string.sync_deleting_cloud),
-          )
-        }
-        val initial =
-          when (val auth = authorizeForSignedInOperation()) {
-            is SignedInAuth.Ready -> auth
-            is SignedInAuth.EarlyReturn -> return@withContext auth.result
-          }
-        val outcome =
-          DriveAuthRetry.executeWithSingle401Retry(
-            initialToken = initial.token,
-            clearToken = ::clearCachedAccessToken,
-            authorize = { authorizeScopes().toTokenResponse() },
-          ) { activeToken ->
-            deleteBookWithToken(activeToken, contentHash)
-          }
-        finishRetryOutcome(outcome) { updatedBooks, _ ->
-          val label = title?.takeIf { it.isNotBlank() } ?: contentHash.take(8)
-          val doneMsg = str(R.string.sync_book_deleted_cloud, label)
-          state.update {
+    deleteBookFromCloud(contentHash, title, sessionGuard.currentGeneration())
+
+  private suspend fun deleteBookFromCloud(
+    contentHash: String,
+    title: String?,
+    expectedGeneration: Long,
+  ): SyncActionResult =
+    withContext(Dispatchers.IO) {
+      val lockedResult =
+        sessionGuard.runWithSessionLock(
+          mutex = mutex,
+          expectedGeneration = expectedGeneration,
+          isSessionStillAllowed = { state.value.isSignedIn },
+        ) {
+          tombstones.markBooks(listOf(contentHash), deleted = true)
+          val remainingLocalCloud = state.value.cloudBooks.filterNot { it.contentHash == contentHash }
+          saveCloudBooks(remainingLocalCloud)
+          updateStateIfActive(expectedGeneration, requireSignedIn = true) {
             it.copy(
-              syncing = false,
-              needsReconnect = false,
-              cloudBooks = updatedBooks ?: it.cloudBooks,
-              statusMessage = doneMsg,
+              syncing = true,
+              cloudBooks = remainingLocalCloud,
+              statusMessage = str(R.string.sync_deleting_cloud),
             )
           }
+          val initial =
+            when (val auth = authorizeForSignedInOperation(expectedGeneration)) {
+              is SignedInAuth.Ready -> auth
+              is SignedInAuth.EarlyReturn -> return@runWithSessionLock auth.result
+            }
+          val outcome =
+            DriveAuthRetry.executeWithSingle401Retry(
+              initialToken = initial.token,
+              clearToken = ::clearCachedAccessToken,
+              authorize = {
+                ensureSessionActive(expectedGeneration, requireSignedIn = true)
+                authorizeScopes().toTokenResponse()
+              },
+            ) { activeToken ->
+              deleteBookWithToken(activeToken, contentHash, expectedGeneration)
+            }
+          finishRetryOutcome(
+            outcome = outcome,
+            expectedGeneration = expectedGeneration,
+            requireSignedIn = true,
+          ) { updatedBooks, _ ->
+            val label = title?.takeIf { it.isNotBlank() } ?: contentHash.take(8)
+            val doneMsg = str(R.string.sync_book_deleted_cloud, label)
+            updateStateIfActive(expectedGeneration, requireSignedIn = true) {
+              it.copy(
+                syncing = false,
+                needsReconnect = false,
+                cloudBooks = updatedBooks ?: it.cloudBooks,
+                statusMessage = doneMsg,
+              )
+            }
+          }
         }
+      when (lockedResult) {
+        is SessionLockedResult.Executed -> lockedResult.value
+        SessionLockedResult.StaleSession -> SyncActionResult.Error(str(R.string.sync_cancelled))
       }
     }
 
   private suspend fun deleteBookWithToken(
     token: String,
     contentHash: String,
+    expectedGeneration: Long,
   ): List<SyncedBookProgress>? {
-    resolveAndBindAccount(token)
+    resolveAndBindAccount(token, expectedGeneration, requireSignedIn = true)
+    ensureSessionActive(expectedGeneration, requireSignedIn = true)
     tombstones.markBooks(listOf(contentHash), deleted = true)
-    val appDataFiles = listAppDataFiles(token)
-    for ((name, fileId) in appDataFiles) {
-      if (name.startsWith("book_${contentHash}.")) {
-        httpDeleteFile(token, fileId)
+    val entries = listAppDataFileEntries(token)
+    for (entry in entries) {
+      if (entry.name.startsWith("book_${contentHash}.")) {
+        ensureSessionActive(expectedGeneration, requireSignedIn = true)
+        httpDeleteFile(token, entry.id)
       }
     }
-    val syncFileId = appDataFiles[SYNC_FILE_NAME] ?: return null
+    val syncFileId = entries.lastOrNull { it.name == SYNC_FILE_NAME }?.id ?: return null
     val remote = downloadSyncPayload(token, syncFileId)
+    ensureSessionActive(expectedGeneration, requireSignedIn = true)
     tombstones.mergeRemote(remote.bookTombstones, remote.annotationTombstones)
     val tombstoneSnapshot = tombstones.snapshot()
     val updatedPayload =
@@ -366,47 +492,77 @@ class GoogleDriveSyncManager(
         annotationTombstones = tombstoneSnapshot.annotations,
       )
     val encoded = json.encodeToString(SyncPayload.serializer(), updatedPayload)
+    ensureSessionActive(expectedGeneration, requireSignedIn = true)
     uploadSyncJson(token, syncFileId, encoded)
+    ensureSessionActive(expectedGeneration, requireSignedIn = true)
     saveCloudBooks(updatedPayload.books)
     return updatedPayload.books
   }
 
-  suspend fun deleteAllCloudData(): SyncActionResult =
-    mutex.withLock {
-      withContext(Dispatchers.IO) {
-        state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_deleting_cloud)) }
-        val initial =
-          when (val auth = authorizeForSignedInOperation()) {
-            is SignedInAuth.Ready -> auth
-            is SignedInAuth.EarlyReturn -> return@withContext auth.result
+  suspend fun deleteAllCloudData(): SyncActionResult {
+    val expectedGeneration = sessionGuard.currentGeneration()
+    return withContext(Dispatchers.IO) {
+      val lockedResult =
+        sessionGuard.runWithSessionLock(
+          mutex = mutex,
+          expectedGeneration = expectedGeneration,
+          isSessionStillAllowed = { state.value.isSignedIn },
+        ) {
+          updateStateIfActive(expectedGeneration, requireSignedIn = true) {
+            it.copy(syncing = true, statusMessage = str(R.string.sync_deleting_cloud))
           }
-        val accountEmail = state.value.email
-        var latestAuthResult = initial.authResult
-        val outcome =
-          DriveAuthRetry.executeWithSingle401Retry(
-            initialToken = initial.token,
-            clearToken = ::clearCachedAccessToken,
-            authorize = {
-              val auth = authorizeScopes()
-              latestAuthResult = auth
-              auth.toTokenResponse()
-            },
-          ) { activeToken ->
-            repeat(5) {
-              val files = listAppDataFiles(activeToken)
-              if (files.isEmpty()) return@repeat
-              for ((_, fileId) in files) {
-                httpDeleteFile(activeToken, fileId)
-              }
+          val initial =
+            when (val auth = authorizeForSignedInOperation(expectedGeneration)) {
+              is SignedInAuth.Ready -> auth
+              is SignedInAuth.EarlyReturn -> return@runWithSessionLock auth.result
+            }
+          val accountEmail = state.value.email
+          var latestAuthResult = initial.authResult
+          val outcome =
+            DriveAuthRetry.executeWithSingle401Retry(
+              initialToken = initial.token,
+              clearToken = ::clearCachedAccessToken,
+              authorize = {
+                ensureSessionActive(expectedGeneration, requireSignedIn = true)
+                val auth = authorizeScopes()
+                latestAuthResult = auth
+                auth.toTokenResponse()
+              },
+            ) { activeToken ->
+              DriveWipeCoordinator.wipeAll(
+                maxPasses = MAX_WIPE_PASSES,
+                listFileIds = { listAppDataFileEntries(activeToken).map { it.id } },
+                deleteFile = { fileId -> httpDeleteFile(activeToken, fileId) },
+                ensureSessionActive = { ensureSessionActive(expectedGeneration, requireSignedIn = true) },
+              )
+            }
+          finishRetryOutcome(
+            outcome = outcome,
+            expectedGeneration = expectedGeneration,
+            requireSignedIn = true,
+          ) { _, usedToken ->
+            val wipeGeneration = sessionGuard.advanceGeneration()
+            cancelBackgroundSync()
+            tombstones.clear()
+            try {
+              revokeAndClearSession(usedToken, latestAuthResult, accountEmail)
+            } catch (e: CancellationException) {
+              throw e
+            } catch (_: Throwable) {
+            }
+            signOutIdentityClient()
+            clearAccountPrefs()
+            if (sessionGuard.isCurrent(wipeGeneration)) {
+              resetAccountUiState(statusMessage = str(R.string.sync_all_cloud_deleted))
             }
           }
-        finishRetryOutcome(outcome) { _, usedToken ->
-          tombstones.clear()
-          revokeAndClearSession(usedToken, latestAuthResult, accountEmail)
-          clearAccountState(statusMessage = str(R.string.sync_all_cloud_deleted))
         }
+      when (lockedResult) {
+        is SessionLockedResult.Executed -> lockedResult.value
+        SessionLockedResult.StaleSession -> SyncActionResult.Error(str(R.string.sync_cancelled))
       }
     }
+  }
 
   private data class SyncRunSummary(
     val books: List<SyncedBookProgress>,
@@ -417,50 +573,76 @@ class GoogleDriveSyncManager(
     token: String,
     allowBookFiles: Boolean = true,
     isBackground: Boolean = false,
+    expectedGeneration: Long = sessionGuard.currentGeneration(),
   ): SyncActionResult =
-    mutex.withLock {
-      withContext(Dispatchers.IO) {
-        state.update { it.copy(syncing = true, statusMessage = str(R.string.sync_syncing_drive)) }
-        val outcome =
-          DriveAuthRetry.executeWithSingle401Retry(
-            initialToken = token,
-            clearToken = ::clearCachedAccessToken,
-            authorize = { authorizeScopes().toTokenResponse() },
-          ) { activeToken ->
-            syncOnceWithToken(activeToken, allowBookFiles)
+    withContext(Dispatchers.IO) {
+      val lockedResult =
+        sessionGuard.runWithSessionLock(
+          mutex = mutex,
+          expectedGeneration = expectedGeneration,
+          isSessionStillAllowed = { !isBackground || state.value.isSignedIn },
+        ) {
+          updateStateIfActive(expectedGeneration, requireSignedIn = isBackground) {
+            it.copy(syncing = true, statusMessage = str(R.string.sync_syncing_drive))
           }
-        finishRetryOutcome(outcome, isBackground = isBackground) { summary, _ ->
-          val now = System.currentTimeMillis()
-          prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
-          val doneStatus =
-            if (summary.failedBookUploads > 0) {
-              str(R.string.sync_partial_book_upload_failed, summary.failedBookUploads)
-            } else {
-              str(R.string.sync_success)
+          val outcome =
+            DriveAuthRetry.executeWithSingle401Retry(
+              initialToken = token,
+              clearToken = ::clearCachedAccessToken,
+              authorize = {
+                ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
+                authorizeScopes().toTokenResponse()
+              },
+            ) { activeToken ->
+              syncOnceWithToken(activeToken, allowBookFiles, expectedGeneration, isBackground)
             }
-          state.update {
-            it.copy(
-              syncing = false,
-              needsReconnect = false,
-              lastSyncedAt = now,
-              cloudBooks = summary.books,
-              statusMessage = doneStatus,
-            )
+          finishRetryOutcome(
+            outcome = outcome,
+            expectedGeneration = expectedGeneration,
+            requireSignedIn = isBackground,
+            isBackground = isBackground,
+          ) { summary, _ ->
+            if (!isSessionActive(expectedGeneration, requireSignedIn = isBackground)) return@finishRetryOutcome
+            val now = System.currentTimeMillis()
+            prefs.edit().putLong(KEY_LAST_SYNC, now).apply()
+            val doneStatus =
+              if (summary.failedBookUploads > 0) {
+                str(R.string.sync_partial_book_upload_failed, summary.failedBookUploads)
+              } else {
+                str(R.string.sync_success)
+              }
+            updateStateIfActive(expectedGeneration, requireSignedIn = isBackground) {
+              it.copy(
+                syncing = false,
+                needsReconnect = false,
+                lastSyncedAt = now,
+                cloudBooks = summary.books,
+                statusMessage = doneStatus,
+              )
+            }
           }
         }
+      when (lockedResult) {
+        is SessionLockedResult.Executed -> lockedResult.value
+        SessionLockedResult.StaleSession -> SyncActionResult.Error(str(R.string.sync_cancelled))
       }
     }
 
   private suspend fun syncOnceWithToken(
     token: String,
     allowBookFiles: Boolean,
+    expectedGeneration: Long,
+    isBackground: Boolean,
   ): SyncRunSummary {
-    resolveAndBindAccount(token)
+    resolveAndBindAccount(token, expectedGeneration, requireSignedIn = isBackground)
+    ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     library.ensureContentHashes()
 
     val rawAppDataFiles = listAppDataFiles(token)
+    ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     val syncFileId = rawAppDataFiles[SYNC_FILE_NAME]
     val rawRemote = syncFileId?.let { downloadSyncPayload(token, it) }
+    ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     if (rawRemote != null) {
       tombstones.mergeRemote(rawRemote.bookTombstones, rawRemote.annotationTombstones)
     }
@@ -470,7 +652,14 @@ class GoogleDriveSyncManager(
 
     for ((name, fileId) in rawAppDataFiles) {
       if (deletedHashes.any { hash -> name.startsWith("book_${hash}.") }) {
-        httpDeleteFile(token, fileId)
+        ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
+        try {
+          httpDeleteFile(token, fileId)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (err: Throwable) {
+          if (isAuthExpiredError(err)) throw err
+        }
       }
     }
     val appDataFiles =
@@ -483,11 +672,12 @@ class GoogleDriveSyncManager(
     var failedBookUploads = 0
     if (state.value.syncBookFiles && allowBookFiles) {
       if (remote != null) {
-        downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes)
+        downloadMissingBooks(token, remote.books, appDataFiles, deletedHashes, expectedGeneration, isBackground)
       }
-      failedBookUploads = uploadMissingBooks(token, appDataFiles, deletedHashes)
+      failedBookUploads = uploadMissingBooks(token, appDataFiles, deletedHashes, expectedGeneration, isBackground)
     }
 
+    ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     if (remote != null) {
       mergeRemoteIntoLocal(remote)
     }
@@ -499,11 +689,34 @@ class GoogleDriveSyncManager(
         mergedPayload.copy(updatedAt = 0L) != remote.copy(updatedAt = 0L)
     if (needsUpload) {
       val encoded = json.encodeToString(SyncPayload.serializer(), mergedPayload)
+      ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
       uploadSyncJson(token, syncFileId, encoded)
     }
+    ensureSessionActive(expectedGeneration, requireSignedIn = isBackground)
     saveCloudBooks(mergedPayload.books)
     consecutiveBackgroundFailures = 0
     return SyncRunSummary(books = mergedPayload.books, failedBookUploads = failedBookUploads)
+  }
+
+  private fun isSessionActive(expectedGeneration: Long, requireSignedIn: Boolean): Boolean =
+    sessionGuard.isCurrent(expectedGeneration) && (!requireSignedIn || state.value.isSignedIn)
+
+  private fun ensureSessionActive(expectedGeneration: Long, requireSignedIn: Boolean) {
+    if (!isSessionActive(expectedGeneration, requireSignedIn)) {
+      throw SyncSessionInvalidatedException()
+    }
+  }
+
+  private inline fun updateStateIfActive(
+    expectedGeneration: Long,
+    requireSignedIn: Boolean = false,
+    crossinline transform: (SyncUiState) -> SyncUiState,
+  ) {
+    state.update { current ->
+      if (!sessionGuard.isCurrent(expectedGeneration)) return@update current
+      if (requireSignedIn && !current.isSignedIn) return@update current
+      transform(current)
+    }
   }
 
   private sealed interface SignedInAuth {
@@ -511,7 +724,7 @@ class GoogleDriveSyncManager(
     data class EarlyReturn(val result: SyncActionResult) : SignedInAuth
   }
 
-  private suspend fun authorizeForSignedInOperation(): SignedInAuth {
+  private suspend fun authorizeForSignedInOperation(expectedGeneration: Long): SignedInAuth {
     val authResult =
       try {
         authorizeScopes()
@@ -519,7 +732,7 @@ class GoogleDriveSyncManager(
         throw e
       } catch (err: Throwable) {
         val msg = formatSyncError(err)
-        state.update {
+        updateStateIfActive(expectedGeneration, requireSignedIn = true) {
           it.copy(
             syncing = false,
             needsReconnect = it.needsReconnect || isAuthExpiredError(err),
@@ -529,9 +742,15 @@ class GoogleDriveSyncManager(
         return SignedInAuth.EarlyReturn(SyncActionResult.Error(msg))
       }
 
+    if (!isSessionActive(expectedGeneration, requireSignedIn = true)) {
+      return SignedInAuth.EarlyReturn(SyncActionResult.Error(str(R.string.sync_cancelled)))
+    }
+
     if (authResult.hasResolution()) {
       val msg = str(R.string.sync_needs_reconnect)
-      state.update { it.copy(syncing = false, needsReconnect = true, statusMessage = msg) }
+      updateStateIfActive(expectedGeneration, requireSignedIn = true) {
+        it.copy(syncing = false, needsReconnect = true, statusMessage = msg)
+      }
       val early =
         authResult.pendingIntent?.let(SyncActionResult::NeedsConsent)
           ?: SyncActionResult.Error(msg)
@@ -541,7 +760,9 @@ class GoogleDriveSyncManager(
     val token = authResult.accessToken
     if (token.isNullOrBlank()) {
       val msg = str(R.string.sync_no_token)
-      state.update { it.copy(syncing = false, statusMessage = msg) }
+      updateStateIfActive(expectedGeneration, requireSignedIn = true) {
+        it.copy(syncing = false, statusMessage = msg)
+      }
       return SignedInAuth.EarlyReturn(SyncActionResult.Error(msg))
     }
 
@@ -550,17 +771,22 @@ class GoogleDriveSyncManager(
 
   private suspend fun <T> finishRetryOutcome(
     outcome: TokenRetryOutcome<T, PendingIntent>,
+    expectedGeneration: Long,
+    requireSignedIn: Boolean = false,
     isBackground: Boolean = false,
     onSuccess: suspend (T, String) -> Unit,
-  ): SyncActionResult =
-    when (outcome) {
+  ): SyncActionResult {
+    if (!isSessionActive(expectedGeneration, requireSignedIn)) {
+      return SyncActionResult.Error(str(R.string.sync_cancelled))
+    }
+    return when (outcome) {
       is TokenRetryOutcome.Succeeded -> {
         onSuccess(outcome.value, outcome.tokenUsed)
         SyncActionResult.Synced
       }
       is TokenRetryOutcome.NeedsResolution -> {
         val msg = str(R.string.sync_needs_reconnect)
-        state.update {
+        updateStateIfActive(expectedGeneration, requireSignedIn) {
           it.copy(
             syncing = false,
             needsReconnect = true,
@@ -570,10 +796,13 @@ class GoogleDriveSyncManager(
         outcome.resolution?.let(SyncActionResult::NeedsConsent) ?: SyncActionResult.Error(msg)
       }
       is TokenRetryOutcome.Failed -> {
+        if (outcome.error is SyncSessionInvalidatedException) {
+          return SyncActionResult.Error(str(R.string.sync_cancelled))
+        }
         val msg =
           if (isBackground && outcome.authExpired) str(R.string.sync_needs_reconnect)
           else formatSyncError(outcome.error)
-        state.update {
+        updateStateIfActive(expectedGeneration, requireSignedIn) {
           it.copy(
             syncing = false,
             needsReconnect = it.needsReconnect || outcome.authExpired,
@@ -583,6 +812,7 @@ class GoogleDriveSyncManager(
         SyncActionResult.Error(msg)
       }
     }
+  }
 
   private fun requestedScopes(): List<Scope> =
     listOf(
@@ -652,20 +882,44 @@ class GoogleDriveSyncManager(
     token: String,
     authResult: AuthorizationResult?,
     accountEmail: String?,
-  ) {
+  ): Boolean {
+    var tokenRevoked = true
     if (token.isNotBlank()) {
+      tokenRevoked =
+        withContext(Dispatchers.IO) {
+          try {
+            revokeToken(token)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (_: Throwable) {
+            false
+          }
+        }
+      clearCachedAccessToken(token)
+    }
+    revokeClientAccess(authResult, accountEmail)
+    return tokenRevoked
+  }
+
+  private suspend fun signOutIdentityClient() {
+    withContext(Dispatchers.IO) {
       try {
-        revokeToken(token)
+        withTimeoutOrNull(IDENTITY_SIGNOUT_TIMEOUT_MS) {
+          Identity.getSignInClient(appContext).signOut().await()
+        }
       } catch (e: CancellationException) {
         throw e
       } catch (_: Throwable) {
       }
-      clearCachedAccessToken(token)
     }
-    revokeClientAccess(authResult, accountEmail)
   }
 
-  private suspend fun resolveAndBindAccount(token: String): String {
+  private suspend fun resolveAndBindAccount(
+    token: String,
+    expectedGeneration: Long,
+    requireSignedIn: Boolean,
+  ): String {
+    ensureSessionActive(expectedGeneration, requireSignedIn)
     val cachedAccountId =
       state.value.email?.takeIf { it.isNotBlank() }
         ?: prefs.getString(KEY_EMAIL, null)?.takeIf { it.isNotBlank() }
@@ -673,13 +927,19 @@ class GoogleDriveSyncManager(
       cachedAccountId = cachedAccountId,
       fetchUserInfoJson = { httpGet("https://www.googleapis.com/oauth2/v3/userinfo", token) },
       onProfileResolved = { profile ->
+        ensureSessionActive(expectedGeneration, requireSignedIn)
         prefs.edit()
           .putString(KEY_EMAIL, profile.accountId)
           .putString(KEY_NAME, profile.displayName)
           .apply()
-        state.update { it.copy(email = profile.accountId, displayName = profile.displayName) }
+        updateStateIfActive(expectedGeneration, requireSignedIn) {
+          it.copy(email = profile.accountId, displayName = profile.displayName)
+        }
       },
-      bindToAccount = tombstones::bindToAccount,
+      bindToAccount = { accountId ->
+        ensureSessionActive(expectedGeneration, requireSignedIn)
+        tombstones.bindToAccount(accountId)
+      },
       onUnresolvedAccount = { remoteReadError("userinfo") },
     )
   }
@@ -807,8 +1067,10 @@ class GoogleDriveSyncManager(
     )
   }
 
-  private fun listAppDataFiles(token: String): Map<String, String> {
-    val map = LinkedHashMap<String, String>()
+  private data class DriveFileEntry(val id: String, val name: String)
+
+  private fun listAppDataFileEntries(token: String): List<DriveFileEntry> {
+    val entries = mutableListOf<DriveFileEntry>()
     var pageToken: String? = null
     do {
       val url =
@@ -825,13 +1087,23 @@ class GoogleDriveSyncManager(
           val obj = files.getJSONObject(i)
           val id = obj.optString("id")
           val name = obj.optString("name")
-          if (id.isNotBlank() && name.isNotBlank()) {
-            map[name] = id
+          if (id.isNotBlank()) {
+            entries += DriveFileEntry(id = id, name = name)
           }
         }
       }
       pageToken = root.optString("nextPageToken").takeIf { it.isNotBlank() }
     } while (pageToken != null)
+    return entries
+  }
+
+  private fun listAppDataFiles(token: String): Map<String, String> {
+    val map = LinkedHashMap<String, String>()
+    for (entry in listAppDataFileEntries(token)) {
+      if (entry.name.isNotBlank()) {
+        map[entry.name] = entry.id
+      }
+    }
     return map
   }
 
@@ -840,17 +1112,23 @@ class GoogleDriveSyncManager(
     remoteBooks: List<SyncedBookProgress>,
     appDataFiles: Map<String, String>,
     deletedHashes: Set<String>,
+    expectedGeneration: Long,
+    isBackground: Boolean,
   ) {
     val localHashes = library.books.value.mapNotNull { it.contentHash }.toHashSet()
     for (remoteBook in remoteBooks) {
+      ensureSessionActive(expectedGeneration, isBackground)
       if (remoteBook.contentHash in localHashes || remoteBook.contentHash in deletedHashes) continue
       val driveFileName = bookDriveFileName(remoteBook.contentHash, remoteBook.format.extension)
       val driveFileId = appDataFiles[driveFileName] ?: continue
-      state.update { it.copy(statusMessage = str(R.string.sync_downloading_book, remoteBook.title)) }
+      updateStateIfActive(expectedGeneration, isBackground) {
+        it.copy(statusMessage = str(R.string.sync_downloading_book, remoteBook.title))
+      }
       val tempFile = File(appContext.cacheDir, "sync_${remoteBook.contentHash}.tmp")
       try {
         val downloaded = downloadFileTo(token, driveFileId, tempFile)
         if (downloaded) {
+          ensureSessionActive(expectedGeneration, isBackground)
           library.importFromSyncedFile(
             tempFile = tempFile,
             title = remoteBook.title,
@@ -873,9 +1151,12 @@ class GoogleDriveSyncManager(
     token: String,
     appDataFiles: Map<String, String>,
     deletedHashes: Set<String>,
+    expectedGeneration: Long,
+    isBackground: Boolean,
   ): Int {
     var failedCount = 0
     for (book in library.books.value) {
+      ensureSessionActive(expectedGeneration, isBackground)
       val hash = book.contentHash ?: continue
       if (hash in deletedHashes) continue
       val driveFileName = bookDriveFileName(hash, book.format.extension)
@@ -884,7 +1165,9 @@ class GoogleDriveSyncManager(
       if (!localFile.exists() || localFile.length() <= 0L || localFile.length() > MAX_SYNC_BOOK_BYTES) {
         continue
       }
-      state.update { it.copy(statusMessage = str(R.string.sync_uploading_book, book.title)) }
+      updateStateIfActive(expectedGeneration, isBackground) {
+        it.copy(statusMessage = str(R.string.sync_uploading_book, book.title))
+      }
       val uploadErr = runCatching { uploadBinaryFileToAppData(token, driveFileName, localFile) }.exceptionOrNull()
       if (uploadErr != null) {
         if (isAuthExpiredError(uploadErr)) throw uploadErr
@@ -1020,17 +1303,16 @@ class GoogleDriveSyncManager(
     return try {
       val code = conn.responseCode
       if (code == 401) throw DriveHttpException(401, "HTTP 401")
-      code in 200..299 || code == 404
-    } catch (e: DriveHttpException) {
-      throw e
-    } catch (_: Exception) {
-      false
+      if (!DriveWipeCoordinator.isDeleteResponseSuccess(code)) {
+        throw DriveHttpException(code, "Drive delete failed ($code)")
+      }
+      true
     } finally {
       conn.disconnect()
     }
   }
 
-  private fun revokeToken(token: String) {
+  private fun revokeToken(token: String): Boolean {
     val body = "token=" + URLEncoder.encode(token, "UTF-8")
     val conn =
       (URL("https://oauth2.googleapis.com/revoke").openConnection() as HttpURLConnection).apply {
@@ -1040,9 +1322,11 @@ class GoogleDriveSyncManager(
         readTimeout = 15_000
         setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
       }
-    try {
+    return try {
       conn.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-      conn.responseCode
+      DriveWipeCoordinator.isRevokeResponseAccepted(conn.responseCode)
+    } catch (_: Exception) {
+      false
     } finally {
       conn.disconnect()
     }
@@ -1101,6 +1385,8 @@ class GoogleDriveSyncManager(
     const val KEY_DELETED_HASHES = "deleted_cloud_book_hashes"
     const val MAX_SYNC_BOOK_BYTES = 100L * 1024L * 1024L
     const val LIST_PAGE_SIZE = 1000
+    const val MAX_WIPE_PASSES = DriveWipeCoordinator.DEFAULT_MAX_PASSES
+    const val IDENTITY_SIGNOUT_TIMEOUT_MS = 5_000L
     const val BACKGROUND_SYNC_DEBOUNCE_MS = 20_000L
     const val MAX_BACKGROUND_BACKOFF_MS = 600_000L
   }
