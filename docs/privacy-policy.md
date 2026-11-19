@@ -28,8 +28,13 @@
 - Khi bạn bấm nút **"Dịch ngoài"**, ứng dụng sẽ mở trang `translate.google.com` trong trình duyệt web trên máy kèm đoạn văn bản được chọn để bạn tự dịch trực tiếp trên trang web của Google.
 - Khi bạn bật tính năng **Đọc trên màn hình khóa** hoặc **Live Wallpaper Inkify**, tiêu đề sách và trích đoạn (snippet) đang đọc có thể hiển thị công khai trên màn hình khóa (`VISIBILITY_PUBLIC` trên thông báo điều hướng và trên hình nền động) mà không cần mở khóa thiết bị. Bạn có thể tắt tùy chọn này bất cứ lúc nào trong phần Cài đặt Reader.
 
-### 4. Các quyền hệ thống ứng dụng sử dụng
-- `INTERNET`: Chỉ dùng khi bạn đồng bộ Google Drive hoặc tra từ điển trực tuyến.
+### 4. Thanh toán qua Google Play Billing & Mua hàng trong ứng dụng (Inkify Pro)
+- Mọi giao dịch nâng cấp **Inkify Pro** (gói tháng, gói năm có dùng thử 7 ngày, gói trọn đời) và ủng hộ tác giả (Tip Jar) đều được xử lý hoàn toàn và bảo mật bởi **Google Play Billing**.
+- **Inkify không thu thập, không xử lý và không lưu trữ** bất kỳ thông tin thẻ thanh toán, tài khoản ngân hàng hay dữ liệu tài chính cá nhân nào của bạn.
+- Để hỗ trợ đọc sách ngoại tuyến (offline-first), ứng dụng chỉ lưu bộ nhớ đệm cục bộ trên thiết bị (`ProEntitlement`) ghi nhận trạng thái đã kích hoạt bản quyền Pro, mã gói (`productId`) và thời điểm xác minh gần nhất từ Google Play; khi thiết bị có kết nối mạng trở lại, ứng dụng tự động đồng bộ lại trạng thái gia hạn, hết hạn hoặc hoàn tiền thông qua Google Play.
+
+### 5. Các quyền hệ thống ứng dụng sử dụng
+- `INTERNET`: Chỉ dùng khi bạn đồng bộ Google Drive, tra từ điển trực tuyến hoặc xác minh/khôi phục giao dịch Google Play Billing (Inkify Pro).
 - `POST_NOTIFICATIONS`: Dùng để hiển thị thanh điều hướng đọc sách trên màn hình khóa (khi bạn bật tính năng này).
 - `ACCESS_NOTIFICATION_POLICY`: Chỉ dùng để bật chế độ Không làm phiền (Do Not Disturb) khi bạn chủ động bật *Focus Mode*.
 - `<queries>` (`ACTION_MAIN` / `CATEGORY_LAUNCHER`): Chỉ dùng cho chế độ *eInk Home Launcher* tùy chọn nhằm liệt kê danh sách các ứng dụng có thể mở trong Ngăn ứng dụng (App Drawer) trên máy.
@@ -58,11 +63,16 @@
 - When you tap the **"External Translate"** button, the app opens `translate.google.com` in your device's web browser with the selected text.
 - When you enable **Lock Screen Reading** or the **Inkify Live Wallpaper**, the current book title and reading excerpt (snippet) may be displayed publicly on your lock screen (`VISIBILITY_PUBLIC` notification and live wallpaper) without unlocking your device. You can disable this at any time in Reader Settings.
 
-### 4. Permissions Used
-- `INTERNET`: Used solely for optional Google Drive Sync and online dictionary/translation lookups.
+### 4. Google Play Billing & In-App Purchases (Inkify Pro)
+- All **Inkify Pro** purchases and subscriptions (monthly, annual with 7-day free trial, lifetime) as well as optional Tip Jar contributions are processed securely by **Google Play Billing**.
+- **Inkify never collects, processes, or stores** any payment card numbers, bank account details, or personal financial information.
+- To support seamless offline-first reading, the app only caches your purchase entitlement status locally on-device (`ProEntitlement`: active Pro status, `productId`, and last verification timestamp). When network connectivity is available, the app automatically re-syncs renewals, expirations, or refunds directly with Google Play.
+
+### 5. Permissions Used
+- `INTERNET`: Used solely for optional Google Drive Sync, online dictionary/translation lookups, and Google Play Billing purchase verification/restoration.
 - `POST_NOTIFICATIONS`: Used for optional Lock Screen reading controls.
 - `ACCESS_NOTIFICATION_POLICY`: Used only to toggle Do Not Disturb when you enable *Focus Mode*.
 - `<queries>` (`ACTION_MAIN` / `CATEGORY_LAUNCHER`): Used solely by the optional *eInk Home Launcher* mode to display launchable apps installed on your device in the App Drawer.
 
-### 5. Contact
+### 6. Contact
 If you have any questions regarding privacy or data protection, please contact: **letuandat556@gmail.com**
