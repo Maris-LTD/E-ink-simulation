@@ -58,6 +58,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.emptyapp.R
+import com.example.emptyapp.data.billing.ProFeature
+import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.reader.LockScreenReadingNotifier
@@ -75,6 +77,8 @@ fun TutorialOverlay(
   onMarkSeen: () -> Unit = {},
   onDismiss: () -> Unit,
   initialPage: Int = 0,
+  proGate: ProFeatureGate? = null,
+  onRequirePro: (ProFeature) -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
@@ -159,9 +163,17 @@ fun TutorialOverlay(
               StepLockScreenSetup(
                 wallpaperActive = wallpaperActive,
                 notificationActive = notificationGranted && settings.lockScreenReader,
-                onSetWallpaper = { EInkSystemSetupHelper.openLiveWallpaperPicker(context) },
+                onSetWallpaper = {
+                  if (proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
+                    onRequirePro(ProFeature.LOCKSCREEN_WALLPAPER)
+                  } else {
+                    EInkSystemSetupHelper.openLiveWallpaperPicker(context)
+                  }
+                },
                 onEnableNotification = {
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                  if (proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
+                    onRequirePro(ProFeature.LOCKSCREEN_WALLPAPER)
+                  } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     !LockScreenReadingNotifier.hasPermission(context)
                   ) {
                     notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -175,9 +187,13 @@ fun TutorialOverlay(
               StepLauncherSetup(
                 launcherActive = launcherActive,
                 onSetLauncher = {
-                  onMarkSeen()
-                  scope.launch { pagerState.scrollToPage(3) }
-                  EInkSystemSetupHelper.openHomeLauncherSettings(context)
+                  if (proGate != null && !proGate.hasAccess(ProFeature.EINK_LAUNCHER)) {
+                    onRequirePro(ProFeature.EINK_LAUNCHER)
+                  } else {
+                    onMarkSeen()
+                    scope.launch { pagerState.scrollToPage(3) }
+                    EInkSystemSetupHelper.openHomeLauncherSettings(context)
+                  }
                 },
                 onSkipStep = {
                   scope.launch { pagerState.animateScrollToPage(3) }

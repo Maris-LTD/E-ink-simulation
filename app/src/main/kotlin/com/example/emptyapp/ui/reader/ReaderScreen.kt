@@ -40,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -58,6 +59,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeature
+import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.reader.EInkColorFilter
 import com.example.emptyapp.reader.EInkPreferencesMapper
@@ -67,6 +72,8 @@ import com.example.emptyapp.reader.attachReaderInput
 import com.example.emptyapp.reader.awaitView
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
 import com.example.emptyapp.ui.eink.RefreshFlashOverlay
+import com.example.emptyapp.ui.monet.PdfProPreviewLimitCard
+import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -112,6 +119,8 @@ fun ReaderScreen(
   hasDndPermission: () -> Boolean = { true },
   onOpenDndPermissionSettings: () -> Unit = {},
   onOpenNotificationSettings: () -> Unit = {},
+  billing: PlayBillingManager? = null,
+  proGate: ProFeatureGate? = null,
 ) {
   val settings by viewModel.settings.collectAsStateWithLifecycle()
   val pdfConfig by viewModel.pdfConfig.collectAsStateWithLifecycle()
@@ -133,6 +142,9 @@ fun ReaderScreen(
   var navigator by remember { mutableStateOf<NavigatorFragment?>(null) }
   var brightnessHudVisible by remember { mutableStateOf(false) }
   var edgeStripHeightPx by remember { mutableFloatStateOf(1f) }
+  var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
+  var currentPdfPage by remember(initialLocator, positions) { mutableIntStateOf(resolvePdfPageIndex(initialLocator, positions)) }
+  val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
   val latestBrightness by rememberUpdatedState(settings.brightness)
   val latestOnLeftEdgeTap by rememberUpdatedState {
     if (bookFormat == BookFormat.PDF) {
@@ -258,6 +270,10 @@ fun ReaderScreen(
   }
 
   fun handleToggleFocusMode(next: Boolean) {
+    if (next && proGate != null && !proGate.hasAccess(ProFeature.FOCUS_MODE)) {
+      paywallFeature = ProFeature.FOCUS_MODE
+      return
+    }
     viewModel.updateSettings { it.copy(focusMode = next) }
     if (next) {
       settingsOpen = false
@@ -290,7 +306,21 @@ fun ReaderScreen(
     }
   }
 
+  fun handleToggleLockScreenReader(next: Boolean) {
+    if (next && proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
+      paywallFeature = ProFeature.LOCKSCREEN_WALLPAPER
+      return
+    }
+    viewModel.updateSettings { it.copy(lockScreenReader = next) }
+  }
+
   val effectivePdfMode = pdfConfig.mode ?: PdfReadingMode.SMART_ORIGINAL
+  val isAdaptivePdfBlocked =
+    bookFormat == BookFormat.PDF &&
+      effectivePdfMode != PdfReadingMode.SMART_ORIGINAL &&
+      !entitlement.isPro &&
+      proGate != null &&
+      !proGate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, currentPdfPage)
 
   Box(modifier = Modifier.fillMaxSize().background(Color(settings.tone.background))) {
     when (bookFormat) {
@@ -307,6 +337,7 @@ fun ReaderScreen(
           readingMode = effectivePdfMode,
           controller = pdfController,
           onPageChanged = { pageIndex, pageCount ->
+            currentPdfPage = pageIndex
             viewModel.onLocatorChanged(locatorForPdfPage(pageIndex, pageCount, positions))
           },
           onScreenTurn = viewModel::onSubPageScreenTurned,
@@ -330,6 +361,22 @@ fun ReaderScreen(
       pageTurnTriggerFlow = viewModel.pageTurnTrigger,
       pagesSinceFlashFlow = viewModel.pagesSinceFlash,
     )
+    if (isAdaptivePdfBlocked) {
+      PdfProPreviewLimitCard(
+        pageIndex = currentPdfPage,
+        backgroundColor = Color(settings.tone.background),
+        textColor = Color(settings.tone.text),
+        onCenterTap = {
+          chromeVisible = !chromeVisible
+          settingsOpen = false
+        },
+        onUnlockPro = { paywallFeature = ProFeature.ADAPTIVE_PDF_REFLOW },
+        onUseStandardPdf = {
+          viewModel.updatePdfConfig { it.copy(mode = PdfReadingMode.SMART_ORIGINAL) }
+        },
+        modifier = Modifier.fillMaxSize(),
+      )
+    }
     if (settings.paperGrain) PaperGrainOverlay()
     if (!chromeVisible && settings.readerFooter && !settings.focusMode) {
       ReaderFooterBarContainer(
@@ -455,6 +502,7 @@ fun ReaderScreen(
         pdfReflowAllowed = pdfConfig.reflowAllowed,
         onPdfModeChange = { next -> viewModel.updatePdfConfig { it.copy(mode = next) } },
         onToggleFocusMode = ::handleToggleFocusMode,
+        onToggleLockScreenReader = ::handleToggleLockScreenReader,
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
@@ -632,6 +680,16 @@ fun ReaderScreen(
       hostState = snackbarHostState,
       modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 72.dp),
     )
+    paywallFeature?.let { feature ->
+      if (billing != null && proGate != null) {
+        ProPaywallSheet(
+          billing = billing,
+          proGate = proGate,
+          feature = feature,
+          onDismiss = { paywallFeature = null },
+        )
+      }
+    }
   }
 }
 

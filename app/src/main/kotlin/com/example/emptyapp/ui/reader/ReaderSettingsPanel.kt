@@ -40,6 +40,7 @@ fun ReaderSettingsPanel(
   pdfReflowAllowed: Boolean = true,
   onPdfModeChange: (PdfReadingMode) -> Unit = {},
   onToggleFocusMode: (Boolean) -> Unit = {},
+  onToggleLockScreenReader: ((Boolean) -> Unit)? = null,
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -139,7 +140,11 @@ fun ReaderSettingsPanel(
       onChange { it.copy(volumeButtonsTurnPages = on) }
     }
     SwitchRow(stringResource(R.string.settings_lockscreen_reader), settings.lockScreenReader) { on ->
-      onChange { it.copy(lockScreenReader = on) }
+      if (onToggleLockScreenReader != null) {
+        onToggleLockScreenReader(on)
+      } else {
+        onChange { it.copy(lockScreenReader = on) }
+      }
     }
     val autoLabel = stringResource(R.string.orientation_auto)
     val portraitLabel = stringResource(R.string.orientation_portrait)

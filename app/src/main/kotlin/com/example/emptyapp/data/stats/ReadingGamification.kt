@@ -129,4 +129,12 @@ object ReadingGamification {
         unlocked = highlightsCount >= 5,
       ),
     )
+
+  fun shouldShowMilestoneNudge(
+    isPro: Boolean,
+    dismissed: Boolean,
+    stats: ReadingStatsData,
+    completedBooksCount: Int,
+  ): Boolean =
+    !isPro && !dismissed && (completedBooksCount >= 1 || stats.longestStreak >= 3 || stats.currentStreak >= 3)
 }

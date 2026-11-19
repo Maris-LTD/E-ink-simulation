@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
 import com.example.emptyapp.data.billing.PlayBillingManager
 import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.billing.PurchaseType
 import com.example.emptyapp.data.stats.DailyReadingStat
@@ -156,6 +157,7 @@ fun ReadingStatsScreen(
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   var paywallOpen by remember { mutableStateOf(false) }
+  var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
   val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
   val saveErrorMsg = stringResource(R.string.error_save_data)
   LaunchedEffect(writeError) {
@@ -192,6 +194,11 @@ fun ReadingStatsScreen(
     }
   }
   fun triggerSync() {
+    if (proGate != null && !proGate.hasAccess(ProFeature.DRIVE_SYNC)) {
+      paywallFeature = ProFeature.DRIVE_SYNC
+      paywallOpen = true
+      return
+    }
     if (shouldConfirmMeteredBookSync()) {
       showMeteredSyncConfirm = true
     } else {
@@ -316,14 +323,27 @@ fun ReadingStatsScreen(
     ) {
       if (selectedTab == 1) {
         if (billing != null && proGate != null) {
-          InkifyProSettingsCard(entitlement = entitlement, onOpenPaywall = { paywallOpen = true })
+          InkifyProSettingsCard(
+            entitlement = entitlement,
+            onOpenPaywall = {
+              paywallFeature = null
+              paywallOpen = true
+            },
+          )
         }
         EInkDisplaySettingsCard(settings = settings, onUpdateSettings = onUpdateSettings)
         LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
         GoogleSyncCard(
           syncState = syncState,
           onSyncOrSignIn = ::triggerSync,
-          onToggleSyncBookFiles = onToggleSyncBookFiles,
+          onToggleSyncBookFiles = { enabled ->
+            if (enabled && proGate != null && !proGate.hasAccess(ProFeature.DRIVE_SYNC)) {
+              paywallFeature = ProFeature.DRIVE_SYNC
+              paywallOpen = true
+            } else {
+              onToggleSyncBookFiles(enabled)
+            }
+          },
           onDeleteCloudBook = { book ->
             if (onLaunchDeleteCloudBook != null) {
               onLaunchDeleteCloudBook(book)
@@ -340,7 +360,13 @@ fun ReadingStatsScreen(
           },
           onSignOut = onSignOutSync,
         )
-        SystemEInkModeCard()
+        SystemEInkModeCard(
+          proGate = proGate,
+          onRequirePro = { feature ->
+            paywallFeature = feature
+            paywallOpen = true
+          },
+        )
         PrivacyPolicyCard()
         ContactCard()
       } else {
@@ -412,7 +438,13 @@ fun ReadingStatsScreen(
       }
 
       if (billing != null && proGate != null) {
-        InkifyProCompactRow(entitlement = entitlement, onOpenPaywall = { paywallOpen = true })
+        InkifyProCompactRow(
+          entitlement = entitlement,
+          onOpenPaywall = {
+            paywallFeature = null
+            paywallOpen = true
+          },
+        )
       }
 
       Column(
@@ -515,6 +547,7 @@ fun ReadingStatsScreen(
     ProPaywallSheet(
       billing = billing,
       proGate = proGate,
+      feature = paywallFeature,
       onDismiss = { paywallOpen = false },
     )
   }
@@ -626,7 +659,10 @@ private fun InkifyProCompactRow(
 }
 
 @Composable
-private fun SystemEInkModeCard() {
+private fun SystemEInkModeCard(
+  proGate: ProFeatureGate? = null,
+  onRequirePro: (ProFeature) -> Unit = {},
+) {
   val context = LocalContext.current
   Column(
     modifier =
@@ -642,13 +678,25 @@ private fun SystemEInkModeCard() {
       color = MaterialTheme.colorScheme.secondary,
     )
     OutlinedButton(
-      onClick = { com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context) },
+      onClick = {
+        if (proGate != null && !proGate.hasAccess(ProFeature.EINK_LAUNCHER)) {
+          onRequirePro(ProFeature.EINK_LAUNCHER)
+        } else {
+          com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context)
+        }
+      },
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_launcher))
     }
     OutlinedButton(
-      onClick = { com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context) },
+      onClick = {
+        if (proGate != null && !proGate.hasAccess(ProFeature.LOCKSCREEN_WALLPAPER)) {
+          onRequirePro(ProFeature.LOCKSCREEN_WALLPAPER)
+        } else {
+          com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context)
+        }
+      },
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_wallpaper))

@@ -72,9 +72,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.data.billing.PlayBillingManager
 import com.example.emptyapp.data.billing.ProEntitlement
+import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.monet.LibraryProMilestoneNudge
 import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
 import kotlinx.coroutines.launch
@@ -137,8 +140,12 @@ fun LibraryScreen(
   }
   var tutorialInitialPage by remember { mutableStateOf(0) }
   var paywallOpen by remember { mutableStateOf(false) }
+  var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
   val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
   var setupBannerDismissed by remember { mutableStateOf(tutorialPrefs.getBoolean("setup_banner_dismissed", false)) }
+  var milestoneNudgeDismissed by remember {
+    mutableStateOf(tutorialPrefs.getBoolean("pro_milestone_nudge_dismissed", false))
+  }
   fun markTutorialSeen() {
     tutorialPrefs.edit().putBoolean("tutorial_seen", true).apply()
   }
@@ -151,6 +158,7 @@ fun LibraryScreen(
   val booksLoaded by viewModel.booksLoaded.collectAsStateWithLifecycle()
   val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+  val stats by viewModel.stats.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
   val writeError by viewModel.writeError.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
@@ -239,7 +247,10 @@ fun LibraryScreen(
       LibraryHeader(
         isPro = entitlement.isPro,
         showProButton = billing != null && proGate != null,
-        onOpenPaywall = { paywallOpen = true },
+        onOpenPaywall = {
+          paywallFeature = null
+          paywallOpen = true
+        },
         onOpenTutorial = {
           tutorialInitialPage = 0
           tutorialOpen = true
@@ -298,6 +309,29 @@ fun LibraryScreen(
           )
         }
         HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+      }
+      val completedBooksCount = remember(books) { books.count { it.progress >= 0.99f } }
+      if (
+        billing != null &&
+          proGate != null &&
+          ReadingGamification.shouldShowMilestoneNudge(
+            isPro = entitlement.isPro,
+            dismissed = milestoneNudgeDismissed,
+            stats = stats,
+            completedBooksCount = completedBooksCount,
+          )
+      ) {
+        LibraryProMilestoneNudge(
+          onExplorePro = {
+            paywallFeature = null
+            paywallOpen = true
+          },
+          onDismiss = {
+            milestoneNudgeDismissed = true
+            tutorialPrefs.edit().putBoolean("pro_milestone_nudge_dismissed", true).apply()
+          },
+          modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
       }
       EInkTabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
       if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && (authors.isNotEmpty() || tabBooks.isNotEmpty())) {
@@ -489,12 +523,18 @@ fun LibraryScreen(
         onMarkSeen = ::markTutorialSeen,
         onDismiss = ::dismissTutorial,
         initialPage = tutorialInitialPage,
+        proGate = proGate,
+        onRequirePro = { feature ->
+          paywallFeature = feature
+          paywallOpen = true
+        },
       )
     }
     if (paywallOpen && billing != null && proGate != null) {
       ProPaywallSheet(
         billing = billing,
         proGate = proGate,
+        feature = paywallFeature,
         onDismiss = { paywallOpen = false },
       )
     }

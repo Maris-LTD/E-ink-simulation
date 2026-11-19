@@ -462,6 +462,7 @@ class ReaderActivity : FragmentActivity() {
         ReaderUiState.Loading -> CenteredMessage(getString(R.string.reader_opening), null)
         is ReaderUiState.Error -> CenteredMessage(current.message, ::finish, viewModel::retryLoad)
         is ReaderUiState.Ready -> {
+          val container = (application as EmptyApplication).container
           if (current.book.format != BookFormat.PDF) {
             remember(current.publication) { installNavigatorFactory(current) }
           }
@@ -494,6 +495,8 @@ class ReaderActivity : FragmentActivity() {
             hasDndPermission = focusModeController::hasDndPermission,
             onOpenDndPermissionSettings = focusModeController::openDndPermissionSettings,
             onOpenNotificationSettings = ::openAppNotificationSettings,
+            billing = container.billing,
+            proGate = container.proGate,
           )
         }
       }

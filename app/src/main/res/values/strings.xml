@@ -476,4 +476,13 @@
     <string name="pro_card_cta_manage">Details</string>
     <string name="pro_compact_free">Inkify Free · Upgrade to Pro ›</string>
     <string name="pro_compact_active">Inkify Pro Active · Support / Details ›</string>
+
+    <string name="pdf_pro_preview_title">Adaptive PDF Preview Ended (Page %1$d)</string>
+    <string name="pdf_pro_preview_desc">You\'ve previewed the first 5 pages. Unlock Inkify Pro to read the full document with Reflow &amp; Region Nav, or switch back to Standard PDF.</string>
+    <string name="pdf_pro_preview_unlock">Unlock Inkify Pro</string>
+    <string name="pdf_pro_preview_standard">Use Standard PDF</string>
+
+    <string name="milestone_nudge_title">Nice reading habit!</string>
+    <string name="milestone_nudge_desc">Enjoying Inkify? Unlock Adaptive PDF, Drive Sync, Lock-Screen Reader &amp; Focus Mode with Inkify Pro.</string>
+    <string name="milestone_nudge_cta">Explore Pro</string>
 </resources>

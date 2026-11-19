@@ -472,4 +472,13 @@
     <string name="pro_card_cta_manage">Chi tiết</string>
     <string name="pro_compact_free">Bản miễn phí · Nâng cấp Inkify Pro ›</string>
     <string name="pro_compact_active">Inkify Pro đang bật · Chi tiết ›</string>
+
+    <string name="pdf_pro_preview_title">Hết trang dùng thử Adaptive PDF (Trang %1$d)</string>
+    <string name="pdf_pro_preview_desc">Bạn đã xem thử 5 trang đầu tiên. Mở khóa Inkify Pro để đọc toàn bộ tài liệu bằng Reflow &amp; Đọc theo vùng, hoặc chuyển về PDF chuẩn.</string>
+    <string name="pdf_pro_preview_unlock">Mở khóa Inkify Pro</string>
+    <string name="pdf_pro_preview_standard">Dùng PDF chuẩn</string>
+
+    <string name="milestone_nudge_title">Thói quen đọc tuyệt vời!</string>
+    <string name="milestone_nudge_desc">Bạn thích Inkify? Mở khóa Adaptive PDF, Đồng bộ Drive, Đọc màn hình khóa &amp; Focus Mode với Inkify Pro.</string>
+    <string name="milestone_nudge_cta">Xem Inkify Pro</string>
 </resources>
