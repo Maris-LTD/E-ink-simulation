@@ -4,6 +4,7 @@ data class ReflowPageMeta(
   val pageIndex: Int,
   val hasSpecialObjects: Boolean,
   val result: ReflowPageResult,
+  val pageAspectRatio: Float = 1f,
 )
 
 sealed interface PaginatedReflowElement {
@@ -109,7 +110,9 @@ object PdfReflowPaginator {
           for (item in res.items) {
             when (item) {
               is ReflowItem.Image -> {
-                val aspect = item.bounds.width / item.bounds.height.coerceAtLeast(0.01f)
+                val aspect =
+                  (item.bounds.width / item.bounds.height.coerceAtLeast(0.01f)) *
+                    pageMeta.pageAspectRatio.coerceAtLeast(0.1f)
                 val targetWidthPx =
                   if (item.kind == ReflowImageKind.SYMBOL_STACK) {
                     val maxSymbolW = (maxContentWidthPx * 0.45f).toInt().coerceAtLeast(80)

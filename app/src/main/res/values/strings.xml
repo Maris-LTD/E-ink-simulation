@@ -187,6 +187,7 @@
     <string name="lib_highlights_empty">No highlights yet.\nLong-press and select text while reading to highlight.</string>
     <string name="lib_import_error">Could not import book: %1$s</string>
     <string name="lib_import_invalid_file">invalid file</string>
+    <string name="lib_import_duplicate">this book is already in your library</string>
 
     <!-- Google Drive Sync -->
     <string name="sync_connecting">Connecting to Google…</string>

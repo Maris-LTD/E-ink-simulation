@@ -154,6 +154,7 @@ class EInkWallpaperService : WallpaperService() {
       try {
         canvas = holder.lockCanvas() ?: return
         renderWallpaper(canvas)
+      } catch (_: Throwable) {
       } finally {
         if (canvas != null) {
           runCatching { holder.unlockCanvasAndPost(canvas) }

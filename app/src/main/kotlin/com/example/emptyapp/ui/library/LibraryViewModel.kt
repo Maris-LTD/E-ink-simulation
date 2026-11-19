@@ -14,6 +14,7 @@ import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,20 +43,33 @@ class LibraryViewModel(
   fun import(uri: Uri) {
     viewModelScope.launch {
       mutableImporting.value = true
-      repository
-        .import(uri)
-        .onSuccess { entry ->
-          val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
-          app?.container?.sync?.unmarkDeletedHash(entry.contentHash)
-        }
-        .onFailure {
-          val localized = context?.let(LocaleHelper::wrap)
-          val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "tệp không hợp lệ"
-          val reason = it.message ?: fallbackInvalid
-          val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Không nhập được sách: $reason"
-          messageChannel.send(msg)
-        }
-      mutableImporting.value = false
+      try {
+        repository
+          .import(uri)
+          .onSuccess { entry ->
+            val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
+            app?.container?.sync?.unmarkDeletedHash(entry.contentHash)
+            if (app != null) {
+              com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(app)
+            }
+          }
+          .onFailure {
+            val localized = context?.let(LocaleHelper::wrap)
+            val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "tệp không hợp lệ"
+            val reason = it.message ?: fallbackInvalid
+            val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Không nhập được sách: $reason"
+            messageChannel.send(msg)
+          }
+      } catch (e: Throwable) {
+        if (e is CancellationException) throw e
+        val localized = context?.let(LocaleHelper::wrap)
+        val fallbackInvalid = localized?.getString(R.string.lib_import_invalid_file) ?: "tệp không hợp lệ"
+        val reason = e.message ?: fallbackInvalid
+        val msg = localized?.getString(R.string.lib_import_error, reason) ?: "Không nhập được sách: $reason"
+        messageChannel.send(msg)
+      } finally {
+        mutableImporting.value = false
+      }
     }
   }
 
@@ -71,6 +85,9 @@ class LibraryViewModel(
       if (app?.container?.lockScreenReading?.state?.value?.bookId == id) {
         app.container.lockScreenReading.clear()
         com.example.emptyapp.reader.LockScreenReadingNotifier.cancel(app)
+      }
+      if (app != null) {
+        com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(app)
       }
     }
   }

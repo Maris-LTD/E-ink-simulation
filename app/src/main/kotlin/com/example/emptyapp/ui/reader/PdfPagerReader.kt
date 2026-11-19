@@ -1071,10 +1071,17 @@ private suspend fun buildReflowMetas(analyses: List<PdfPageAnalysis>): List<Refl
     context.ensureActive()
     val neighbors = listOfNotNull(analyses.getOrNull(idx - 1), analyses.getOrNull(idx + 1))
     val result = PdfReflowEngine.buildReflowPage(analysis, neighbors)
+    val pageAspect =
+      if (analysis.pageWidthPt > 0f && analysis.pageHeightPt > 0f) {
+        analysis.pageWidthPt / analysis.pageHeightPt
+      } else {
+        1f
+      }
     ReflowPageMeta(
       pageIndex = analysis.pageIndex,
       hasSpecialObjects = PdfReflowPaginator.hasSpecialObjects(analysis, result),
       result = result,
+      pageAspectRatio = pageAspect,
     )
   }
 }

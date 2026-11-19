@@ -39,8 +39,11 @@ class LibraryRepository(context: Context, val engine: ReadiumEngine) {
 
   fun coverFileOf(book: BookEntry): File? = book.coverFileName?.let { File(coversDir, it) }
 
-  suspend fun import(uri: Uri): Result<BookEntry> =
-    importer.import(uri).onSuccess { entry -> commit { it + entry } }
+  suspend fun import(uri: Uri): Result<BookEntry> {
+    ensureContentHashes()
+    val existingHashes = state.value.mapNotNull { it.contentHash }.toSet()
+    return importer.import(uri, existingHashes).onSuccess { entry -> commit { it + entry } }
+  }
 
   suspend fun remove(id: String) {
     val book = find(id) ?: return

@@ -2,10 +2,6 @@ package com.example.emptyapp.ui.eink
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -30,7 +26,7 @@ object CoverBitmapCache {
             inSampleSize = sampleSize
             inPreferredConfig = Bitmap.Config.RGB_565
           }
-        BitmapFactory.decodeFile(path, opts)?.let(::toGrayscaleImageBitmap)
+        BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
       }.getOrNull()
     if (decoded != null) {
       cache.put(path, decoded)
@@ -45,17 +41,5 @@ object CoverBitmapCache {
       sample *= 2
     }
     return sample
-  }
-
-  private fun toGrayscaleImageBitmap(source: Bitmap): ImageBitmap {
-    val out = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(out)
-    val paint =
-      Paint().apply {
-        colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
-      }
-    canvas.drawBitmap(source, 0f, 0f, paint)
-    if (out !== source) source.recycle()
-    return out.asImageBitmap()
   }
 }

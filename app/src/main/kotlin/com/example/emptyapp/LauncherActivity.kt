@@ -114,11 +114,14 @@ private enum class DrawerViewMode(val labelRes: Int) {
 }
 
 class LauncherActivity : ComponentActivity() {
+  private var appliedLanguage: com.example.emptyapp.reader.AppLanguage? = null
+
   override fun attachBaseContext(newBase: Context) {
     super.attachBaseContext(LocaleHelper.wrap(newBase))
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    appliedLanguage = LocaleHelper.getSavedLanguage(this)
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     setContent {
@@ -154,6 +157,14 @@ class LauncherActivity : ComponentActivity() {
           )
         }
       }
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    val currentLanguage = LocaleHelper.getSavedLanguage(this)
+    if (appliedLanguage != null && appliedLanguage != currentLanguage) {
+      recreate()
     }
   }
 }

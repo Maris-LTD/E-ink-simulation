@@ -12,7 +12,10 @@ import com.example.emptyapp.reader.pdf.PdfPageAnalysis
 import com.example.emptyapp.reader.pdf.PdfRect
 import java.io.File
 import kotlin.math.sqrt
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -23,6 +26,7 @@ internal class PdfRendererHolder(
   private val budget: PdfBitmapBudget = PdfBitmapBudget.fromRuntime(),
 ) {
   private val mutex = Mutex()
+  @Volatile private var closed = false
   private val cropCache = HashMap<Int, NormalizedCropRect>()
   private val analysisCache = HashMap<Int, PdfPageAnalysis>()
   private val pageBitmapCache =
@@ -50,8 +54,9 @@ internal class PdfRendererHolder(
 
   suspend fun renderRegion(index: Int, region: PdfRect, maxWidth: Int): ImageBitmap? =
     withContext(Dispatchers.IO) {
+      if (closed) return@withContext null
       mutex.withLock {
-        if (index !in 0 until pageCount) return@withContext null
+        if (closed || index !in 0 until pageCount) return@withContext null
         renderWithMemoryRetry {
           renderer.openPage(index).use { page ->
             val leftPt = page.width * region.left
@@ -73,9 +78,11 @@ internal class PdfRendererHolder(
     autoCrop: Boolean = false,
   ): ImageBitmap? =
     withContext(Dispatchers.IO) {
+      if (closed) return@withContext null
       val cacheKey = "$index:$maxWidth:$maxHeight:$autoCrop"
       pageBitmapCache.get(cacheKey)?.let { return@withContext it }
       mutex.withLock {
+        if (closed) return@withContext null
         pageBitmapCache.get(cacheKey)?.let { return@withContext it }
         if (index !in 0 until pageCount) return@withContext null
         renderWithMemoryRetry {
@@ -147,9 +154,15 @@ internal class PdfRendererHolder(
   }
 
   fun close() {
+    if (closed) return
+    closed = true
     pageBitmapCache.evictAll()
-    runCatching { renderer.close() }
-    runCatching { descriptor.close() }
+    CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+      mutex.withLock {
+        runCatching { renderer.close() }
+        runCatching { descriptor.close() }
+      }
+    }
   }
 
   private fun imageKiloBytes(image: ImageBitmap): Int =

@@ -21,7 +21,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 - [x] 12. D4 — Tombstone cho xoá bookmark/highlight/sách; giữ tombstone khi sign out; sửa "xoá toàn bộ cloud"
 - [x] 13. D5 — Timeout upload JSON, lỗi upload 1 sách không chặn cả sync, merge `dailyGoalMinutes`
 - [x] 14. D8 — Vị trí đọc: recreate activity, locator notification, reflow đổi font, bookmark toggle, settings ≠ lật trang
-- [ ] 15. D9 — Import trùng, cover xám, locale, import crash, widget sách đã xoá, PdfRenderer close race, wallpaper crash
+- [x] 15. D9 — Import trùng, cover xám, locale, import crash, widget sách đã xoá, PdfRenderer close race, wallpaper crash
 
 ## Đợt 3 — Hiệu năng còn lại
 - [ ] 16. P6 — Cold start lazy/async, widget `updatePeriodMillis=0`
@@ -300,3 +300,21 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong · `[-]` bỏ 
 **Còn để lại:** 5 tình huống trên (recreate activity, redeliver intent từ notification, đổi font ở PDF reflow, đổi font EPUB, toggle bookmark khi chưa có locator) cần kiểm tra tay trên thiết bị/emulator.
 
 **Bước tiếp theo:** mục 15 — D9: import trùng `contentHash`, `CoverBitmapCache` grayscale, `LocaleHelper` / `LauncherActivity` đổi ngôn ngữ, try/finally khi import lỗi, refresh widget khi xoá sách, `PdfRenderer.close()` race & leak fd, tỉ lệ ảnh reflow, snippet màn khoá khi đóng reader, bắt exception wallpaper.
+
+### 15. D9 — Import trùng, cover xám, locale, widget, PdfRenderer close, reflow ảnh & wallpaper — 2026-11-19
+**Nguyên nhân & Đã sửa:**
+- **Import trùng `contentHash`:** `LibraryRepository.import` gọi `ensureContentHashes()` và truyền tập hash hiện có vào `BookImporter.import`; sau khi copy & tính `sha256Hex`, nếu trùng thì xoá file tạm và trả về lỗi `lib_import_duplicate` (đã thêm ở `values/strings.xml` & `values-vi/strings.xml`). Đồng thời bọc `CoverExtractor.extract` trong `try/catch/finally` để luôn `publication.close()` và dọn file khi lỗi.
+- **Cover luôn xám:** `CoverBitmapCache.decodeAndCache` bỏ `toGrayscaleImageBitmap` (trả bitmap màu `RGB_565` trực tiếp), để `BookCover` tự áp `ColorFilter` theo setting `grayscale`.
+- **Locale & `LauncherActivity`:** `LocaleHelper.wrap` bỏ `Locale.setDefault(locale)` (tránh làm hỏng `AppLanguage.SYSTEM`); `effectiveLanguageCode` đọc từ `Resources.getSystem().configuration.locales[0]`; `LauncherActivity` lưu `appliedLanguage` ở `onCreate` và tự `recreate()` ở `onResume()` nếu ngôn ngữ đã đổi.
+- **Import crash & kẹt `importing`:** `LibraryViewModel.import` bọc `try / catch (Throwable)` (nếu `CancellationException` thì rethrow) + `finally { mutableImporting.value = false }`.
+- **Widget không cập nhật khi xoá/nhập sách:** `LibraryViewModel.remove` và `import` (khi thành công) gọi `EInkReadingWidgetProvider.refreshAll(app)`.
+- **`PdfRenderer.close()` race:** `PdfRendererHolder` thêm `@Volatile closed`, kiểm tra `closed` trong `mutex.withLock` ở `renderRegion`/`renderPage`, và `close()` đẩy việc đóng `renderer`/`descriptor` vào `CoroutineScope(Dispatchers.IO + NonCancellable)` bên trong `mutex.withLock`. (Mở file lỗi ở `openPdfHolder` đã đóng `descriptor` từ trước.)
+- **Tỉ lệ ảnh inline reflow:** thêm `pageAspectRatio` vào `ReflowPageMeta` (`PdfPagerReader.buildReflowMetas` truyền `pageWidthPt / pageHeightPt`), `PdfReflowPaginator` nhân `aspect` với `pageMeta.pageAspectRatio`.
+- **Snippet màn khoá khi đóng reader:** `ReaderActivity.postLockScreenNotification` đã chạy trên `container.appScope` từ P4.
+- **Wallpaper crash:** `EInkWallpaperService.drawFrame()` thêm `catch (_: Throwable) {}` quanh `lockCanvas()` / `renderWallpaper()`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest` pass toàn bộ (`BUILD SUCCESSFUL`).
+
+**Còn để lại:** hết Đợt 2. Các hành vi UI/hệ thống (đổi ngôn ngữ `LauncherActivity`, widget, wallpaper, đóng PDF khi đang render) cần kiểm tra tay trên thiết bị/emulator.
+
+**Bước tiếp theo:** sang Đợt 3 — mục 16 (P6): tối ưu cold start (lazy/async init) và đặt widget `updatePeriodMillis = 0`.

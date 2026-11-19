@@ -2,6 +2,7 @@ package com.example.emptyapp
 
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.Resources
 import com.example.emptyapp.reader.AppLanguage
 import java.util.Locale
 
@@ -19,8 +20,8 @@ object LocaleHelper {
       AppLanguage.VI -> "vi"
       AppLanguage.EN -> "en"
       AppLanguage.SYSTEM -> {
-        val sysLang = Locale.getDefault().language
-        if (sysLang.equals("vi", ignoreCase = true)) "vi" else "en"
+        val sysLocale = Resources.getSystem().configuration.locales[0] ?: Locale.getDefault()
+        if (sysLocale.language.equals("vi", ignoreCase = true)) "vi" else "en"
       }
     }
 
@@ -28,7 +29,6 @@ object LocaleHelper {
     val saved = getSavedLanguage(base)
     if (saved == AppLanguage.SYSTEM) return base
     val locale = Locale.forLanguageTag(if (saved == AppLanguage.VI) "vi" else "en")
-    Locale.setDefault(locale)
     val config = Configuration(base.resources.configuration)
     config.setLocale(locale)
     config.setLayoutDirection(locale)
