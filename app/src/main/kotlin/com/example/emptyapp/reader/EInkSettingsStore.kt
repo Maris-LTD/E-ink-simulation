@@ -1,13 +1,26 @@
 package com.example.emptyapp.reader
 
 import android.content.Context
+import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class EInkSettingsStore(context: Context) {
-  private val prefs = context.getSharedPreferences("eink_settings", Context.MODE_PRIVATE)
-  private val state = MutableStateFlow(load())
+class EInkSettingsStore private constructor(
+  private val prefs: SharedPreferences?,
+  initialSettings: EInkSettings?,
+) {
+  constructor(context: Context) : this(
+    prefs = context.getSharedPreferences("eink_settings", Context.MODE_PRIVATE),
+    initialSettings = null,
+  )
+
+  internal constructor(initial: EInkSettings = EInkSettings()) : this(
+    prefs = null,
+    initialSettings = initial,
+  )
+
+  private val state = MutableStateFlow(initialSettings ?: load())
 
   val settings: StateFlow<EInkSettings> = state.asStateFlow()
 
@@ -27,39 +40,41 @@ class EInkSettingsStore(context: Context) {
 
   private fun load(): EInkSettings {
     val defaults = EInkSettings()
-    if (prefs.getInt(KEY_VERSION, 0) < SETTINGS_VERSION) {
+    val sharedPrefs = prefs ?: return defaults
+    if (sharedPrefs.getInt(KEY_VERSION, 0) < SETTINGS_VERSION) {
       save(defaults)
       return defaults
     }
     return EInkSettings(
-      tone = enumOf(prefs.getString(KEY_TONE, null), defaults.tone),
-      font = enumOf(prefs.getString(KEY_FONT, null), defaults.font),
-      fontScale = prefs.getFloat(KEY_FONT_SCALE, defaults.fontScale.toFloat()).toDouble(),
-      fontWeight = prefs.getFloat(KEY_FONT_WEIGHT, defaults.fontWeight.toFloat()).toDouble(),
-      lineHeight = prefs.getFloat(KEY_LINE_HEIGHT, defaults.lineHeight.toFloat()).toDouble(),
-      paragraphSpacing = prefs.getFloat(KEY_PARAGRAPH_SPACING, defaults.paragraphSpacing.toFloat()).toDouble(),
-      justifyText = prefs.getBoolean(KEY_JUSTIFY_TEXT, defaults.justifyText),
-      pageMargins = prefs.getFloat(KEY_MARGINS, defaults.pageMargins.toFloat()).toDouble(),
-      grayscale = prefs.getBoolean(KEY_GRAYSCALE, defaults.grayscale),
-      contrast = prefs.getFloat(KEY_CONTRAST, defaults.contrast),
-      brightness = prefs.getFloat(KEY_BRIGHTNESS, defaults.brightness),
-      orientationLock = enumOf(prefs.getString(KEY_ORIENTATION_LOCK, null), defaults.orientationLock),
-      flashEnabled = prefs.getBoolean(KEY_FLASH, defaults.flashEnabled),
-      flashEveryPages = prefs.getInt(KEY_FLASH_EVERY, defaults.flashEveryPages),
-      animations = prefs.getBoolean(KEY_ANIMATIONS, defaults.animations),
-      paperGrain = prefs.getBoolean(KEY_PAPER_GRAIN, defaults.paperGrain),
-      ghosting = prefs.getBoolean(KEY_GHOSTING, defaults.ghosting),
-      readerFooter = prefs.getBoolean(KEY_READER_FOOTER, defaults.readerFooter),
-      lockScreenReader = prefs.getBoolean(KEY_LOCK_SCREEN_READER, defaults.lockScreenReader),
-      focusMode = prefs.getBoolean(KEY_FOCUS_MODE, defaults.focusMode),
-      pdfAutoCrop = prefs.getBoolean(KEY_PDF_AUTO_CROP, defaults.pdfAutoCrop),
-      volumeButtonsTurnPages = prefs.getBoolean(KEY_VOLUME_TURN_PAGES, defaults.volumeButtonsTurnPages),
-      appLanguage = enumOf(prefs.getString(KEY_APP_LANGUAGE, null), defaults.appLanguage),
+      tone = enumOf(sharedPrefs.getString(KEY_TONE, null), defaults.tone),
+      font = enumOf(sharedPrefs.getString(KEY_FONT, null), defaults.font),
+      fontScale = sharedPrefs.getFloat(KEY_FONT_SCALE, defaults.fontScale.toFloat()).toDouble(),
+      fontWeight = sharedPrefs.getFloat(KEY_FONT_WEIGHT, defaults.fontWeight.toFloat()).toDouble(),
+      lineHeight = sharedPrefs.getFloat(KEY_LINE_HEIGHT, defaults.lineHeight.toFloat()).toDouble(),
+      paragraphSpacing = sharedPrefs.getFloat(KEY_PARAGRAPH_SPACING, defaults.paragraphSpacing.toFloat()).toDouble(),
+      justifyText = sharedPrefs.getBoolean(KEY_JUSTIFY_TEXT, defaults.justifyText),
+      pageMargins = sharedPrefs.getFloat(KEY_MARGINS, defaults.pageMargins.toFloat()).toDouble(),
+      grayscale = sharedPrefs.getBoolean(KEY_GRAYSCALE, defaults.grayscale),
+      contrast = sharedPrefs.getFloat(KEY_CONTRAST, defaults.contrast),
+      brightness = sharedPrefs.getFloat(KEY_BRIGHTNESS, defaults.brightness),
+      orientationLock = enumOf(sharedPrefs.getString(KEY_ORIENTATION_LOCK, null), defaults.orientationLock),
+      flashEnabled = sharedPrefs.getBoolean(KEY_FLASH, defaults.flashEnabled),
+      flashEveryPages = sharedPrefs.getInt(KEY_FLASH_EVERY, defaults.flashEveryPages),
+      animations = sharedPrefs.getBoolean(KEY_ANIMATIONS, defaults.animations),
+      paperGrain = sharedPrefs.getBoolean(KEY_PAPER_GRAIN, defaults.paperGrain),
+      ghosting = sharedPrefs.getBoolean(KEY_GHOSTING, defaults.ghosting),
+      readerFooter = sharedPrefs.getBoolean(KEY_READER_FOOTER, defaults.readerFooter),
+      lockScreenReader = sharedPrefs.getBoolean(KEY_LOCK_SCREEN_READER, defaults.lockScreenReader),
+      focusMode = sharedPrefs.getBoolean(KEY_FOCUS_MODE, defaults.focusMode),
+      pdfAutoCrop = sharedPrefs.getBoolean(KEY_PDF_AUTO_CROP, defaults.pdfAutoCrop),
+      volumeButtonsTurnPages = sharedPrefs.getBoolean(KEY_VOLUME_TURN_PAGES, defaults.volumeButtonsTurnPages),
+      appLanguage = enumOf(sharedPrefs.getString(KEY_APP_LANGUAGE, null), defaults.appLanguage),
     )
   }
 
   private fun save(value: EInkSettings) {
-    prefs
+    val sharedPrefs = prefs ?: return
+    sharedPrefs
       .edit()
       .putInt(KEY_VERSION, SETTINGS_VERSION)
       .putString(KEY_TONE, value.tone.name)

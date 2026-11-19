@@ -274,6 +274,7 @@ fun ReaderScreen(
           onPageChanged = { pageIndex, pageCount ->
             viewModel.onLocatorChanged(locatorForPdfPage(pageIndex, pageCount, positions))
           },
+          onScreenTurn = viewModel::onSubPageScreenTurned,
           onCenterTap = {
             chromeVisible = !chromeVisible
             settingsOpen = false

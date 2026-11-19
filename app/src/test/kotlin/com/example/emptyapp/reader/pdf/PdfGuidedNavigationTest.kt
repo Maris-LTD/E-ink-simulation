@@ -18,6 +18,7 @@ class PdfGuidedNavigationTest {
       )
     assertTrue(nextWhileAnalyzing.consumed)
     assertEquals(0, nextWhileAnalyzing.nextRegionIndex)
+    assertFalse(nextWhileAnalyzing.changedRegionOnSamePage)
 
     val prevWhileAnalyzing =
       PdfGuidedNavigation.stepPrev(
@@ -27,6 +28,7 @@ class PdfGuidedNavigationTest {
       )
     assertTrue(prevWhileAnalyzing.consumed)
     assertEquals(0, prevWhileAnalyzing.nextRegionIndex)
+    assertFalse(prevWhileAnalyzing.changedRegionOnSamePage)
 
     val prevWhileLanding =
       PdfGuidedNavigation.stepPrev(
@@ -37,6 +39,7 @@ class PdfGuidedNavigationTest {
       )
     assertTrue(prevWhileLanding.consumed)
     assertEquals(0, prevWhileLanding.nextRegionIndex)
+    assertFalse(prevWhileLanding.changedRegionOnSamePage)
   }
 
   @Test
@@ -50,6 +53,7 @@ class PdfGuidedNavigationTest {
       )
     assertTrue(step1.consumed)
     assertEquals(1, step1.nextRegionIndex)
+    assertTrue(step1.changedRegionOnSamePage)
 
     val stepEnd =
       PdfGuidedNavigation.stepNext(
@@ -60,6 +64,7 @@ class PdfGuidedNavigationTest {
       )
     assertFalse(stepEnd.consumed)
     assertEquals(2, stepEnd.nextRegionIndex)
+    assertFalse(stepEnd.changedRegionOnSamePage)
 
     val backMid =
       PdfGuidedNavigation.stepPrev(
@@ -69,6 +74,7 @@ class PdfGuidedNavigationTest {
       )
     assertTrue(backMid.consumed)
     assertEquals(1, backMid.nextRegionIndex)
+    assertTrue(backMid.changedRegionOnSamePage)
 
     val backStart =
       PdfGuidedNavigation.stepPrev(
@@ -78,6 +84,7 @@ class PdfGuidedNavigationTest {
       )
     assertFalse(backStart.consumed)
     assertEquals(0, backStart.nextRegionIndex)
+    assertFalse(backStart.changedRegionOnSamePage)
   }
 
   @Test

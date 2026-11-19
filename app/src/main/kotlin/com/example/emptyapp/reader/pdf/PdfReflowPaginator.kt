@@ -1,5 +1,25 @@
 package com.example.emptyapp.reader.pdf
 
+import kotlin.math.abs
+
+data class ReflowReadingAnchor(
+  val sourcePageIndex: Int,
+  val itemIndex: Int = 0,
+  val charOffset: Int = 0,
+)
+
+data class ReflowElementRange(
+  val sourcePageIndex: Int,
+  val itemIndex: Int,
+  val charRange: IntRange,
+)
+
+data class ReflowSettleEffect(
+  val snapPdfPage: Int,
+  val updatedAnchor: ReflowReadingAnchor?,
+  val isSubPageTurn: Boolean,
+)
+
 data class ReflowPageMeta(
   val pageIndex: Int,
   val hasSpecialObjects: Boolean,
@@ -9,11 +29,17 @@ data class ReflowPageMeta(
 
 sealed interface PaginatedReflowElement {
   val sourcePage: Int
+  val itemIndex: Int
+  val charOffset: Int
+  val charEndOffset: Int
 
   data class ParagraphSlice(
     val text: String,
     val isHeading: Boolean,
     override val sourcePage: Int,
+    override val itemIndex: Int = 0,
+    override val charOffset: Int = 0,
+    override val charEndOffset: Int = charOffset + text.length,
   ) : PaginatedReflowElement
 
   data class InlineImage(
@@ -22,12 +48,41 @@ sealed interface PaginatedReflowElement {
     val displayHeightPx: Int,
     val displayWidthPx: Int = 0,
     val kind: ReflowImageKind = ReflowImageKind.ILLUSTRATION,
+    override val itemIndex: Int = 0,
+    override val charOffset: Int = 0,
+    override val charEndOffset: Int = 0,
   ) : PaginatedReflowElement
 
   data class FallbackPage(
     override val sourcePage: Int,
     val reason: ReflowFallbackReason,
+    override val itemIndex: Int = 0,
+    override val charOffset: Int = 0,
+    override val charEndOffset: Int = 0,
   ) : PaginatedReflowElement
+}
+
+fun PaginatedReflowElement.toReadingAnchor(): ReflowReadingAnchor =
+  ReflowReadingAnchor(
+    sourcePageIndex = sourcePage,
+    itemIndex = itemIndex,
+    charOffset = charOffset,
+  )
+
+fun PaginatedReflowElement.toElementRange(): ReflowElementRange {
+  val endInclusive =
+    when (this) {
+      is PaginatedReflowElement.ParagraphSlice ->
+        if (charEndOffset > charOffset) charEndOffset - 1
+        else charOffset + (text.length - 1).coerceAtLeast(0)
+      is PaginatedReflowElement.InlineImage,
+      is PaginatedReflowElement.FallbackPage -> charOffset
+    }
+  return ReflowElementRange(
+    sourcePageIndex = sourcePage,
+    itemIndex = itemIndex,
+    charRange = charOffset..endInclusive,
+  )
 }
 
 data class ReflowScreenPage(
@@ -35,6 +90,10 @@ data class ReflowScreenPage(
   val elements: List<PaginatedReflowElement>,
   val sourcePages: List<Int>,
   val specialObjectPages: Set<Int>,
+  val startAnchor: ReflowReadingAnchor =
+    elements.firstOrNull()?.toReadingAnchor()
+      ?: ReflowReadingAnchor(sourcePageIndex = sourcePages.firstOrNull() ?: 0),
+  val elementRanges: List<ReflowElementRange> = elements.map { it.toElementRange() },
 )
 
 object PdfReflowPaginator {
@@ -57,10 +116,83 @@ object PdfReflowPaginator {
 
   fun findScreenIndexForPdfPage(screens: List<ReflowScreenPage>, pdfPageIndex: Int): Int {
     if (screens.isEmpty()) return 0
+    val startsWith = screens.indexOfFirst { it.sourcePages.firstOrNull() == pdfPageIndex }
+    if (startsWith >= 0) return startsWith
     val exact = screens.indexOfFirst { pdfPageIndex in it.sourcePages }
     if (exact >= 0) return exact
     val after = screens.indexOfFirst { it.sourcePages.any { p -> p >= pdfPageIndex } }
     return if (after >= 0) after else screens.lastIndex
+  }
+
+  fun findScreenIndexForAnchor(screens: List<ReflowScreenPage>, anchor: ReflowReadingAnchor): Int {
+    if (screens.isEmpty()) return 0
+
+    val exactRange =
+      screens.indexOfFirst { screen ->
+        screen.elementRanges.any { range ->
+          range.sourcePageIndex == anchor.sourcePageIndex &&
+            range.itemIndex == anchor.itemIndex &&
+            anchor.charOffset in range.charRange
+        }
+      }
+    if (exactRange >= 0) return exactRange
+
+    var bestBehindScreen = -1
+    var bestBehindOffset = Int.MIN_VALUE
+    var earliestScreen = -1
+    var earliestOffset = Int.MAX_VALUE
+    for ((screenIdx, screen) in screens.withIndex()) {
+      for (range in screen.elementRanges) {
+        if (range.sourcePageIndex == anchor.sourcePageIndex && range.itemIndex == anchor.itemIndex) {
+          val start = range.charRange.first
+          if (start <= anchor.charOffset && start > bestBehindOffset) {
+            bestBehindOffset = start
+            bestBehindScreen = screenIdx
+          }
+          if (start < earliestOffset) {
+            earliestOffset = start
+            earliestScreen = screenIdx
+          }
+        }
+      }
+    }
+    if (bestBehindScreen >= 0) return bestBehindScreen
+    if (earliestScreen >= 0) return earliestScreen
+
+    val startsWith = screens.indexOfFirst { it.sourcePages.firstOrNull() == anchor.sourcePageIndex }
+    if (startsWith >= 0) return startsWith
+    val contains = screens.indexOfFirst { anchor.sourcePageIndex in it.sourcePages }
+    if (contains >= 0) return contains
+
+    var bestScreen = -1
+    var bestDistance = Int.MAX_VALUE
+    var bestIsAtOrAfter = false
+    for ((screenIdx, screen) in screens.withIndex()) {
+      if (screen.sourcePages.isEmpty()) continue
+      val distance = screen.sourcePages.minOf { abs(it - anchor.sourcePageIndex) }
+      val isAtOrAfter = screen.sourcePages.any { it >= anchor.sourcePageIndex }
+      if (distance < bestDistance || (distance == bestDistance && isAtOrAfter && !bestIsAtOrAfter)) {
+        bestDistance = distance
+        bestScreen = screenIdx
+        bestIsAtOrAfter = isAtOrAfter
+      }
+    }
+    return if (bestScreen >= 0) bestScreen else 0
+  }
+
+  fun evaluateScreenSettle(
+    screen: ReflowScreenPage,
+    previousScreenIndex: Int?,
+    previousPdfPage: Int,
+    isExplicitJump: Boolean,
+  ): ReflowSettleEffect {
+    val snapPage = resolveSnapBackPage(screen)
+    val screenChanged = previousScreenIndex != null && previousScreenIndex != screen.screenIndex
+    return ReflowSettleEffect(
+      snapPdfPage = snapPage,
+      updatedAnchor = if (screenChanged && !isExplicitJump) screen.startAnchor else null,
+      isSubPageTurn = screenChanged && !isExplicitJump && snapPage == previousPdfPage,
+    )
   }
 
   fun paginate(
@@ -81,12 +213,13 @@ object PdfReflowPaginator {
 
     fun flushScreen() {
       if (currentElements.isEmpty()) return
-      val sources = currentElements.map { it.sourcePage }.distinct()
+      val elements = currentElements.toList()
+      val sources = elements.map { it.sourcePage }.distinct()
       val specials = sources.filter { it in specialPages }.toSet()
       screens +=
         ReflowScreenPage(
           screenIndex = screens.size,
-          elements = currentElements.toList(),
+          elements = elements,
           sourcePages = sources,
           specialObjectPages = specials,
         )
@@ -101,13 +234,22 @@ object PdfReflowPaginator {
           screens +=
             ReflowScreenPage(
               screenIndex = screens.size,
-              elements = listOf(PaginatedReflowElement.FallbackPage(pageMeta.pageIndex, res.reason)),
+              elements =
+                listOf(
+                  PaginatedReflowElement.FallbackPage(
+                    sourcePage = pageMeta.pageIndex,
+                    reason = res.reason,
+                    itemIndex = 0,
+                    charOffset = 0,
+                    charEndOffset = 0,
+                  ),
+                ),
               sourcePages = listOf(pageMeta.pageIndex),
               specialObjectPages = setOf(pageMeta.pageIndex),
             )
         }
         is ReflowPageResult.Reflowed -> {
-          for (item in res.items) {
+          for ((itemIndex, item) in res.items.withIndex()) {
             when (item) {
               is ReflowItem.Image -> {
                 val aspect =
@@ -141,11 +283,19 @@ object PdfReflowPaginator {
                     displayHeightPx = rawHeight,
                     displayWidthPx = targetWidthPx,
                     kind = item.kind,
+                    itemIndex = itemIndex,
+                    charOffset = 0,
+                    charEndOffset = 0,
                   )
                 usedHeight += startGap + rawHeight
               }
               is ReflowItem.Paragraph -> {
-                var remainingText = item.text.trim()
+                val rawText = item.text
+                val firstNonWs = rawText.indexOfFirst { !it.isWhitespace() }
+                if (firstNonWs < 0) continue
+                val lastNonWs = rawText.indexOfLast { !it.isWhitespace() }
+                var currentOffset = firstNonWs
+                var remainingText = rawText.substring(firstNonWs, lastNonWs + 1)
                 while (remainingText.isNotEmpty()) {
                   val gap = if (currentElements.isEmpty()) 0 else paragraphSpacingPx
                   val available = maxContentHeightPx - usedHeight - gap
@@ -161,6 +311,9 @@ object PdfReflowPaginator {
                         text = remainingText,
                         isHeading = item.isHeading,
                         sourcePage = pageMeta.pageIndex,
+                        itemIndex = itemIndex,
+                        charOffset = currentOffset,
+                        charEndOffset = currentOffset + remainingText.length,
                       )
                     usedHeight += gap + fullHeight
                     remainingText = ""
@@ -183,6 +336,9 @@ object PdfReflowPaginator {
                             text = remainingText,
                             isHeading = item.isHeading,
                             sourcePage = pageMeta.pageIndex,
+                            itemIndex = itemIndex,
+                            charOffset = currentOffset,
+                            charEndOffset = currentOffset + remainingText.length,
                           )
                         flushScreen()
                         remainingText = ""
@@ -195,10 +351,20 @@ object PdfReflowPaginator {
                             text = head,
                             isHeading = item.isHeading,
                             sourcePage = pageMeta.pageIndex,
+                            itemIndex = itemIndex,
+                            charOffset = currentOffset,
+                            charEndOffset = currentOffset + head.length,
                           )
                       }
                       flushScreen()
-                      remainingText = remainingText.substring(splitIndex).trimStart()
+                      val tailRaw = remainingText.substring(splitIndex)
+                      val tailStart = tailRaw.indexOfFirst { !it.isWhitespace() }
+                      if (tailStart < 0) {
+                        remainingText = ""
+                      } else {
+                        currentOffset += splitIndex + tailStart
+                        remainingText = tailRaw.substring(tailStart)
+                      }
                     }
                   }
                 }

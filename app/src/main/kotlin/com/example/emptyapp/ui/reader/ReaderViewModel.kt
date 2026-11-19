@@ -87,6 +87,7 @@ class ReaderViewModel(
   private val overrideLocatorJson: String? = null,
   private val overrideLocatorCreatedAt: Long = 0L,
   private val context: Context? = null,
+  private val elapsedRealtimeMs: () -> Long = { SystemClock.elapsedRealtime() },
 ) : ViewModel() {
   private fun str(resId: Int, fallback: String): String =
     context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
@@ -188,7 +189,7 @@ class ReaderViewModel(
         before.orientationLock != after.orientationLock ||
         before.pdfAutoCrop != after.pdfAutoCrop
     if (layoutChanged) {
-      suppressPageTurnUntilMs = SystemClock.elapsedRealtime() + SETTINGS_RELAYOUT_SUPPRESS_MS
+      suppressPageTurnUntilMs = elapsedRealtimeMs() + SETTINGS_RELAYOUT_SUPPRESS_MS
     }
     if (before.copy(brightness = after.brightness) != after) {
       flashController.reset()
@@ -205,7 +206,7 @@ class ReaderViewModel(
   }
 
   fun updatePdfConfig(transform: (PdfBookConfig) -> PdfBookConfig) {
-    suppressPageTurnUntilMs = SystemClock.elapsedRealtime() + SETTINGS_RELAYOUT_SUPPRESS_MS
+    suppressPageTurnUntilMs = elapsedRealtimeMs() + SETTINGS_RELAYOUT_SUPPRESS_MS
     val updated = pdfBookConfigs?.update(bookId, transform) ?: return
     val mode = updated.mode ?: return
     viewModelScope.launch {
@@ -239,28 +240,11 @@ class ReaderViewModel(
   }
 
   fun onLocatorChanged(locator: Locator) {
-    notifyUserInteraction()
+    val key = "${locator.href}#${locator.locations.progression}#${locator.locations.position}"
+    val total = (locator.locations.totalProgression ?: 0.0).toFloat()
     currentLocator = locator
     currentLocatorFlow.value = locator
-    val key = "${locator.href}#${locator.locations.progression}"
-    val previous = lastPositionKey
-    lastPositionKey = key
-    val total = (locator.locations.totalProgression ?: 0.0).toFloat()
-    mutableProgress.value = total
-    val isPageTurn =
-      previous != null &&
-        previous != key &&
-        SystemClock.elapsedRealtime() > suppressPageTurnUntilMs
-    if (isPageTurn) {
-      pendingPages += 1
-      val step = flashController.onPageTurnStep(settings.value)
-      mutablePagesSinceFlash.value = step.pagesSinceFlash
-      if (step.fullRefresh) {
-        mutableFlashTrigger.value += 1
-      } else {
-        mutablePageTurnTrigger.value += 1
-      }
-    }
+    onPositionKeyChanged(key, total)
     pendingProgress = locator to total
     if (progressSaveJob?.isActive != true) {
       progressSaveJob =
@@ -271,6 +255,38 @@ class ReaderViewModel(
     }
   }
 
+  internal fun onPositionKeyChanged(key: String, totalProgression: Float) {
+    notifyUserInteraction()
+    val previous = lastPositionKey
+    lastPositionKey = key
+    mutableProgress.value = totalProgression
+    val isPageTurn =
+      previous != null &&
+        previous != key &&
+        elapsedRealtimeMs() >= suppressPageTurnUntilMs
+    if (isPageTurn) {
+      recordPageTurnStep()
+    }
+  }
+
+  fun onSubPageScreenTurned() {
+    notifyUserInteraction()
+    if (elapsedRealtimeMs() >= suppressPageTurnUntilMs) {
+      recordPageTurnStep()
+    }
+  }
+
+  private fun recordPageTurnStep() {
+    pendingPages += 1
+    val step = flashController.onPageTurnStep(settings.value)
+    mutablePagesSinceFlash.value = step.pagesSinceFlash
+    if (step.fullRefresh) {
+      mutableFlashTrigger.value += 1
+    } else {
+      mutablePageTurnTrigger.value += 1
+    }
+  }
+
   private suspend fun flushProgress() {
     val (locator, total) = pendingProgress ?: return
     pendingProgress = null
@@ -278,12 +294,12 @@ class ReaderViewModel(
   }
 
   fun notifyUserInteraction() {
-    lastInteractionMs = SystemClock.elapsedRealtime()
+    lastInteractionMs = elapsedRealtimeMs()
   }
 
   fun onReaderForegroundChanged(isForeground: Boolean) {
     if (isForeground) {
-      val now = SystemClock.elapsedRealtime()
+      val now = elapsedRealtimeMs()
       lastInteractionMs = now
       lastFlushMs = now
       if (statsTickerJob?.isActive == true) return
@@ -307,7 +323,7 @@ class ReaderViewModel(
   }
 
   private suspend fun flushReadingStats() {
-    val now = SystemClock.elapsedRealtime()
+    val now = elapsedRealtimeMs()
     val elapsedMs = (now - lastFlushMs).coerceAtLeast(0L)
     lastFlushMs = now
     val active = (now - lastInteractionMs) < INACTIVITY_TIMEOUT_MS

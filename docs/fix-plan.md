@@ -62,7 +62,7 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 ### 5C — PDF
 - [x] 41. M10 + M11 + L11 — Một `PDDocument`/phiên trên `IO.limitedParallelism(1)` + cache analysis theo trang trong holder (bỏ code chết `seedAnalyses`/`analysisCache` nếu không dùng), prefetch trang kề; GUIDED chặn lật khi chưa có regions và giữ `pendingBackwardLandingPage`; smart tap-zoom ở SMART phân tích trang hiện tại; trích chữ bằng 1 lần `getText` + `startPage/endPage`
 - [x] 42. M12 + L13 — Tap-zoom khi autoCrop đổi rect sang toạ độ crop; `clampOffset` theo kích thước ảnh hiển thị
-- [ ] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
+- [x] 43. M13 + M14 — Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash)
 - [ ] 44. M15 + L12 + L14 — Bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn (debounce sau pinch); `derivedStateOf`/`rememberUpdatedState` cho scale/bitmap/analysis; `openPdfHolder` ra khỏi main; `cropCache` → `ConcurrentHashMap`; OOM retry ở ×√0.5; `PdfReflowEngine` dùng `endsWith`
 - [ ] 45. M16 — `PdfDocumentCache` lưu theo khúc + ghi atomic + tăng `CURRENT_SCHEMA_VERSION`, cap segment ưu tiên theo vị trí; snippet PDF màn khoá cache theo `(bookId, page)`, không đọc lại cả file
 - [ ] 46. L15 — Trang fallback trong Reflow: `cd_pdf_page`, spinner/lỗi/retry, cho zoom; ảnh inline không cướp vùng tap lật trang + có `contentDescription`; nút "Đóng" overlay ≥ 48 dp; volume không lật khi overlay mở
@@ -904,3 +904,26 @@ Mã trong ngoặc (H/M/L) trỏ tới mục tương ứng trong báo cáo re-aud
 **Còn để lại:** không có.
 
 **Bước tiếp theo:** mục 43 — M13 + M14: Reflow giữ mốc đọc (trang nguồn + đoạn + offset) khi dàn lại; callback `onScreenTurn` đếm lật màn reflow/vùng GUIDED (thống kê + flash).
+
+### 43. M13 + M14 — Reflow giữ mốc đọc khi dàn lại & đếm lật màn reflow/vùng GUIDED — 2026-11-19
+**Nguyên nhân:**
+- **M13:** Khi dàn lại trang ở chế độ Reflow (đổi cỡ chữ, font, lề, xoay màn hình), `findScreenIndexForPdfPage` trả về màn hình **đầu tiên** chứa `currentPdfPage` và `resolveSnapBackPage` lấy `sources.first()` → đang ở màn giữa của một trang hoặc màn ghép `[9, 10]` sẽ nhảy về màn `[8, 9]`, làm `currentPdfPage` lùi dần qua mỗi lần đổi cài đặt.
+- **M14:** `ReaderViewModel.onLocatorChanged` chỉ đếm lật trang khi `href#progression#position` thay đổi, nên khi lật qua nhiều màn Reflow trong cùng 1 trang PDF nguồn hoặc bước qua các vùng cột ở `GUIDED_COLUMN` trong cùng 1 trang PDF, thống kê `pendingPages` và chu kỳ full refresh e-ink (`flashController`) không được tăng.
+
+**Đã sửa:**
+- `reader/pdf/PdfReflowPaginator.kt`:
+  - Thêm `ReflowReadingAnchor(sourcePageIndex, itemIndex, charOffset)` và `ReflowElementRange(sourcePageIndex, itemIndex, charRange)`; gắn `itemIndex`, `charOffset`, `charEndOffset` cho từng `PaginatedReflowElement` khi `paginate`, lưu `startAnchor` và `elementRanges` trên mỗi `ReflowScreenPage`.
+  - Thêm `findScreenIndexForAnchor(screens, anchor)` dò đúng màn hình chứa `(sourcePageIndex, itemIndex, charOffset)` (fallback về phần tử cùng đoạn có `charOffset` gần nhất phía trước, sau đó ưu tiên màn có `sourcePages.first() == sourcePageIndex`).
+  - Cập nhật `findScreenIndexForPdfPage` ưu tiên màn có `sourcePages.firstOrNull() == pdfPageIndex` trước khi xét `pdfPageIndex in sourcePages`.
+  - Thêm `evaluateScreenSettle(screen, previousScreenIndex, previousPdfPage, isExplicitJump)` xác định `snapPdfPage`, `updatedAnchor` và `isSubPageTurn` (chỉ `true` khi người dùng lật sang màn khác có cùng `snapPdfPage == previousPdfPage` và không phải nhảy/dàn lại).
+- `reader/pdf/PdfGuidedNavigation.kt`: thêm cờ `changedRegionOnSamePage` vào `GuidedRegionStep` khi bước tới/lùi sang vùng khác trên cùng một trang PDF ở `GUIDED_COLUMN`.
+- `ui/reader/PdfPagerReader.kt`, `ui/reader/ReaderScreen.kt`, `ui/reader/ReaderViewModel.kt`:
+  - Giữ `currentReflowAnchor` trong `PdfPagerReader`, cuộn theo `findScreenIndexForAnchor` khi `reflowScreens` dàn lại, và đặt lại mốc đầu trang khi nhảy trang từ bên ngoài (TOC/slider).
+  - Thêm callback `onScreenTurn` kết nối tới `ReaderViewModel.onSubPageScreenTurned()` (tôn trọng cửa sổ chặn dàn trang `suppressPageTurnUntilMs`, tăng `pendingPages` và bước `flashController` mà không đếm kép khi chuyển qua ranh giới trang PDF mới).
+- `test/.../reader/pdf/PdfReflowPaginatorTest.kt`, `test/.../reader/pdf/PdfGuidedNavigationTest.kt`, `test/.../ui/reader/ReaderViewModelPageTurnTest.kt`: thêm 8 unit test kiểm tra bảo toàn mốc đọc qua nhiều lần đổi cỡ chữ, `findScreenIndexForAnchor`, `findScreenIndexForPdfPage`, `evaluateScreenSettle` và đếm lật màn con / vùng GUIDED trong `ReaderViewModel`.
+
+**Cách kiểm tra:** `.\gradlew.bat testDebugUnitTest lintDebug` pass toàn bộ (`BUILD SUCCESSFUL`, **208/208 tests pass**, `0 lint errors`).
+
+**Còn để lại:** không có.
+
+**Bước tiếp theo:** mục 44 — M15 + L12 + L14: tối ưu bộ nhớ & render PDF (bỏ `renderMultiplier = 3` và `prefetchAdjacent`, trang kề render 1×, zoom > 2× render vùng đang nhìn, `derivedStateOf`/`rememberUpdatedState`, `openPdfHolder` ra khỏi main, `cropCache` → `ConcurrentHashMap`, OOM retry ×√0.5, `PdfReflowEngine` `endsWith`).

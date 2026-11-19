@@ -3,6 +3,7 @@ package com.example.emptyapp.reader.pdf
 data class GuidedRegionStep(
   val consumed: Boolean,
   val nextRegionIndex: Int,
+  val changedRegionOnSamePage: Boolean = false,
 )
 
 object PdfGuidedNavigation {
@@ -19,7 +20,11 @@ object PdfGuidedNavigation {
       return GuidedRegionStep(consumed = true, nextRegionIndex = currentRegionIndex)
     }
     return if (currentRegionIndex > 0) {
-      GuidedRegionStep(consumed = true, nextRegionIndex = currentRegionIndex - 1)
+      GuidedRegionStep(
+        consumed = true,
+        nextRegionIndex = currentRegionIndex - 1,
+        changedRegionOnSamePage = true,
+      )
     } else {
       GuidedRegionStep(consumed = false, nextRegionIndex = currentRegionIndex)
     }
@@ -40,7 +45,11 @@ object PdfGuidedNavigation {
     }
     val lastIndex = (regionCount - 1).coerceAtLeast(0)
     return if (currentRegionIndex < lastIndex) {
-      GuidedRegionStep(consumed = true, nextRegionIndex = currentRegionIndex + 1)
+      GuidedRegionStep(
+        consumed = true,
+        nextRegionIndex = currentRegionIndex + 1,
+        changedRegionOnSamePage = true,
+      )
     } else {
       GuidedRegionStep(consumed = false, nextRegionIndex = currentRegionIndex)
     }

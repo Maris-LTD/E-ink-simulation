@@ -96,6 +96,7 @@ import com.example.emptyapp.reader.pdf.PdfReflowPaginator
 import com.example.emptyapp.reader.pdf.PdfRegionNavigator
 import com.example.emptyapp.reader.pdf.ReflowImageKind
 import com.example.emptyapp.reader.pdf.ReflowPageMeta
+import com.example.emptyapp.reader.pdf.ReflowReadingAnchor
 import com.example.emptyapp.reader.pdf.ReflowScreenPage
 import java.io.File
 import kotlin.math.abs
@@ -139,9 +140,12 @@ fun PdfPagerReader(
   onPageChanged: (pageIndex: Int, pageCount: Int) -> Unit,
   onCenterTap: () -> Unit,
   modifier: Modifier = Modifier,
+  onScreenTurn: () -> Unit = {},
 ) {
   val context = LocalContext.current
   val density = LocalDensity.current
+  val latestOnPageChanged by rememberUpdatedState(onPageChanged)
+  val latestOnScreenTurn by rememberUpdatedState(onScreenTurn)
   val holder = remember(file) { openPdfHolder(file, context) }
   DisposableEffect(holder) {
     onDispose { holder?.close() }
@@ -155,6 +159,8 @@ fun PdfPagerReader(
   }
 
   val pageCount = holder.pageCount
+  var currentPdfPage by remember(file) { mutableIntStateOf(initialPage.coerceIn(0, pageCount - 1)) }
+  var currentReflowAnchor by remember(file) { mutableStateOf<ReflowReadingAnchor?>(null) }
   val isReflowMode = readingMode == PdfReadingMode.HYBRID_REFLOW
   val cache = remember(context) { PdfDocumentCache(File(context.filesDir, "pdf_cache")) }
   var allAnalyses by remember(file) { mutableStateOf<List<PdfPageAnalysis>?>(null) }
@@ -224,8 +230,6 @@ fun PdfPagerReader(
     remember(settings.grayscale, settings.contrast, settings.tone) {
       ColorFilter.colorMatrix(ColorMatrix(EInkColorFilter.matrixOf(settings).array))
     }
-
-  var currentPdfPage by remember(file) { mutableIntStateOf(initialPage.coerceIn(0, pageCount - 1)) }
 
   val reflowMetas by
     produceState<List<ReflowPageMeta>?>(null, loadedAnalyses, isReflowMode) {
@@ -404,12 +408,15 @@ fun PdfPagerReader(
 
     if (readingMode == PdfReadingMode.HYBRID_REFLOW && reflowScreens.isNotEmpty()) {
       var zoomedImageElement by remember { mutableStateOf<PaginatedReflowElement.InlineImage?>(null) }
+      var pendingJumpTargetScreen by remember { mutableStateOf<Int?>(null) }
+      val initialAnchor = currentReflowAnchor ?: ReflowReadingAnchor(sourcePageIndex = currentPdfPage)
       val startScreen = remember(reflowScreens) {
-        PdfReflowPaginator.findScreenIndexForPdfPage(reflowScreens, currentPdfPage)
+        PdfReflowPaginator.findScreenIndexForAnchor(reflowScreens, initialAnchor)
+          .coerceIn(0, reflowScreens.lastIndex)
       }
       val reflowPagerState =
         rememberPagerState(
-          initialPage = startScreen.coerceIn(0, reflowScreens.lastIndex),
+          initialPage = startScreen,
           pageCount = { reflowScreens.size },
         )
       val scope = rememberCoroutineScope()
@@ -424,8 +431,16 @@ fun PdfPagerReader(
           if (target != reflowPagerState.currentPage) scope.launch { reflowPagerState.scrollToPage(target) }
         }
         controller.onJumpTo = { pdfIdx ->
-          val screenIdx = PdfReflowPaginator.findScreenIndexForPdfPage(reflowScreens, pdfIdx)
-          scope.launch { reflowPagerState.scrollToPage(screenIdx) }
+          val targetPdf = pdfIdx.coerceIn(0, pageCount - 1)
+          val jumpAnchor = ReflowReadingAnchor(sourcePageIndex = targetPdf)
+          currentReflowAnchor = jumpAnchor
+          val screenIdx =
+            PdfReflowPaginator.findScreenIndexForAnchor(reflowScreens, jumpAnchor)
+              .coerceIn(0, reflowScreens.lastIndex)
+          if (screenIdx != reflowPagerState.currentPage || screenIdx != reflowPagerState.settledPage) {
+            pendingJumpTargetScreen = screenIdx
+            scope.launch { reflowPagerState.scrollToPage(screenIdx) }
+          }
         }
         onDispose {
           controller.onPrev = null
@@ -435,19 +450,40 @@ fun PdfPagerReader(
       }
 
       LaunchedEffect(reflowPagerState, reflowScreens) {
+        val targetAnchor = currentReflowAnchor ?: ReflowReadingAnchor(sourcePageIndex = currentPdfPage)
+        if (currentReflowAnchor == null) {
+          currentReflowAnchor = targetAnchor
+        }
         val targetScreen =
-          PdfReflowPaginator.findScreenIndexForPdfPage(reflowScreens, currentPdfPage)
+          PdfReflowPaginator.findScreenIndexForAnchor(reflowScreens, targetAnchor)
             .coerceIn(0, reflowScreens.lastIndex)
-        if (reflowPagerState.currentPage != targetScreen) {
+        if (reflowPagerState.currentPage != targetScreen || reflowPagerState.settledPage != targetScreen) {
+          pendingJumpTargetScreen = null
           reflowPagerState.scrollToPage(targetScreen)
         }
+        var lastSettledScreen: Int? = null
         snapshotFlow { reflowPagerState.settledPage }
           .distinctUntilChanged()
           .collect { screenIdx ->
             val screen = reflowScreens.getOrNull(screenIdx) ?: return@collect
-            val snapPage = PdfReflowPaginator.resolveSnapBackPage(screen)
-            currentPdfPage = snapPage
-            onPageChanged(snapPage, pageCount)
+            val isExplicitJump = pendingJumpTargetScreen == screenIdx
+            if (lastSettledScreen != null && lastSettledScreen != screenIdx) {
+              pendingJumpTargetScreen = null
+            }
+            val settle =
+              PdfReflowPaginator.evaluateScreenSettle(
+                screen = screen,
+                previousScreenIndex = lastSettledScreen,
+                previousPdfPage = currentPdfPage,
+                isExplicitJump = isExplicitJump,
+              )
+            lastSettledScreen = screenIdx
+            settle.updatedAnchor?.let { currentReflowAnchor = it }
+            currentPdfPage = settle.snapPdfPage
+            latestOnPageChanged(settle.snapPdfPage, pageCount)
+            if (settle.isSubPageTurn) {
+              latestOnScreenTurn()
+            }
           }
       }
 
@@ -592,13 +628,17 @@ fun PdfPagerReader(
           .collect { page ->
             isZoomed = false
             currentPdfPage = page
-            onPageChanged(page, pageCount)
+            currentReflowAnchor = null
+            latestOnPageChanged(page, pageCount)
           }
       }
 
       LaunchedEffect(readingMode) {
         if (readingMode != PdfReadingMode.GUIDED_COLUMN) {
           pendingBackwardLandingPage = null
+        }
+        if (readingMode != PdfReadingMode.HYBRID_REFLOW) {
+          currentReflowAnchor = null
         }
       }
 
@@ -680,6 +720,9 @@ fun PdfPagerReader(
                     awaitingBackwardLanding = latestPendingBackward == pageIndex,
                   )
                 guidedRegionIndex = step.nextRegionIndex
+                if (step.changedRegionOnSamePage) {
+                  latestOnScreenTurn()
+                }
                 step.consumed
               }
             }
@@ -696,6 +739,9 @@ fun PdfPagerReader(
                     awaitingBackwardLanding = latestPendingBackward == pageIndex,
                   )
                 guidedRegionIndex = step.nextRegionIndex
+                if (step.changedRegionOnSamePage) {
+                  latestOnScreenTurn()
+                }
                 step.consumed
               }
             }
