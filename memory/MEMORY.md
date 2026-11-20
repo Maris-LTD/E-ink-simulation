@@ -25,12 +25,13 @@
   - `LauncherActivity`, `EInkReadingWidgetProvider`, `EInkWallpaperService`, `LockScreenReadingNotifier`, `LockScreenReadingStore`, `LockScreenNavReceiver`.
     - **Đọc trên màn hình khóa (đã cập nhật 2026-11-16)**: Bỏ `setShowWhenLocked(true)` (không còn overlay đè lên màn hình khóa), thay bằng kết hợp **Live Wallpaper** (`EInkWallpaperService` vẽ khung đọc văn bản ở vùng đáy `h * 0.61f .. h * 0.895f`) + **Custom Compact Notification `52dp`** (`notification_lockscreen_nav.xml`, nút `[‹]` / `[›]` qua `LockScreenNavReceiver`), tự động hiển thị khi bật sáng màn hình khóa qua `KeyguardManager.isKeyguardLocked` ngay cả khi chưa mở app.
 - **Giao diện E-Ink (`ui/eink/`)**:
-  - Bảng màu trắng-đen tương phản cao, không hiệu ứng nháy/chớp màn hình.
-  - Font UI `Rubik` + `EInkText`, `EInkTheme`, `CoverBitmapCache`, `PaperGrainOverlay`, `RefreshFlashOverlay` (`RefreshFlashController`).
-- **Thư viện (`ui/library/`)**:
-  - `LibraryScreen` & `LibraryViewModel`: danh sách sách, `BookCover`, `LibraryBookmarks`, `LibraryHighlights`, `ReadingStatsSheet`, `TutorialOverlay` (onboarding 4 bước tương tác: xem thử tông giấy/flash/vân giấy, bật Hình nền khóa E-Ink & Thông báo điều hướng 1 chạm, đặt `eInk Launcher` qua `EInkSystemSetupHelper` kèm đánh dấu `tutorial_seen` ngay khi chọn launcher, nhập sách đầu tiên; có thanh nhắc thiết lập trên `LibraryScreen`), tab cài đặt E-Ink toàn cục, thẻ liên hệ/phản hồi.
+  - Hệ thống thiết kế Editorial Monochrome: phân cấp tonal theo chuẩn E-Ink, không hiệu ứng nháy/chớp màn hình, token bo góc/viền tại `EInkTokens.kt`, bộ icon vector `Canvas` thống nhất tại `EInkIcons.kt`.
+  - Cặp font `Bitter` (serif cho tiêu đề/bìa) + `Plus Jakarta Sans` (UI/body, đầy đủ dấu tiếng Việt) trong `EInkTheme`, cùng `EInkText`, `CoverBitmapCache`, `PaperGrainOverlay`, `GhostingOverlay` (`GhostingController`).
+- **Thư viện (`ui/library/`, `ui/monet/`)**:
+  - `LibraryScreen` & `LibraryViewModel`: giao diện Editorial Monochrome với `ContinueReadingHeroCard` (`resolveHeroBook`), `BookCover` có gáy sách & bìa dự phòng serif, tab gạch chân `EInkTabRow`, dropdown Sort dạng pill, thanh tìm kiếm + nút `+` bo tròn dưới đáy, `LibraryBookMenus` (menu `⋮` + long-press), `LibraryBookmarks` / `LibraryHighlights` (nút `TrashIcon` 48dp), `ReadingStatsSheet` (tab Stats/Settings kiểu editorial), `TutorialOverlay` & màn hình Paywall (`ProPaywallSheet` và các card).
+  - **Sách mẫu & Nhập/Mở sách (`data/book/`, `MainActivity.kt`)**: `SampleBooksSeeder` tự động chèn 2 sách mẫu khi thư viện mới trống (`assets/samples/welcome_inkify.epub` và `assets/samples/adaptive_pdf_sample.pdf` 4 trang 2 cột có bảng vector), hỗ trợ `ACTION_VIEW` / `ACTION_SEND` (`ExternalBookIntentParser` + `importOrFindExisting`), chọn nhiều tệp (`OpenMultipleDocuments`) và quét cả thư mục sách (`FolderBookScanner` + `OpenDocumentTree`).
 - **Trình đọc (`reader/`, `ui/reader/`)**:
-  - **EPUB**: `EpubNavigatorFragment` (Readium), `EInkSettings` / `EInkPreferencesMapper` / `EInkColorFilter`, `FocusModeController`, `ReaderInput` (phím cứng âm lượng), `ReaderSearchSheet`, `DictionaryDialog`, `HighlightNoteDialog`, `ReaderContentsSheet`, `ReaderBars`, `ReaderFooterBar`, `ReaderSettingsPanel`.
+  - **EPUB**: `EpubNavigatorFragment` (Readium), `EInkSettings` / `EInkPreferencesMapper` / `EInkColorFilter`, `FocusModeController`, `ReaderInput` (phím cứng âm lượng), `ReaderSearchSheet`, `DictionaryDialog`, `HighlightNoteDialog`, `ReaderContentsSheet`, `ReaderBars` (top/bottom bar 4 hàng mới với tone swatch có nhãn & thanh brightness), `ReaderFooterBar`, `ReaderSettingsControls`, `ReaderSettingsPanel` (dạng thẻ nổi 3 tab `Text`/`PDF` | `Display` | `Controls`).
   - **Adaptive PDF Engine** (tài liệu thiết kế tại `docs/adaptive-pdf-engine.md`): `PdfPagerReader`, `PdfMarginCropper`, `PdfDocumentClassifier`, `PdfPageAnalyzer`, `PdfDocumentCache` (`schemaVersion = 2`), `PdfGraphicMasker`, `PdfReflowEngine`, `PdfReflowPaginator`, `PdfRegionNavigator`, `PdfBookConfigStore`.
   - **Pre-Reflow Graphic Masking (đã triển khai 2026-11-16)**:
     - `PdfPageAnalyzer`: trích xuất `vectorSegments` và `filledRects` qua CTM (gồm cả đường viền mảnh vẽ bằng `fillPath`), tách cột `TextPosition` theo khoảng nhảy tọa độ `X` trong `writeString`.
@@ -39,9 +40,8 @@
     - `PdfPagerReader`: giữ `SYMBOL_STACK` căn giữa gọn theo tỷ lệ gốc, còn `TABLE` / `ILLUSTRATION` dùng full chiều ngang và mở `PdfReflowImageZoomOverlay` (pinch-to-zoom, pan, double-tap) khi chạm vào.
 
 ## Trạng thái hiện tại
-- `.\gradlew.bat testDebugUnitTest`: pass (`BUILD SUCCESSFUL`), hiện có 13 file unit test:
-  - `BookEntryTest`, `ReadingStatsTest`, `BookIndexStoreTest`, `DictionaryServiceTest`, `RefreshFlashControllerTest`, `LockScreenTextChunkerTest`
-  - `PdfBookConfigStoreTest`, `PdfDocumentClassifierTest`, `PdfGraphicMaskerTest`, `PdfReflowEngineTest`, `PdfReflowPaginatorTest`, `PdfRegionNavigatorTest`, `PdfMarginCropperTest`
-- `.\gradlew.bat installDebug`: cài đặt thành công trên thiết bị `25078PC3EG - 16`.
-- **Thư viện & Màn hình chính**: `List<BookEntry>.mostRecentlyReadBook()` (ưu tiên sách đang đọc có `updatedAt` mới nhất) được dùng thống nhất cho `LauncherActivity`, `EInkReadingWidgetProvider`, `EInkWallpaperService`, và tab `Đang đọc` trong `LibraryScreen` (sắp xếp theo `updatedAt` giảm dần). Đã bổ sung tab `Đã xong`, xóa kèm bookmark/highlight khi xóa sách, Snackbar hoàn tác (Undo) khi xóa bookmark/highlight, xóa dữ liệu đám mây từng sách hoặc toàn bộ trên Google Drive (`GoogleDriveSyncManager`), và mục Chính sách bảo mật (`docs/privacy-policy.md`).
-- **Git**: Đã commit và push lên `origin/master` (`12d62d5` Adaptive PDF Engine + Pre-Reflow Graphic Masking; `2aa72a9` / `64abf5c` Lock-Screen Reading Panel + auto-show; `3f5c3dc` fix `mostRecentlyReadBook`; `696fa77` UX improvements across reader/library/lockscreen/i18n; `f17cb04` Drive cloud data deletion per-book/full & Privacy Policy).
+- Đã commit và push **Đợt 1** (`eadcc19`) và **Đợt 2 — Editorial Monochrome UI** (`3de7bac`) lên `origin/fix/audit-batch-1`.
+- Đã gỡ bỏ hoàn toàn chế độ chớp làm mới E-Ink (Refresh Flash) (chưa commit):
+  - Xóa `flashEnabled`/`flashEveryPages` trong `EInkSettings` và `EInkSettingsStore`, xóa các toggle/chuỗi `onboard_toggle_flash` ở `ReaderSettingsPanel`, `ReadingStatsSheet`, `TutorialOverlay` và cập nhật `adaptive_pdf_sample.pdf`.
+  - Thay `RefreshFlashController` / `RefreshFlashOverlay` bằng `GhostingController` / `GhostingOverlay` và `GhostingControllerTest` (vẫn giữ tùy chọn Ghosting riêng, mặc định tắt).
+- `.\gradlew.bat testDebugUnitTest lintDebug assembleRelease --console=plain`: `BUILD SUCCESSFUL` — 302/302 unit test pass (0 failed, 0 ignored), `lintDebug` & `lintVitalRelease` pass (0 errors), `assembleRelease` pass.

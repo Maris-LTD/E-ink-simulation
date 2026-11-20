@@ -58,8 +58,6 @@ class EInkSettingsStore private constructor(
       contrast = sharedPrefs.getFloat(KEY_CONTRAST, defaults.contrast),
       brightness = sharedPrefs.getFloat(KEY_BRIGHTNESS, defaults.brightness),
       orientationLock = enumOf(sharedPrefs.getString(KEY_ORIENTATION_LOCK, null), defaults.orientationLock),
-      flashEnabled = sharedPrefs.getBoolean(KEY_FLASH, defaults.flashEnabled),
-      flashEveryPages = sharedPrefs.getInt(KEY_FLASH_EVERY, defaults.flashEveryPages),
       animations = sharedPrefs.getBoolean(KEY_ANIMATIONS, defaults.animations),
       paperGrain = sharedPrefs.getBoolean(KEY_PAPER_GRAIN, defaults.paperGrain),
       ghosting = sharedPrefs.getBoolean(KEY_GHOSTING, defaults.ghosting),
@@ -89,8 +87,6 @@ class EInkSettingsStore private constructor(
       .putFloat(KEY_CONTRAST, value.contrast)
       .putFloat(KEY_BRIGHTNESS, value.brightness)
       .putString(KEY_ORIENTATION_LOCK, value.orientationLock.name)
-      .putBoolean(KEY_FLASH, value.flashEnabled)
-      .putInt(KEY_FLASH_EVERY, value.flashEveryPages)
       .putBoolean(KEY_ANIMATIONS, value.animations)
       .putBoolean(KEY_PAPER_GRAIN, value.paperGrain)
       .putBoolean(KEY_GHOSTING, value.ghosting)
@@ -121,8 +117,6 @@ class EInkSettingsStore private constructor(
     const val KEY_CONTRAST = "contrast"
     const val KEY_BRIGHTNESS = "brightness"
     const val KEY_ORIENTATION_LOCK = "orientation_lock"
-    const val KEY_FLASH = "flash"
-    const val KEY_FLASH_EVERY = "flash_every"
     const val KEY_ANIMATIONS = "animations"
     const val KEY_PAPER_GRAIN = "paper_grain"
     const val KEY_GHOSTING = "ghosting"

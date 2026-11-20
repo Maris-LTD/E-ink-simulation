@@ -25,6 +25,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -64,6 +66,11 @@ import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.reader.LockScreenReadingNotifier
 import com.example.emptyapp.system.EInkSystemSetupHelper
+import com.example.emptyapp.ui.eink.CheckIcon
+import com.example.emptyapp.ui.eink.ChevronRightIcon
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkSerifFamily
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 import kotlinx.coroutines.launch
 
@@ -144,7 +151,7 @@ fun TutorialOverlay(
           EInkText(stringResource(R.string.tutorial_skip), color = MaterialTheme.colorScheme.secondary)
         }
       }
-      HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
 
       HorizontalPager(
         state = pagerState,
@@ -201,7 +208,7 @@ fun TutorialOverlay(
         }
       }
 
-      HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
       Spacer(Modifier.height(10.dp))
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -215,6 +222,7 @@ fun TutorialOverlay(
             }
           },
           enabled = pagerState.currentPage > 0,
+          shape = EInkShapes.Control,
         ) {
           EInkText(stringResource(R.string.tutorial_prev))
         }
@@ -225,25 +233,41 @@ fun TutorialOverlay(
         ) {
           repeat(ONBOARDING_PAGE_COUNT) { index ->
             val selected = index == pagerState.currentPage
-            Box(
-              modifier =
-                Modifier.size(if (selected) 10.dp else 7.dp)
-                  .background(
-                    if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                  ),
-            )
+            if (selected) {
+              Box(
+                modifier =
+                  Modifier.size(width = 20.dp, height = 6.dp)
+                    .clip(EInkShapes.Pill)
+                    .background(MaterialTheme.colorScheme.primary),
+              )
+            } else {
+              Box(
+                modifier =
+                  Modifier.size(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+              )
+            }
           }
         }
 
         val isLast = pagerState.currentPage == ONBOARDING_PAGE_COUNT - 1
-        OutlinedButton(
+        Button(
           onClick = {
             if (isLast) onDismiss()
             else scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
           },
+          shape = EInkShapes.Control,
+          colors =
+            ButtonDefaults.buttonColors(
+              containerColor = MaterialTheme.colorScheme.primary,
+              contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
         ) {
-          EInkText(if (isLast) stringResource(R.string.tutorial_start) else stringResource(R.string.tutorial_next))
+          EInkText(
+            text = if (isLast) stringResource(R.string.tutorial_start) else stringResource(R.string.tutorial_next),
+            color = MaterialTheme.colorScheme.onPrimary,
+          )
         }
       }
     }
@@ -273,14 +297,15 @@ private fun StepDisplaySetup(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .background(previewBg)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
-        .padding(14.dp),
-    verticalArrangement = Arrangement.spacedBy(6.dp),
+        .clip(EInkShapes.Card)
+        .background(previewBg, EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
+        .padding(16.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     EInkText(
       stringResource(R.string.onboard_sample_title),
-      style = MaterialTheme.typography.titleSmall,
+      style = MaterialTheme.typography.titleMedium.copy(fontFamily = EInkSerifFamily),
       color = previewFg,
     )
     EInkText(
@@ -315,11 +340,6 @@ private fun StepDisplaySetup(
   }
 
   ToggleOptionRow(
-    label = stringResource(R.string.onboard_toggle_flash),
-    checked = settings.flashEnabled,
-    onCheckedChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
-  )
-  ToggleOptionRow(
     label = stringResource(R.string.settings_paper_grain),
     checked = settings.paperGrain,
     onCheckedChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
@@ -338,7 +358,7 @@ private fun StepLockScreenSetup(
     title = stringResource(R.string.onboard_s2_title),
     desc = stringResource(R.string.onboard_s2_desc),
   )
-  OnboardingIllustration(step = 1, modifier = Modifier.fillMaxWidth().height(120.dp))
+  OnboardingIllustration(step = 1, modifier = Modifier.fillMaxWidth().height(132.dp))
   ActionSetupCard(
     title = stringResource(R.string.onboard_btn_wallpaper),
     active = wallpaperActive,
@@ -364,7 +384,7 @@ private fun StepLauncherSetup(
     title = stringResource(R.string.onboard_s3_title),
     desc = stringResource(R.string.onboard_s3_desc),
   )
-  OnboardingIllustration(step = 2, modifier = Modifier.fillMaxWidth().height(120.dp))
+  OnboardingIllustration(step = 2, modifier = Modifier.fillMaxWidth().height(132.dp))
   ActionSetupCard(
     title = stringResource(R.string.onboard_btn_launcher),
     active = launcherActive,
@@ -388,9 +408,10 @@ private fun StepReadyToRead(
     title = stringResource(R.string.onboard_s4_title),
     desc = stringResource(R.string.onboard_s4_desc),
   )
-  OnboardingIllustration(step = 3, modifier = Modifier.fillMaxWidth().height(120.dp))
+  OnboardingIllustration(step = 3, modifier = Modifier.fillMaxWidth().height(132.dp))
   Button(
     onClick = onImportBook,
+    shape = EInkShapes.Control,
     modifier = Modifier.fillMaxWidth(),
     colors =
       ButtonDefaults.buttonColors(
@@ -402,6 +423,7 @@ private fun StepReadyToRead(
   }
   OutlinedButton(
     onClick = onGoToLibrary,
+    shape = EInkShapes.Control,
     modifier = Modifier.fillMaxWidth(),
   ) {
     EInkText(stringResource(R.string.onboard_btn_library))
@@ -418,8 +440,16 @@ private fun ToneChip(
   Box(
     modifier =
       modifier
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
-        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+        .clip(EInkShapes.Control)
+        .background(
+          if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+          EInkShapes.Control,
+        )
+        .border(
+          width = if (selected) EInkBorder.Card else EInkBorder.Hairline,
+          color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+          shape = EInkShapes.Control,
+        )
         .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
         .padding(vertical = 10.dp, horizontal = 6.dp),
     contentAlignment = Alignment.Center,
@@ -441,10 +471,12 @@ private fun ToggleOptionRow(
   Row(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
         .semantics(mergeDescendants = true) {}
-        .padding(horizontal = 12.dp, vertical = 6.dp),
+        .padding(horizontal = 14.dp, vertical = 6.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -463,10 +495,15 @@ private fun ActionSetupCard(
   Row(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
         .background(
-          if (active) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-          else MaterialTheme.colorScheme.background,
+          if (active) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background,
+          EInkShapes.Card,
+        )
+        .border(
+          width = if (active) EInkBorder.Active else EInkBorder.Card,
+          color = if (active) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
+          shape = EInkShapes.Card,
         )
         .clickable(onClick = onClick)
         .padding(horizontal = 14.dp, vertical = 14.dp),
@@ -475,67 +512,88 @@ private fun ActionSetupCard(
   ) {
     EInkText(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
     Spacer(Modifier.width(8.dp))
-    EInkText(
-      text = if (active) activeLabel else "›",
-      style = MaterialTheme.typography.labelLarge,
-      color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-    )
+    if (active) {
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        CheckIcon(modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+        EInkText(
+          text = activeLabel,
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.primary,
+        )
+      }
+    } else {
+      ChevronRightIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+    }
   }
 }
 
 @Composable
 private fun OnboardingIllustration(step: Int, modifier: Modifier = Modifier) {
   val ink = MaterialTheme.colorScheme.onBackground
+  val muted = MaterialTheme.colorScheme.outline
   val surface = MaterialTheme.colorScheme.surfaceVariant
+  val bg = MaterialTheme.colorScheme.background
   Box(
-    modifier = modifier.border(1.5.dp, MaterialTheme.colorScheme.outline).background(surface),
+    modifier =
+      modifier
+        .clip(EInkShapes.Hero)
+        .background(surface, EInkShapes.Hero)
+        .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Hero),
     contentAlignment = Alignment.Center,
   ) {
     Canvas(modifier = Modifier.fillMaxSize().padding(14.dp)) {
       val w = size.width
       val h = size.height
-      val stroke = 2.5.dp.toPx()
+      val stroke = 1.8.dp.toPx()
       when (step) {
         1 -> {
           val pw = h * 0.62f
           val px = (w - pw) / 2f
-          drawRoundRect(
-            color = ink,
-            topLeft = Offset(px, 0f),
-            size = Size(pw, h),
-            cornerRadius = CornerRadius(12f, 12f),
-            style = Stroke(stroke),
-          )
-          drawRect(color = ink, topLeft = Offset(px + pw * 0.14f, h * 0.34f), size = Size(pw * 0.72f, h * 0.14f), style = Stroke(stroke * 0.8f))
-          drawRect(color = ink, topLeft = Offset(px + pw * 0.14f, h * 0.56f), size = Size(pw * 0.72f, h * 0.32f), style = Stroke(stroke * 0.9f))
-          drawLine(ink, Offset(px + pw * 0.22f, h * 0.66f), Offset(px + pw * 0.78f, h * 0.66f), strokeWidth = stroke * 0.7f)
-          drawLine(ink, Offset(px + pw * 0.22f, h * 0.76f), Offset(px + pw * 0.70f, h * 0.76f), strokeWidth = stroke * 0.7f)
+          drawRoundRect(bg, Offset(px, 0f), Size(pw, h), CornerRadius(10.dp.toPx()))
+          drawRoundRect(ink, Offset(px, 0f), Size(pw, h), CornerRadius(10.dp.toPx()), style = Stroke(stroke))
+          drawLine(muted, Offset(px + pw * 0.36f, h * 0.08f), Offset(px + pw * 0.64f, h * 0.08f), stroke, StrokeCap.Round)
+          drawRoundRect(surface, Offset(px + pw * 0.18f, h * 0.18f), Size(pw * 0.64f, h * 0.15f), CornerRadius(4.dp.toPx()))
+          drawRoundRect(surface, Offset(px + pw * 0.12f, h * 0.48f), Size(pw * 0.76f, h * 0.38f), CornerRadius(6.dp.toPx()))
+          drawRoundRect(ink, Offset(px + pw * 0.12f, h * 0.48f), Size(pw * 0.76f, h * 0.38f), CornerRadius(6.dp.toPx()), style = Stroke(stroke * 0.75f))
+          drawLine(ink, Offset(px + pw * 0.22f, h * 0.60f), Offset(px + pw * 0.76f, h * 0.60f), stroke * 0.7f, StrokeCap.Round)
+          drawLine(muted, Offset(px + pw * 0.22f, h * 0.70f), Offset(px + pw * 0.68f, h * 0.70f), stroke * 0.7f, StrokeCap.Round)
+          drawLine(muted, Offset(px + pw * 0.22f, h * 0.78f), Offset(px + pw * 0.52f, h * 0.78f), stroke * 0.7f, StrokeCap.Round)
         }
         2 -> {
           val pw = h * 0.62f
           val px = (w - pw) / 2f
-          drawRoundRect(
-            color = ink,
-            topLeft = Offset(px, 0f),
-            size = Size(pw, h),
-            cornerRadius = CornerRadius(12f, 12f),
-            style = Stroke(stroke),
-          )
-          drawRect(color = ink, topLeft = Offset(px + pw * 0.15f, h * 0.16f), size = Size(pw * 0.70f, h * 0.24f), style = Stroke(stroke * 0.8f))
+          drawRoundRect(bg, Offset(px, 0f), Size(pw, h), CornerRadius(10.dp.toPx()))
+          drawRoundRect(ink, Offset(px, 0f), Size(pw, h), CornerRadius(10.dp.toPx()), style = Stroke(stroke))
+          drawRoundRect(surface, Offset(px + pw * 0.14f, h * 0.14f), Size(pw * 0.72f, h * 0.30f), CornerRadius(5.dp.toPx()))
+          drawRoundRect(ink, Offset(px + pw * 0.14f, h * 0.14f), Size(pw * 0.72f, h * 0.30f), CornerRadius(5.dp.toPx()), style = Stroke(stroke * 0.75f))
+          val r = pw * 0.065f
           for (i in 0 until 4) {
-            val bx = px + pw * (0.16f + i * 0.18f)
-            drawRect(color = ink, topLeft = Offset(bx, h * 0.54f), size = Size(pw * 0.13f, pw * 0.13f), style = Stroke(stroke * 0.8f))
+            val cx = px + pw * (0.20f + i * 0.20f)
+            drawCircle(surface, r, Offset(cx, h * 0.64f))
+            drawCircle(ink, r, Offset(cx, h * 0.64f), style = Stroke(stroke * 0.7f))
           }
+          drawRoundRect(muted, Offset(px + pw * 0.14f, h * 0.80f), Size(pw * 0.72f, h * 0.10f), CornerRadius(4.dp.toPx()))
         }
         else -> {
-          val bw = w * 0.34f
-          val bh = h * 0.74f
+          val bw = w * 0.38f
+          val bh = h * 0.72f
           val bx = (w - bw) / 2f
           val by = (h - bh) / 2f
-          drawRect(color = ink, topLeft = Offset(bx, by), size = Size(bw, bh), style = Stroke(stroke))
-          drawLine(ink, Offset(w / 2f, by), Offset(w / 2f, by + bh), strokeWidth = stroke)
-          drawLine(ink, Offset(w * 0.68f, h * 0.5f), Offset(w * 0.78f, h * 0.5f), strokeWidth = stroke, cap = StrokeCap.Round)
-          drawLine(ink, Offset(w * 0.73f, h * 0.38f), Offset(w * 0.73f, h * 0.62f), strokeWidth = stroke, cap = StrokeCap.Round)
+          drawRoundRect(bg, Offset(bx, by), Size(bw, bh), CornerRadius(4.dp.toPx()))
+          drawRoundRect(ink, Offset(bx, by), Size(bw, bh), CornerRadius(4.dp.toPx()), style = Stroke(stroke))
+          drawLine(ink, Offset(w / 2f, by), Offset(w / 2f, by + bh), stroke)
+          listOf(0.28f, 0.45f, 0.62f).forEach { frac ->
+            drawLine(muted, Offset(bx + bw * 0.12f, by + bh * frac), Offset(w / 2f - bw * 0.10f, by + bh * frac), stroke * 0.75f, StrokeCap.Round)
+            drawLine(muted, Offset(w / 2f + bw * 0.10f, by + bh * frac), Offset(bx + bw * 0.88f, by + bh * frac), stroke * 0.75f, StrokeCap.Round)
+          }
+          val badgeC = Offset(bx + bw + 10.dp.toPx(), by + bh * 0.5f)
+          val br = 12.dp.toPx()
+          drawCircle(ink, br, badgeC)
+          drawLine(bg, Offset(badgeC.x - br * 0.42f, badgeC.y), Offset(badgeC.x + br * 0.42f, badgeC.y), stroke, StrokeCap.Round)
+          drawLine(bg, Offset(badgeC.x, badgeC.y - br * 0.42f), Offset(badgeC.x, badgeC.y + br * 0.42f), stroke, StrokeCap.Round)
         }
       }
     }

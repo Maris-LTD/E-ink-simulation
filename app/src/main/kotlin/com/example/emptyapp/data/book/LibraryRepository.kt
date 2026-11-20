@@ -32,6 +32,15 @@ class LibraryRepository internal constructor(
   autoBackfill: Boolean = true,
   preloadInBackground: Boolean = false,
   private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+  private val importFromFile: suspend (
+    sourceFile: File,
+    format: BookFormat,
+    displayName: String,
+    existingHashes: Set<String>,
+    overrideTitle: String?,
+    overrideAuthor: String?,
+    updatedAt: Long,
+  ) -> Result<BookEntry> = { _, _, _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
 ) {
   internal constructor(
     appFilesDir: File,
@@ -46,6 +55,15 @@ class LibraryRepository internal constructor(
     autoBackfill: Boolean = true,
     preloadInBackground: Boolean = false,
     ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    importFromFile: suspend (
+      sourceFile: File,
+      format: BookFormat,
+      displayName: String,
+      existingHashes: Set<String>,
+      overrideTitle: String?,
+      overrideAuthor: String?,
+      updatedAt: Long,
+    ) -> Result<BookEntry> = { _, _, _, _, _, _, _ -> Result.failure(UnsupportedOperationException()) },
   ) : this(
     appFilesDir = appFilesDir,
     engineProvider = { engineLazy.value },
@@ -57,6 +75,7 @@ class LibraryRepository internal constructor(
     autoBackfill = autoBackfill,
     preloadInBackground = preloadInBackground,
     ioDispatcher = ioDispatcher,
+    importFromFile = importFromFile,
   )
 
   constructor(context: Context, engineLazy: Lazy<ReadiumEngine>) : this(
@@ -119,6 +138,23 @@ class LibraryRepository internal constructor(
     },
     autoBackfill = true,
     preloadInBackground = true,
+    importFromFile = { sourceFile, format, displayName, existingHashes, overrideTitle, overrideAuthor, updatedAt ->
+      val appCtx = context.applicationContext
+      BookImporter(
+        appCtx,
+        engineLazy.value,
+        File(appCtx.filesDir, "books"),
+        File(appCtx.filesDir, "covers"),
+      ).importLocalFile(
+        sourceFile = sourceFile,
+        format = format,
+        displayName = displayName,
+        existingHashes = existingHashes,
+        overrideTitle = overrideTitle,
+        overrideAuthor = overrideAuthor,
+        updatedAt = updatedAt,
+      )
+    },
   )
 
   constructor(context: Context, engine: ReadiumEngine) : this(context, lazyOf(engine))
@@ -173,12 +209,65 @@ class LibraryRepository internal constructor(
 
   fun find(id: String): BookEntry? = state.value.firstOrNull { it.id == id }
 
+  fun findByContentHash(hash: String): BookEntry? =
+    state.value.firstOrNull { it.contentHash?.equals(hash, ignoreCase = true) == true }
+
   fun fileOf(book: BookEntry): File = File(booksDir, book.fileName)
 
   fun coverFileOf(book: BookEntry): File? = book.coverFileName?.let { File(coversDir, it) }
 
   suspend fun import(uri: Uri): Result<BookEntry> =
     importWithHashes { existingHashes -> importFromUri(uri, existingHashes) }
+
+  suspend fun importOrFindExisting(uri: Uri): Result<BookEntry> =
+    importOrFindExistingWith { existingHashes -> importFromUri(uri, existingHashes) }
+
+  internal suspend fun importOrFindExistingWith(
+    performImport: suspend (Set<String>) -> Result<BookEntry>,
+  ): Result<BookEntry> =
+    importMutex.withLock {
+      awaitLoaded()
+      ensureContentHashes()
+      val existingHashes = state.value.mapNotNull { it.contentHash?.lowercase() }.toSet()
+      val result = performImport(existingHashes)
+      val err = result.exceptionOrNull()
+      if (err is CancellationException) throw err
+      if (err is DuplicateBookException) {
+        val existing = findByContentHash(err.contentHash)
+        if (existing != null) return@withLock Result.success(existing)
+      }
+      result.onSuccess { entry -> commit { it + entry } }
+    }
+
+  suspend fun importAssetFile(
+    tempFile: File,
+    format: BookFormat,
+    displayName: String,
+    overrideTitle: String? = null,
+    overrideAuthor: String? = null,
+    updatedAt: Long = System.currentTimeMillis(),
+  ): Result<BookEntry> =
+    importWithHashes { existingHashes ->
+      importFromFile(tempFile, format, displayName, existingHashes, overrideTitle, overrideAuthor, updatedAt)
+    }
+
+  suspend fun markCompleted(id: String, completed: Boolean) {
+    awaitLoaded()
+    val now = System.currentTimeMillis()
+    commit { list ->
+      list.map { book ->
+        if (book.id == id) {
+          book.copy(
+            progress = if (completed) 1f else 0f,
+            lastLocatorJson = if (completed) book.lastLocatorJson else null,
+            updatedAt = now,
+          )
+        } else {
+          book
+        }
+      }
+    }
+  }
 
   internal suspend fun importWithHashes(
     performImport: suspend (Set<String>) -> Result<BookEntry>,

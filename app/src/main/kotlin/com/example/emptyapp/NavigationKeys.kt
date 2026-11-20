@@ -6,3 +6,5 @@ import kotlinx.serialization.Serializable
 @Serializable data object Library : NavKey
 
 @Serializable data object ReadingStats : NavKey
+
+@Serializable data object AppSettings : NavKey

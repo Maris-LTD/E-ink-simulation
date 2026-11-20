@@ -1,6 +1,8 @@
 package com.example.emptyapp
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,19 +20,26 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+  private val pendingExternalUri = MutableStateFlow<Uri?>(null)
+
   override fun attachBaseContext(newBase: Context) {
     super.attachBaseContext(LocaleHelper.wrap(newBase))
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    if (savedInstanceState == null) {
+      pendingExternalUri.value = extractIncomingBookUri(intent)
+    }
     (application as EmptyApplication).container.warmUpForUiAsync()
     enableEdgeToEdge()
     setContent {
       val settings by (application as EmptyApplication).container.settings.settings.collectAsStateWithLifecycle()
+      val externalBookUri by pendingExternalUri.collectAsStateWithLifecycle()
       val isDark = settings.tone == EInkTone.DARK
       LaunchedEffect(settings.tone) {
         window.decorView.setBackgroundColor(settings.tone.background)
@@ -45,12 +54,21 @@ class MainActivity : ComponentActivity() {
           color = MaterialTheme.colorScheme.background,
         ) {
           Box(modifier = Modifier.fillMaxSize()) {
-            MainNavigation()
+            MainNavigation(
+              externalBookUri = externalBookUri,
+              onConsumeExternalBookUri = { pendingExternalUri.value = null },
+            )
             if (settings.paperGrain) PaperGrainOverlay()
           }
         }
       }
     }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    extractIncomingBookUri(intent)?.let { pendingExternalUri.value = it }
   }
 
   override fun onResume() {

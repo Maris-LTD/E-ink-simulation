@@ -3,11 +3,11 @@ package com.example.emptyapp.data.annotation
 import com.example.emptyapp.data.sync.SyncTombstoneStore
 import java.io.File
 import kotlin.io.path.createTempDirectory
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -35,6 +35,7 @@ class AnnotationRepositoryTest {
     dir.deleteRecursively()
   }
 
+  @OptIn(ExperimentalCoroutinesApi::class)
   @Test
   fun removeAndRestoreBookmarkRecordTombstoneBeforeUpdatingStateOrCommitting() = runTest {
     val tombstones = SyncTombstoneStore(tombstonesFile, clock = { 1_000L })
@@ -44,7 +45,7 @@ class AnnotationRepositoryTest {
 
     var sawDeletionAfterTombstone = false
     val removeObserver =
-      launch(start = CoroutineStart.UNDISPATCHED) {
+      launch(UnconfinedTestDispatcher(testScheduler)) {
         repo.bookmarks.drop(1).collect { list ->
           if (list.isEmpty()) {
             assertTrue(entry.id in tombstones.deletedAnnotationIds())
@@ -59,7 +60,7 @@ class AnnotationRepositoryTest {
 
     var sawRestoreAfterTombstone = false
     val restoreObserver =
-      launch(start = CoroutineStart.UNDISPATCHED) {
+      launch(UnconfinedTestDispatcher(testScheduler)) {
         repo.bookmarks.drop(1).collect { list ->
           if (list.any { it.id == entry.id }) {
             assertFalse(entry.id in tombstones.deletedAnnotationIds())
@@ -74,6 +75,7 @@ class AnnotationRepositoryTest {
     assertTrue(sawRestoreAfterTombstone)
   }
 
+  @OptIn(ExperimentalCoroutinesApi::class)
   @Test
   fun removeAndRestoreHighlightRecordTombstoneBeforeUpdatingStateOrCommitting() = runTest {
     val tombstones = SyncTombstoneStore(tombstonesFile, clock = { 2_000L })
@@ -83,7 +85,7 @@ class AnnotationRepositoryTest {
 
     var sawDeletionAfterTombstone = false
     val removeObserver =
-      launch(start = CoroutineStart.UNDISPATCHED) {
+      launch(UnconfinedTestDispatcher(testScheduler)) {
         repo.highlights.drop(1).collect { list ->
           if (list.isEmpty()) {
             assertTrue(entry.id in tombstones.deletedAnnotationIds())
@@ -98,7 +100,7 @@ class AnnotationRepositoryTest {
 
     var sawRestoreAfterTombstone = false
     val restoreObserver =
-      launch(start = CoroutineStart.UNDISPATCHED) {
+      launch(UnconfinedTestDispatcher(testScheduler)) {
         repo.highlights.drop(1).collect { list ->
           if (list.any { it.id == entry.id }) {
             assertFalse(entry.id in tombstones.deletedAnnotationIds())

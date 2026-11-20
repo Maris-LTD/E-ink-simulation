@@ -38,5 +38,13 @@ class NavigationUtilsTest {
     // Push same key when it's already top returns false, stack unchanged
     assertFalse(pushNavKeyIfNotTop(stack, ReadingStats))
     assertEquals(2, stack.size)
+
+    // Push AppSettings succeeds and avoids duplicate top push
+    assertTrue(pushNavKeyIfNotTop(stack, AppSettings))
+    assertFalse(pushNavKeyIfNotTop(stack, AppSettings))
+    assertEquals(3, stack.size)
+    assertEquals(AppSettings, stack.lastOrNull())
+    assertTrue(popBackStackSafely(stack, AppSettings))
+    assertEquals(ReadingStats, stack.lastOrNull())
   }
 }

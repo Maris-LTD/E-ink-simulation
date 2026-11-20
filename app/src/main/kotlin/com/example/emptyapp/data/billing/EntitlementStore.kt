@@ -2,8 +2,8 @@ package com.example.emptyapp.data.billing
 
 import com.example.emptyapp.data.storage.AtomicJsonFile
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
+import java.io.FileOutputStream
+import java.io.IOException
 import kotlinx.serialization.json.Json
 
 class EntitlementStore(
@@ -32,11 +32,17 @@ class EntitlementStore(
     val encoded = json.encodeToString(ProEntitlement.serializer(), entitlement)
     val bytes = activeCipher.encrypt(encoded)
     val tmp = File(targetFile.parentFile, "${targetFile.name}.tmp")
-    tmp.writeBytes(bytes)
-    runCatching {
-      Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-    }.getOrElse {
-      Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    FileOutputStream(tmp).use { out ->
+      out.write(bytes)
+      out.flush()
+      out.fd.sync()
+    }
+    if (!tmp.renameTo(targetFile)) {
+      val deletedExisting = !targetFile.exists() || targetFile.delete()
+      if (!deletedExisting || !tmp.renameTo(targetFile)) {
+        if (targetFile.exists()) tmp.delete()
+        throw IOException("Cannot replace ${targetFile.name}")
+      }
     }
   }
 
