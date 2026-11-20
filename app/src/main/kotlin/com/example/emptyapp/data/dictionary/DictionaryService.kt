@@ -141,7 +141,7 @@ class DictionaryService(
   }
 
   private fun performGet(urlString: String): String? =
-    httpGetter?.invoke(urlString) ?: httpGet(urlString)
+    if (httpGetter != null) httpGetter.invoke(urlString) else httpGet(urlString)
 
   private fun httpGet(urlString: String): String? {
     val connection =

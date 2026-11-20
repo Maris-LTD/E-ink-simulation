@@ -71,7 +71,7 @@
     <string name="dict_no_data">Không có dữ liệu từ điển</string>
     <string name="dict_no_definition">Không có định nghĩa</string>
     <string name="dict_loading">Đang dịch &amp; tra từ...</string>
-    <string name="dict_translation_label">Tiếng Việt</string>
+    <string name="dict_translation_label">Bản dịch</string>
     <string name="dict_open_external">Dịch ngoài</string>
 
     <!-- Language settings -->
@@ -301,7 +301,7 @@
     <string name="stats_sync_syncing">Đang đồng bộ...</string>
     <string name="stats_sync_now">Đồng bộ ngay</string>
     <string name="stats_sign_out">Đăng xuất</string>
-    <string name="stats_sync_intro">Đăng nhập Google để tự động đồng bộ tiến độ đọc, dấu trang, highlight và thống kê giữa các thiết bị (0đ, lưu trên Drive AppData riêng).</string>
+    <string name="stats_sync_intro">Đăng nhập Google để đồng bộ tiến độ đọc, dấu trang, highlight và thống kê giữa các thiết bị (lưu riêng tư trên Drive AppData của bạn — tính năng Inkify Pro).</string>
     <string name="stats_sync_connecting">Đang kết nối...</string>
     <string name="stats_sign_in_google">Đăng nhập với Google</string>
     <string name="stats_sync_delete_all_btn">Xóa dữ liệu trên Drive</string>
@@ -336,6 +336,29 @@
     <string name="lib_search_bookmarks_placeholder">Tìm bookmark…</string>
     <string name="lib_search_highlights_placeholder">Tìm highlight…</string>
     <string name="lib_importing_banner">Đang thêm sách…</string>
+    <string name="cd_settings">Cài đặt</string>
+    <string name="cd_book_actions">Tùy chọn sách</string>
+    <string name="lib_action_open">Mở đọc</string>
+    <string name="lib_action_mark_finished">Đánh dấu đã đọc xong</string>
+    <string name="lib_action_mark_unread">Đánh dấu chưa đọc</string>
+    <string name="lib_action_details">Thông tin sách</string>
+    <string name="lib_details_title">Thông tin sách</string>
+    <string name="lib_details_author">Tác giả</string>
+    <string name="lib_details_author_unknown">Không rõ</string>
+    <string name="lib_details_format">Định dạng</string>
+    <string name="lib_details_progress">Tiến độ</string>
+    <string name="lib_details_size">Dung lượng</string>
+    <string name="lib_import_menu_files">Nhập tệp sách (EPUB, PDF, CBZ)</string>
+    <string name="lib_import_menu_folder">Nhập cả thư mục sách</string>
+    <string name="lib_import_folder_empty">Không tìm thấy tệp EPUB, PDF hoặc CBZ nào trong thư mục này.</string>
+    <string name="lib_import_batch_added">Đã nhập %1$d sách</string>
+    <string name="lib_import_batch_added_skipped">Đã nhập %1$d sách (bỏ qua %2$d)</string>
+    <string name="lib_import_batch_all_duplicates">Tất cả sách đã chọn đều đã có trong thư viện.</string>
+    <string name="lib_import_batch_failed">Không thể nhập các sách đã chọn (%1$d lỗi).</string>
+    <string name="lib_importing_batch_progress">Đang nhập sách (%1$d/%2$d)…</string>
+    <string name="lib_marked_finished">Đã đánh dấu đọc xong</string>
+    <string name="lib_marked_unread">Đã đánh dấu chưa đọc</string>
+    <string name="stats_open_setup_guide">Mở hướng dẫn thiết lập E-Ink</string>
 
     <!-- Launcher -->
     <string name="launcher_view_list">Danh sách</string>
@@ -419,7 +442,7 @@
     <string name="paywall_feat_focus_title">Chế độ Tập trung (DND)</string>
     <string name="paywall_feat_focus_desc">Tự động chặn thông báo làm phiền trong lúc đọc sách.</string>
 
-    <string name="paywall_trust_ads">100% Không quảng cáo &amp; Không theo dõi</string>
+    <string name="paywall_trust_ads" formatted="false">100% Không quảng cáo &amp; Không theo dõi</string>
     <string name="paywall_trust_offline">Hoạt động Offline hoàn toàn</string>
     <string name="paywall_trust_restore">Khôi phục 1 chạm trên mọi máy Android</string>
 

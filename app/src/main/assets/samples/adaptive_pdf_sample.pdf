@@ -1,0 +1,179 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [ 5 0 R 7 0 R 9 0 R 11 0 R ] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 2239 >>
+stream
+BT /F2 12 Tf 1 0 0 1 48 748 Tm (Adaptive PDF Reflow Demo) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 48 728 Tm (Try Original, Columns, and Reflow) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 688 Tm (Most mobile PDF readers force you to) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 668 Tm (pinch and pan tiny two-column pages.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 648 Tm (On compact phones and E-Ink screens,) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 628 Tm (this breaks reading rhythm every line.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 588 Tm (Tap the center of this page and press) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 568 Tm (the mode button in the top bar to) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 548 Tm (switch between Original, Columns,) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 528 Tm (and Reflow modes in real time.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 488 Tm (In Columns mode, Inkify steps cleanly) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 468 Tm (through each detected reading region) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 448 Tm (so you never lose your place.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 428 Tm (In Reflow mode, paragraphs re-wrap) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 408 Tm (to your chosen font size and weight.) Tj ET
+BT /F2 11 Tf 1 0 0 1 318 748 Tm (How Column Detection Works) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 708 Tm (Inkify inspects text line bounds on) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 688 Tm (every page before rendering begins.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 668 Tm (When lines cluster into distinct left) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 648 Tm (and right gutters, the engine builds) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 628 Tm (a top-to-bottom column reading order.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 588 Tm (For dense academic papers, reports,) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 568 Tm (or technical manuals, Columns mode) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 548 Tm (keeps math and diagrams crisp while) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 528 Tm (making text comfortably readable.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 488 Tm (For pure prose inside PDFs, Reflow) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 468 Tm (mode merges broken line endings into) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 448 Tm (smooth paragraphs and preserves) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 428 Tm (headings, lists, and inline figures.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 408 Tm (Swipe across all 4 pages to test it.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 2291 >>
+stream
+BT /F2 11.5 Tf 1 0 0 1 48 748 Tm (Graphic & Table Preservation) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 708 Tm (Reflow engines often scramble tables) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 688 Tm (into unreadable single-line fragments.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 668 Tm (Inkify detects vector grid tables) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 648 Tm (before reflowing text and renders) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 628 Tm (each table as a zoomable block.) Tj ET
+BT /F2 11 Tf 1 0 0 1 318 748 Tm (Reading Modes Compared) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 708 Tm (The table on the left compares the) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 688 Tm (three PDF modes available inside) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 668 Tm (the Inkify reader toolbar.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 628 Tm (Notice how switching to Reflow mode) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 608 Tm (keeps the table crisp as an inline) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 588 Tm (figure instead of scrambling cells.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 568 Tm (Tap any table or illustration while) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 548 Tm (in Reflow mode to open pinch-to-zoom) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 528 Tm (inspection with pan controls.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 488 Tm (Scanned image-only PDFs automatically) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 468 Tm (stay in Original mode with margin) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 448 Tm (auto-cropping enabled to maximize) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 428 Tm (readable page area on small screens.) Tj ET
+0.75 w 0 0 0 RG
+48 430 m 272 430 l S
+48 395 m 272 395 l S
+48 360 m 272 360 l S
+48 325 m 272 325 l S
+48 290 m 272 290 l S
+48 290 m 48 430 l S
+130 290 m 130 430 l S
+272 290 m 272 430 l S
+BT /F2 9.5 Tf 1 0 0 1 54 408 Tm (Mode) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 136 408 Tm (Best Use Case) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54 373 Tm (Original) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 136 373 Tm (Scans & Comics) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54 338 Tm (Columns) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 136 338 Tm (2-Col PDFs) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54 303 Tm (Reflow) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 136 303 Tm (Long Text Reading) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 235 Tm (Above is a real vector table inside) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 215 Tm (the left column for Graphic Masking.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 195 Tm (Tap it in Reflow mode to zoom in.) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 1671 >>
+stream
+BT /F2 11.5 Tf 1 0 0 1 48 748 Tm (Calm Typography on Any Screen) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 708 Tm (High contrast and generous margins) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 688 Tm (reduce visual fatigue during long) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 668 Tm (reading sessions on both OLED phones) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 648 Tm (and dedicated E-Ink devices.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 608 Tm (In Settings you can adjust font) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 588 Tm (weight, line height, contrast, and) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 568 Tm (screen tone from crisp white to) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 548 Tm (warm paper or dark night mode.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 508 Tm (Paper grain and page refresh flash) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 488 Tm (are completely optional so real) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 468 Tm (E-Ink hardware stays crisp and fast.) Tj ET
+BT /F2 11 Tf 1 0 0 1 318 748 Tm (Hardware Keys & Edge Controls) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 708 Tm (Use physical volume buttons to turn) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 688 Tm (pages one-handed on commutes or) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 668 Tm (while holding a compact reader.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 628 Tm (Slide vertically along the narrow) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 608 Tm (left edge strip to tune screen) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 588 Tm (brightness without opening menus.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 548 Tm (Bookmarks, highlights, and reading) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 528 Tm (progress stay saved locally per book) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 508 Tm (so your library works 100% offline) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 488 Tm (with zero accounts or ads.) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 12 0 R >>
+endobj
+12 0 obj
+<< /Length 1507 >>
+stream
+BT /F2 11.5 Tf 1 0 0 1 48 748 Tm (Your Personal Library Workflow) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 708 Tm (You can open EPUB, PDF, or CBZ) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 688 Tm (files directly from your file) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 668 Tm (manager using Open With Inkify.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 628 Tm (Inside the Library, tap the + button) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 608 Tm (to pick multiple files at once or) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 588 Tm (scan an entire folder of ebooks.) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 548 Tm (Long-press any book card or tap its) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 528 Tm (menu button to mark it finished,) Tj ET
+BT /F1 10 Tf 1 0 0 1 48 508 Tm (inspect file details, or remove it.) Tj ET
+BT /F2 11 Tf 1 0 0 1 318 748 Tm (Beyond the App: Lock Screen) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 708 Tm (Want to turn your phone into a) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 688 Tm (pocket E-Ink companion? Open) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 668 Tm (Settings to enable the live) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 648 Tm (lock-screen excerpt wallpaper.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 608 Tm (You can also try the minimalist) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 588 Tm (eInk Home Launcher for a calm) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 568 Tm (monochrome home screen with one-tap) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 548 Tm (resume for your current book.) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 508 Tm (Thank you for trying this 4-page) Tj ET
+BT /F1 10 Tf 1 0 0 1 318 488 Tm (Adaptive PDF Reflow demonstration.) Tj ET
+endstream
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000136 00000 n 
+0000000206 00000 n 
+0000000281 00000 n 
+0000000417 00000 n 
+0000002708 00000 n 
+0000002844 00000 n 
+0000005187 00000 n 
+0000005324 00000 n 
+0000007048 00000 n 
+0000007186 00000 n 
+trailer
+<< /Size 13 /Root 1 0 R >>
+startxref
+8746
+%%EOF

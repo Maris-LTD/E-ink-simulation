@@ -71,7 +71,7 @@
     <string name="dict_no_data">No dictionary data</string>
     <string name="dict_no_definition">No definition available</string>
     <string name="dict_loading">Translating &amp; looking up…</string>
-    <string name="dict_translation_label">Vietnamese</string>
+    <string name="dict_translation_label">Translation</string>
     <string name="dict_open_external">Google Translate</string>
 
     <!-- Language settings -->
@@ -305,7 +305,7 @@
     <string name="stats_sync_syncing">Syncing…</string>
     <string name="stats_sync_now">Sync now</string>
     <string name="stats_sign_out">Sign out</string>
-    <string name="stats_sync_intro">Sign in with Google to automatically sync reading progress, bookmarks, highlights, and streaks across devices (free, stored in private Drive AppData).</string>
+    <string name="stats_sync_intro">Sign in with Google to sync reading progress, bookmarks, highlights, and streaks across devices (stored privately in your Drive AppData — included with Inkify Pro).</string>
     <string name="stats_sync_connecting">Connecting…</string>
     <string name="stats_sign_in_google">Sign in with Google</string>
     <string name="stats_sync_delete_all_btn">Delete Drive data</string>
@@ -340,6 +340,29 @@
     <string name="lib_search_bookmarks_placeholder">Search bookmarks…</string>
     <string name="lib_search_highlights_placeholder">Search highlights…</string>
     <string name="lib_importing_banner">Importing book…</string>
+    <string name="cd_settings">Settings</string>
+    <string name="cd_book_actions">Book actions</string>
+    <string name="lib_action_open">Open</string>
+    <string name="lib_action_mark_finished">Mark as finished</string>
+    <string name="lib_action_mark_unread">Mark as unread</string>
+    <string name="lib_action_details">Book details</string>
+    <string name="lib_details_title">Book Details</string>
+    <string name="lib_details_author">Author</string>
+    <string name="lib_details_author_unknown">Unknown</string>
+    <string name="lib_details_format">Format</string>
+    <string name="lib_details_progress">Progress</string>
+    <string name="lib_details_size">File size</string>
+    <string name="lib_import_menu_files">Import files (EPUB, PDF, CBZ)</string>
+    <string name="lib_import_menu_folder">Import from folder</string>
+    <string name="lib_import_folder_empty">No EPUB, PDF, or CBZ files found in this folder.</string>
+    <string name="lib_import_batch_added">Imported %1$d books</string>
+    <string name="lib_import_batch_added_skipped">Imported %1$d books (%2$d skipped)</string>
+    <string name="lib_import_batch_all_duplicates">All selected books are already in your library.</string>
+    <string name="lib_import_batch_failed">Could not import selected books (%1$d failed).</string>
+    <string name="lib_importing_batch_progress">Importing books (%1$d/%2$d)…</string>
+    <string name="lib_marked_finished">Marked as finished</string>
+    <string name="lib_marked_unread">Marked as unread</string>
+    <string name="stats_open_setup_guide">Open E-Ink Setup Guide</string>
 
     <!-- Launcher -->
     <string name="launcher_view_list">List</string>
@@ -423,7 +446,7 @@
     <string name="paywall_feat_focus_title">Focus Mode (Do Not Disturb)</string>
     <string name="paywall_feat_focus_desc">Automatically mute notifications during reading sessions.</string>
 
-    <string name="paywall_trust_ads">100% Ads-free &amp; No tracking</string>
+    <string name="paywall_trust_ads" formatted="false">100% Ads-free &amp; No tracking</string>
     <string name="paywall_trust_offline">Works 100% Offline</string>
     <string name="paywall_trust_restore">1-tap Restore on any Android device</string>
 

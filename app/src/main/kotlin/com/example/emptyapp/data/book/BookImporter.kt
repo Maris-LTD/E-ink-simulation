@@ -12,6 +12,11 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+class DuplicateBookException(
+  val contentHash: String,
+  message: String,
+) : IllegalStateException(message)
+
 class BookImporter(
   private val context: Context,
   private val engine: ReadiumEngine,
@@ -37,51 +42,115 @@ class BookImporter(
         target.delete()
         return@withContext Result.failure(copied.exceptionOrNull() ?: IllegalStateException())
       }
-      val contentHash = sha256Hex(target)
-      if (contentHash != null && contentHash in existingHashes) {
-        target.delete()
-        return@withContext Result.failure(IllegalStateException(localized.getString(R.string.lib_import_duplicate)))
-      }
-      val publication = engine.open(target).getOrElse {
-        target.delete()
-        return@withContext Result.failure(it)
-      }
-      val coverName = "$id.jpg"
-      val coverFile = File(coversDir, coverName)
-      try {
-        val hasCover =
-          try {
-            CoverExtractor.extract(target, format, publication, coverFile)
-          } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-          } catch (_: Throwable) {
-            coverFile.delete()
-            false
-          }
-        val entry =
-          BookEntry(
-            id = id,
-            title = publication.metadata.title?.takeIf { it.isNotBlank() } ?: fallbackTitle(displayName, uri),
-            author = publication.metadata.authors.joinToString { it.name },
-            fileName = fileName,
-            format = format,
-            coverFileName = if (hasCover && coverFile.exists()) coverName else null,
-            contentHash = contentHash,
-            updatedAt = System.currentTimeMillis(),
-          )
-        Result.success(entry)
-      } catch (e: kotlinx.coroutines.CancellationException) {
-        target.delete()
-        coverFile.delete()
-        throw e
-      } catch (t: Throwable) {
-        target.delete()
-        coverFile.delete()
-        Result.failure(t)
-      } finally {
-        publication.close()
-      }
+      finalizeImportedFile(
+        id = id,
+        fileName = fileName,
+        target = target,
+        format = format,
+        fallbackBookTitle = fallbackTitle(displayName, uri),
+        existingHashes = existingHashes,
+        localized = localized,
+      )
     }
+
+  suspend fun importLocalFile(
+    sourceFile: File,
+    format: BookFormat,
+    displayName: String,
+    existingHashes: Set<String> = emptySet(),
+    overrideTitle: String? = null,
+    overrideAuthor: String? = null,
+    updatedAt: Long = System.currentTimeMillis(),
+  ): Result<BookEntry> =
+    withContext(Dispatchers.IO) {
+      val localized = LocaleHelper.wrap(context)
+      val id = UUID.randomUUID().toString()
+      val fileName = "$id.${format.extension}"
+      val target = File(booksDir, fileName)
+      booksDir.mkdirs()
+      val copied = runCatching {
+        sourceFile.inputStream().use { input ->
+          target.outputStream().use { input.copyTo(it) }
+        }
+      }
+      if (copied.isFailure) {
+        target.delete()
+        return@withContext Result.failure(copied.exceptionOrNull() ?: IllegalStateException())
+      }
+      finalizeImportedFile(
+        id = id,
+        fileName = fileName,
+        target = target,
+        format = format,
+        fallbackBookTitle = displayName.substringBeforeLast('.').ifBlank { localized.getString(R.string.import_default_title) },
+        existingHashes = existingHashes,
+        localized = localized,
+        overrideTitle = overrideTitle,
+        overrideAuthor = overrideAuthor,
+        updatedAt = updatedAt,
+      )
+    }
+
+  private suspend fun finalizeImportedFile(
+    id: String,
+    fileName: String,
+    target: File,
+    format: BookFormat,
+    fallbackBookTitle: String,
+    existingHashes: Set<String>,
+    localized: Context,
+    overrideTitle: String? = null,
+    overrideAuthor: String? = null,
+    updatedAt: Long = System.currentTimeMillis(),
+  ): Result<BookEntry> {
+    val contentHash = sha256Hex(target)
+    if (contentHash != null && contentHash.lowercase() in existingHashes) {
+      target.delete()
+      return Result.failure(DuplicateBookException(contentHash, localized.getString(R.string.lib_import_duplicate)))
+    }
+    val publication = engine.open(target).getOrElse {
+      target.delete()
+      return Result.failure(it)
+    }
+    val coverName = "$id.jpg"
+    val coverFile = File(coversDir, coverName)
+    return try {
+      val hasCover =
+        try {
+          CoverExtractor.extract(target, format, publication, coverFile)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+          throw e
+        } catch (_: Throwable) {
+          coverFile.delete()
+          false
+        }
+      val entry =
+        BookEntry(
+          id = id,
+          title = overrideTitle?.takeIf { it.isNotBlank() }
+            ?: publication.metadata.title?.takeIf { it.isNotBlank() }
+            ?: fallbackBookTitle,
+          author = overrideAuthor?.takeIf { it.isNotBlank() }
+            ?: publication.metadata.authors.joinToString { it.name },
+          fileName = fileName,
+          format = format,
+          coverFileName = if (hasCover && coverFile.exists()) coverName else null,
+          contentHash = contentHash,
+          updatedAt = updatedAt,
+        )
+      Result.success(entry)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+      target.delete()
+      coverFile.delete()
+      throw e
+    } catch (t: Throwable) {
+      target.delete()
+      coverFile.delete()
+      Result.failure(t)
+    } finally {
+      publication.close()
+    }
+  }
 
   private fun resolveDisplayName(uri: Uri): String? =
     runCatching {
@@ -99,7 +168,7 @@ class BookImporter(
     }
     val mime = context.contentResolver.getType(uri)?.lowercase().orEmpty()
     return when {
-      mime == "application/epub+zip" -> BookFormat.EPUB
+      mime == "application/epub+zip" || mime == "application/x-epub+zip" -> BookFormat.EPUB
       mime == "application/pdf" -> BookFormat.PDF
       mime == "application/vnd.comicbook+zip" || mime == "application/x-cbz" -> BookFormat.CBZ
       else -> null

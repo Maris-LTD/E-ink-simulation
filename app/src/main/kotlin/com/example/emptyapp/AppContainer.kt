@@ -8,6 +8,7 @@ import com.example.emptyapp.data.billing.PlayBillingManager
 import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.security.AppIntegrityGuard
 import com.example.emptyapp.data.book.LibraryRepository
+import com.example.emptyapp.data.book.SampleBooksSeeder
 import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.data.sync.GoogleDriveSyncManager
@@ -28,6 +29,7 @@ class AppContainer(context: Context) {
   private val engineLazy: Lazy<ReadiumEngine> = lazy { ReadiumEngine(appContext) }
   val engine: ReadiumEngine by engineLazy
   val library: LibraryRepository by lazy { LibraryRepository(appContext, engineLazy) }
+  val sampleBooksSeeder: SampleBooksSeeder by lazy { SampleBooksSeeder.forContext(appContext, library) }
   val settings: EInkSettingsStore by lazy { EInkSettingsStore(appContext) }
   val pdfBookConfigs: PdfBookConfigStore by lazy { PdfBookConfigStore(appContext) }
   val syncTombstones: SyncTombstoneStore by lazy {

@@ -10,6 +10,8 @@ import com.example.emptyapp.data.annotation.AnnotationRepository
 import com.example.emptyapp.data.annotation.BookmarkEntry
 import com.example.emptyapp.data.annotation.HighlightEntry
 import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.book.DuplicateBookException
+import com.example.emptyapp.data.book.FolderBookScanner
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
@@ -27,6 +29,23 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+data class BatchImportProgress(val current: Int, val total: Int)
+
+enum class BatchImportSummaryKind {
+  ALL_IMPORTED,
+  IMPORTED_WITH_SKIPPED,
+  ALL_DUPLICATES,
+  ALL_FAILED,
+}
+
+data class BatchImportSummary(
+  val kind: BatchImportSummaryKind,
+  val imported: Int,
+  val skipped: Int,
+  val failed: Int,
+)
 
 class LibraryViewModel(
   private val repository: LibraryRepository,
@@ -38,6 +57,7 @@ class LibraryViewModel(
   private val importCountLock = Any()
   private var activeImportCount = 0
   private val mutableImporting = MutableStateFlow(false)
+  private val mutableBatchImportProgress = MutableStateFlow<BatchImportProgress?>(null)
   private val messageChannel = Channel<String>(Channel.BUFFERED)
   private val tombstoneErrorFlow = tombstones?.lastWriteError ?: MutableStateFlow(false)
 
@@ -47,6 +67,7 @@ class LibraryViewModel(
   val highlights: StateFlow<List<HighlightEntry>> = annotations.highlights
   val stats: StateFlow<ReadingStatsData> = statsRepository.stats
   val importing: StateFlow<Boolean> = mutableImporting.asStateFlow()
+  val batchImportProgress: StateFlow<BatchImportProgress?> = mutableBatchImportProgress.asStateFlow()
   val writeError: StateFlow<Boolean> =
     combine(
       repository.lastWriteError,
@@ -66,29 +87,173 @@ class LibraryViewModel(
 
   fun coverFileOf(book: BookEntry): File? = repository.coverFileOf(book)
 
+  fun bookFileOf(book: BookEntry): File = repository.fileOf(book)
+
   fun import(uri: Uri) {
     launchImportJob { repository.import(uri) }
   }
 
-  internal fun launchImportJob(performImport: suspend () -> Result<BookEntry>): Job {
+  fun importMultiple(uris: List<Uri>) {
+    if (uris.isEmpty()) return
+    if (uris.size == 1) {
+      import(uris.first())
+      return
+    }
+    acquireImportSlot()
+    val job =
+      viewModelScope.launch {
+        try {
+          runBatchImport(uris)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (t: Throwable) {
+          messageChannel.send(formatImportErrorMessage(t))
+        }
+      }
+    job.invokeOnCompletion { releaseImportSlot() }
+  }
+
+  fun importFolder(treeUri: Uri) {
+    val appCtx = context?.applicationContext ?: return
+    acquireImportSlot()
+    val job =
+      viewModelScope.launch {
+        try {
+          val scannedUris = withContext(Dispatchers.IO) { FolderBookScanner.scanTreeUri(appCtx, treeUri) }
+          when {
+            scannedUris.isEmpty() ->
+              messageChannel.send(localizedString(R.string.lib_import_folder_empty, "No EPUB, PDF, or CBZ files found in this folder."))
+            scannedUris.size == 1 ->
+              repository.import(scannedUris.first())
+                .onSuccess { entry ->
+                  unmarkBookDeletedInSync(entry.contentHash)
+                  refreshWidget()
+                }
+                .onFailure { err ->
+                  if (err is CancellationException) throw err
+                  messageChannel.send(formatImportErrorMessage(err))
+                }
+            else -> runBatchImport(scannedUris)
+          }
+        } catch (e: CancellationException) {
+          throw e
+        } catch (t: Throwable) {
+          messageChannel.send(formatImportErrorMessage(t))
+        }
+      }
+    job.invokeOnCompletion { releaseImportSlot() }
+  }
+
+  fun importAndOpenExternal(uri: Uri, onBookReady: (String) -> Unit) {
+    acquireImportSlot()
+    val job =
+      viewModelScope.launch {
+        try {
+          repository.importOrFindExisting(uri)
+            .onSuccess { entry ->
+              unmarkBookDeletedInSync(entry.contentHash)
+              refreshWidget()
+              onBookReady(entry.id)
+            }
+            .onFailure { err ->
+              if (err is CancellationException) throw err
+              messageChannel.send(formatImportErrorMessage(err))
+            }
+        } catch (e: CancellationException) {
+          throw e
+        } catch (t: Throwable) {
+          messageChannel.send(formatImportErrorMessage(t))
+        }
+      }
+    job.invokeOnCompletion { releaseImportSlot() }
+  }
+
+  private suspend fun runBatchImport(uris: List<Uri>) {
+    var imported = 0
+    var duplicates = 0
+    var failed = 0
+    try {
+      uris.forEachIndexed { index, uri ->
+        mutableBatchImportProgress.value = BatchImportProgress(current = index + 1, total = uris.size)
+        val result = repository.import(uri)
+        val err = result.exceptionOrNull()
+        if (err is CancellationException) throw err
+        val entry = result.getOrNull()
+        if (entry != null) {
+          imported++
+          unmarkBookDeletedInSync(entry.contentHash)
+        } else if (err is DuplicateBookException) {
+          duplicates++
+        } else {
+          failed++
+        }
+      }
+    } finally {
+      mutableBatchImportProgress.value = null
+    }
+    if (imported > 0) {
+      refreshWidget()
+    }
+    val summary = summarizeBatchImport(imported = imported, duplicates = duplicates, failed = failed)
+    messageChannel.send(formatBatchSummaryMessage(summary))
+  }
+
+  private fun formatBatchSummaryMessage(summary: BatchImportSummary): String {
+    val localized = context?.let(LocaleHelper::wrap)
+    return when (summary.kind) {
+      BatchImportSummaryKind.ALL_IMPORTED ->
+        localized?.getString(R.string.lib_import_batch_added, summary.imported)
+          ?: "Imported ${summary.imported} books"
+      BatchImportSummaryKind.IMPORTED_WITH_SKIPPED ->
+        localized?.getString(R.string.lib_import_batch_added_skipped, summary.imported, summary.skipped)
+          ?: "Imported ${summary.imported} books (${summary.skipped} skipped)"
+      BatchImportSummaryKind.ALL_DUPLICATES ->
+        localized?.getString(R.string.lib_import_batch_all_duplicates)
+          ?: "All selected books are already in your library."
+      BatchImportSummaryKind.ALL_FAILED ->
+        localized?.getString(R.string.lib_import_batch_failed, summary.failed)
+          ?: "Could not import selected books (${summary.failed} failed)."
+    }
+  }
+
+  private fun acquireImportSlot() {
     synchronized(importCountLock) {
       activeImportCount += 1
       mutableImporting.value = true
     }
+  }
+
+  private fun releaseImportSlot() {
+    synchronized(importCountLock) {
+      activeImportCount = (activeImportCount - 1).coerceAtLeast(0)
+      mutableImporting.value = activeImportCount > 0
+    }
+  }
+
+  private fun unmarkBookDeletedInSync(contentHash: String?) {
+    val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication ?: return
+    app.container.appScope.launch(Dispatchers.IO) {
+      app.container.sync.unmarkDeletedHash(contentHash)
+    }
+  }
+
+  private fun refreshWidget() {
+    val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication ?: return
+    com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(app)
+  }
+
+  private fun localizedString(resId: Int, fallback: String): String =
+    context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
+
+  internal fun launchImportJob(performImport: suspend () -> Result<BookEntry>): Job {
+    acquireImportSlot()
     val job =
       viewModelScope.launch {
         try {
           performImport()
             .onSuccess { entry ->
-              val app = context?.applicationContext as? com.example.emptyapp.EmptyApplication
-              app?.container?.let { container ->
-                container.appScope.launch(Dispatchers.IO) {
-                  container.sync.unmarkDeletedHash(entry.contentHash)
-                }
-              }
-              if (app != null) {
-                com.example.emptyapp.system.EInkReadingWidgetProvider.refreshAll(app)
-              }
+              unmarkBookDeletedInSync(entry.contentHash)
+              refreshWidget()
             }
             .onFailure { err ->
               if (err is CancellationException) throw err
@@ -99,12 +264,7 @@ class LibraryViewModel(
           messageChannel.send(formatImportErrorMessage(e))
         }
       }
-    job.invokeOnCompletion {
-      synchronized(importCountLock) {
-        activeImportCount = (activeImportCount - 1).coerceAtLeast(0)
-        mutableImporting.value = activeImportCount > 0
-      }
-    }
+    job.invokeOnCompletion { releaseImportSlot() }
     return job
   }
 
@@ -172,8 +332,34 @@ class LibraryViewModel(
     viewModelScope.launch { statsRepository.setDailyGoalMinutes(minutes) }
   }
 
+  fun setBookCompleted(id: String, completed: Boolean) {
+    viewModelScope.launch {
+      repository.markCompleted(id, completed)
+      refreshWidget()
+      val msg =
+        if (completed) {
+          localizedString(R.string.lib_marked_finished, "Marked as finished")
+        } else {
+          localizedString(R.string.lib_marked_unread, "Marked as unread")
+        }
+      messageChannel.send(msg)
+    }
+  }
+
   companion object {
     private const val MAX_CAUSE_DEPTH = 8
+
+    fun summarizeBatchImport(imported: Int, duplicates: Int, failed: Int): BatchImportSummary {
+      val skipped = duplicates + failed
+      val kind =
+        when {
+          imported > 0 && skipped == 0 -> BatchImportSummaryKind.ALL_IMPORTED
+          imported > 0 -> BatchImportSummaryKind.IMPORTED_WITH_SKIPPED
+          duplicates > 0 && failed == 0 -> BatchImportSummaryKind.ALL_DUPLICATES
+          else -> BatchImportSummaryKind.ALL_FAILED
+        }
+      return BatchImportSummary(kind = kind, imported = imported, skipped = skipped, failed = failed)
+    }
 
     fun isStorageFullError(error: Throwable?): Boolean {
       var current = error

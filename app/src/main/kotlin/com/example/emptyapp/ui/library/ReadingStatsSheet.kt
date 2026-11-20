@@ -151,6 +151,8 @@ fun ReadingStatsScreen(
   writeError: Boolean = false,
   billing: PlayBillingManager? = null,
   proGate: ProFeatureGate? = null,
+  initialTab: Int = 0,
+  onOpenTutorial: (() -> Unit)? = null,
   onBack: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -270,7 +272,9 @@ fun ReadingStatsScreen(
       ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
     }
 
-  var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
+  var selectedTab by androidx.compose.runtime.saveable.rememberSaveable(initialTab) {
+    mutableIntStateOf(initialTab.coerceIn(0, 1))
+  }
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
   ) {
@@ -366,6 +370,7 @@ fun ReadingStatsScreen(
             paywallFeature = feature
             paywallOpen = true
           },
+          onOpenTutorial = onOpenTutorial,
         )
         PrivacyPolicyCard()
         ContactCard()
@@ -662,6 +667,7 @@ private fun InkifyProCompactRow(
 private fun SystemEInkModeCard(
   proGate: ProFeatureGate? = null,
   onRequirePro: (ProFeature) -> Unit = {},
+  onOpenTutorial: (() -> Unit)? = null,
 ) {
   val context = LocalContext.current
   Column(
@@ -692,6 +698,14 @@ private fun SystemEInkModeCard(
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_wallpaper))
+    }
+    if (onOpenTutorial != null) {
+      OutlinedButton(
+        onClick = onOpenTutorial,
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        EInkText(stringResource(R.string.stats_open_setup_guide))
+      }
     }
   }
 }

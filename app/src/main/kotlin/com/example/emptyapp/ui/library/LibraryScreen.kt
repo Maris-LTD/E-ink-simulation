@@ -4,9 +4,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,6 +77,7 @@ import com.example.emptyapp.data.billing.ProEntitlement
 import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookEntry
+import com.example.emptyapp.data.book.SampleBooksSeeder
 import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.ui.eink.EInkText
 import com.example.emptyapp.ui.monet.LibraryProMilestoneNudge
@@ -126,18 +129,17 @@ fun LibraryScreen(
   grayscaleCovers: Boolean = true,
   billing: PlayBillingManager? = null,
   proGate: ProFeatureGate? = null,
+  sampleBooksSeeder: SampleBooksSeeder? = null,
+  openTutorialRequested: Boolean = false,
+  onConsumeTutorialRequest: () -> Unit = {},
   onOpenBook: (String, String?) -> Unit,
   onOpenStats: () -> Unit,
+  onOpenSettings: () -> Unit = onOpenStats,
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
   val tutorialPrefs = remember { context.getSharedPreferences("eink_tutorial_prefs", android.content.Context.MODE_PRIVATE) }
-  var tutorialOpen by remember {
-    mutableStateOf(
-      !tutorialPrefs.getBoolean("tutorial_seen", false) &&
-        !com.example.emptyapp.system.EInkSystemSetupHelper.isInkifyDefaultLauncher(context),
-    )
-  }
+  var tutorialOpen by remember { mutableStateOf(false) }
   var tutorialInitialPage by remember { mutableStateOf(0) }
   var paywallOpen by remember { mutableStateOf(false) }
   var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
@@ -160,6 +162,7 @@ fun LibraryScreen(
   val highlights by viewModel.highlights.collectAsStateWithLifecycle()
   val stats by viewModel.stats.collectAsStateWithLifecycle()
   val importing by viewModel.importing.collectAsStateWithLifecycle()
+  val batchImportProgress by viewModel.batchImportProgress.collectAsStateWithLifecycle()
   val writeError by viewModel.writeError.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -168,20 +171,45 @@ fun LibraryScreen(
   var sortMode by rememberSaveable { mutableStateOf(LibrarySort.RECENT) }
   var query by rememberSaveable { mutableStateOf("") }
   var pendingDeleteBook by remember { mutableStateOf<BookEntry?>(null) }
+  var pendingDetailsBook by remember { mutableStateOf<BookEntry?>(null) }
   var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.LIST) }
   var pickerLaunching by remember { mutableStateOf(false) }
   val picker =
-    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
       pickerLaunching = false
-      uri?.let(viewModel::import)
+      if (uris.isNotEmpty()) {
+        viewModel.importMultiple(uris)
+      }
+    }
+  val folderPicker =
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+      pickerLaunching = false
+      treeUri?.let(viewModel::importFolder)
     }
   fun launchImportPicker(mimes: Array<String> = SUPPORTED_MIMES) {
     if (importing || pickerLaunching) return
     pickerLaunching = true
     runCatching { picker.launch(mimes) }.onFailure { pickerLaunching = false }
   }
+  fun launchFolderPicker() {
+    if (importing || pickerLaunching) return
+    pickerLaunching = true
+    runCatching { folderPicker.launch(null) }.onFailure { pickerLaunching = false }
+  }
   val importEnabled = !importing && !pickerLaunching
   val saveErrorMsg = stringResource(com.example.emptyapp.R.string.error_save_data)
+  LaunchedEffect(booksLoaded, sampleBooksSeeder) {
+    if (booksLoaded) {
+      sampleBooksSeeder?.seedIfNeeded()
+    }
+  }
+  LaunchedEffect(openTutorialRequested) {
+    if (openTutorialRequested) {
+      tutorialInitialPage = 0
+      tutorialOpen = true
+      onConsumeTutorialRequest()
+    }
+  }
   LaunchedEffect(Unit) { viewModel.messages.collect { snackbarHostState.showSnackbar(it) } }
   LaunchedEffect(writeError) {
     if (writeError) {
@@ -246,15 +274,18 @@ fun LibraryScreen(
     ) {
       LibraryHeader(
         isPro = entitlement.isPro,
-        showProButton = billing != null && proGate != null,
+        showProButton =
+          shouldShowLibraryProBadge(
+            isPro = entitlement.isPro,
+            hasBilling = billing != null && proGate != null,
+            totalPagesTurned = stats.totalPagesTurned,
+            totalReadingSeconds = stats.totalSeconds,
+          ),
         onOpenPaywall = {
           paywallFeature = null
           paywallOpen = true
         },
-        onOpenTutorial = {
-          tutorialInitialPage = 0
-          tutorialOpen = true
-        },
+        onOpenSettings = onOpenSettings,
         onOpenStats = onOpenStats,
       )
       var wallpaperActive by remember {
@@ -276,7 +307,10 @@ fun LibraryScreen(
         com.example.emptyapp.reader.LockScreenReadingNotifier.hasPermission(context) &&
           settings.lockScreenReader
       val lockFeaturesCount = (if (wallpaperActive) 1 else 0) + (if (notifActive) 1 else 0)
-      if (!setupBannerDismissed && lockFeaturesCount < 2) {
+      val hasStartedReading = remember(books, stats.totalPagesTurned) {
+        stats.totalPagesTurned >= 3 || books.any { it.progress > 0f }
+      }
+      if (shouldShowSetupBanner(setupBannerDismissed, lockFeaturesCount, hasStartedReading)) {
         Row(
           modifier =
             Modifier.fillMaxWidth()
@@ -424,6 +458,7 @@ fun LibraryScreen(
             hasAnyBooks = books.isNotEmpty(),
             importEnabled = importEnabled,
             onImportBook = { launchImportPicker() },
+            onImportFolder = { launchFolderPicker() },
           )
         } else if (viewMode == LibraryViewMode.LIST) {
           BookList(
@@ -431,6 +466,8 @@ fun LibraryScreen(
             grayscaleCovers = grayscaleCovers,
             coverOf = viewModel::coverFileOf,
             onOpenBook = { id -> onOpenBook(id, null) },
+            onToggleCompleted = { book, completed -> viewModel.setBookCompleted(book.id, completed) },
+            onShowDetails = { book -> pendingDetailsBook = book },
             onRemove = { book -> pendingDeleteBook = book },
           )
         } else {
@@ -440,6 +477,8 @@ fun LibraryScreen(
             grayscaleCovers = grayscaleCovers,
             coverOf = viewModel::coverFileOf,
             onOpenBook = { id -> onOpenBook(id, null) },
+            onToggleCompleted = { book, completed -> viewModel.setBookCompleted(book.id, completed) },
+            onShowDetails = { book -> pendingDetailsBook = book },
             onRemove = { book -> pendingDeleteBook = book },
           )
         }
@@ -456,10 +495,22 @@ fun LibraryScreen(
         query = query,
         searchPlaceholder = searchPlaceholder,
         importing = importing,
+        batchImportProgress = batchImportProgress,
         importEnabled = importEnabled,
         onCycleViewMode = { viewMode = viewMode.next() },
         onQueryChange = { query = it },
         onAddBook = { launchImportPicker() },
+        onAddFolder = { launchFolderPicker() },
+      )
+    }
+    pendingDetailsBook?.let { bookToInspect ->
+      val fileSizeBytes = remember(bookToInspect.id) {
+        runCatching { viewModel.bookFileOf(bookToInspect).length() }.getOrDefault(0L)
+      }
+      BookDetailsDialog(
+        book = bookToInspect,
+        fileSizeBytes = fileSizeBytes,
+        onDismiss = { pendingDetailsBook = null },
       )
     }
     pendingDeleteBook?.let { bookToDelete ->
@@ -546,7 +597,7 @@ private fun LibraryHeader(
   isPro: Boolean,
   showProButton: Boolean,
   onOpenPaywall: () -> Unit,
-  onOpenTutorial: () -> Unit,
+  onOpenSettings: () -> Unit,
   onOpenStats: () -> Unit,
 ) {
   Row(
@@ -582,12 +633,12 @@ private fun LibraryHeader(
           }
         }
       }
-      val tutorialCd = stringResource(com.example.emptyapp.R.string.cd_tutorial)
+      val settingsCd = stringResource(com.example.emptyapp.R.string.cd_settings)
       Box(
         modifier =
           Modifier.size(48.dp)
-            .clickable(onClick = onOpenTutorial)
-            .semantics { contentDescription = tutorialCd },
+            .clickable(onClick = onOpenSettings)
+            .semantics { contentDescription = settingsCd },
         contentAlignment = Alignment.Center,
       ) {
         Box(
@@ -597,7 +648,7 @@ private fun LibraryHeader(
               .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
           contentAlignment = Alignment.Center,
         ) {
-          EInkText("?", style = MaterialTheme.typography.titleMedium)
+          SettingsGearIcon(modifier = Modifier.size(20.dp))
         }
       }
       val statsCd = stringResource(com.example.emptyapp.R.string.cd_reading_stats)
@@ -629,11 +680,14 @@ private fun LibraryBottomBar(
   query: String,
   searchPlaceholder: String,
   importing: Boolean,
+  batchImportProgress: BatchImportProgress?,
   importEnabled: Boolean,
   onCycleViewMode: () -> Unit,
   onQueryChange: (String) -> Unit,
   onAddBook: () -> Unit,
+  onAddFolder: () -> Unit,
 ) {
+  var importMenuOpen by remember { mutableStateOf(false) }
   Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
     if (importing) {
       LinearProgressIndicator(
@@ -641,8 +695,18 @@ private fun LibraryBottomBar(
         color = MaterialTheme.colorScheme.onBackground,
         trackColor = MaterialTheme.colorScheme.outlineVariant,
       )
+      val importText =
+        if (batchImportProgress != null) {
+          stringResource(
+            com.example.emptyapp.R.string.lib_importing_batch_progress,
+            batchImportProgress.current,
+            batchImportProgress.total,
+          )
+        } else {
+          stringResource(com.example.emptyapp.R.string.lib_importing_banner)
+        }
       EInkText(
-        text = stringResource(com.example.emptyapp.R.string.lib_importing_banner),
+        text = importText,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.secondary,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -671,33 +735,41 @@ private fun LibraryBottomBar(
         modifier = Modifier.weight(1f),
       )
       val addBookCd = stringResource(com.example.emptyapp.R.string.cd_add_book)
-      Box(
-        modifier =
-          Modifier.size(48.dp)
-            .clickable(enabled = importEnabled, onClick = onAddBook)
-            .semantics { contentDescription = addBookCd },
-        contentAlignment = Alignment.Center,
-      ) {
+      Box {
         Box(
           modifier =
-            Modifier.size(40.dp)
-              .clip(CircleShape)
-              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+            Modifier.size(48.dp)
+              .clickable(enabled = importEnabled) { importMenuOpen = true }
+              .semantics { contentDescription = addBookCd },
           contentAlignment = Alignment.Center,
         ) {
-          if (importing) {
-            CircularProgressIndicator(
-              modifier = Modifier.size(18.dp),
-              strokeWidth = 2.dp,
-              color = MaterialTheme.colorScheme.onBackground,
-            )
-          } else {
-            EInkText(
-              text = "+",
-              style = MaterialTheme.typography.titleLarge,
-            )
+          Box(
+            modifier =
+              Modifier.size(40.dp)
+                .clip(CircleShape)
+                .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+            contentAlignment = Alignment.Center,
+          ) {
+            if (importing) {
+              CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onBackground,
+              )
+            } else {
+              EInkText(
+                text = "+",
+                style = MaterialTheme.typography.titleLarge,
+              )
+            }
           }
         }
+        ImportSourceMenu(
+          expanded = importMenuOpen,
+          onDismiss = { importMenuOpen = false },
+          onPickFiles = onAddBook,
+          onPickFolder = onAddFolder,
+        )
       }
     }
   }
@@ -895,7 +967,9 @@ private fun EmptyLibrary(
   hasAnyBooks: Boolean,
   importEnabled: Boolean,
   onImportBook: () -> Unit,
+  onImportFolder: () -> Unit,
 ) {
+  var importMenuOpen by remember { mutableStateOf(false) }
   Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
     Column(
       horizontalAlignment = Alignment.CenterHorizontally,
@@ -909,11 +983,19 @@ private fun EmptyLibrary(
         color = MaterialTheme.colorScheme.secondary,
       )
       if (!hasAnyBooks) {
-        androidx.compose.material3.OutlinedButton(
-          onClick = onImportBook,
-          enabled = importEnabled,
-        ) {
-          EInkText(stringResource(com.example.emptyapp.R.string.lib_import_first_book))
+        Box {
+          androidx.compose.material3.OutlinedButton(
+            onClick = { importMenuOpen = true },
+            enabled = importEnabled,
+          ) {
+            EInkText(stringResource(com.example.emptyapp.R.string.lib_import_first_book))
+          }
+          ImportSourceMenu(
+            expanded = importMenuOpen,
+            onDismiss = { importMenuOpen = false },
+            onPickFiles = onImportBook,
+            onPickFolder = onImportFolder,
+          )
         }
       }
     }
@@ -926,6 +1008,8 @@ private fun BookList(
   grayscaleCovers: Boolean,
   coverOf: (BookEntry) -> File?,
   onOpenBook: (String) -> Unit,
+  onToggleCompleted: (BookEntry, Boolean) -> Unit,
+  onShowDetails: (BookEntry) -> Unit,
   onRemove: (BookEntry) -> Unit,
 ) {
   LazyColumn {
@@ -935,6 +1019,8 @@ private fun BookList(
         grayscaleCover = grayscaleCovers,
         coverFile = coverOf(book),
         onOpen = { onOpenBook(book.id) },
+        onToggleCompleted = { completed -> onToggleCompleted(book, completed) },
+        onShowDetails = { onShowDetails(book) },
         onRemove = { onRemove(book) },
       )
       HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -949,6 +1035,8 @@ private fun BookGrid(
   grayscaleCovers: Boolean,
   coverOf: (BookEntry) -> File?,
   onOpenBook: (String) -> Unit,
+  onToggleCompleted: (BookEntry, Boolean) -> Unit,
+  onShowDetails: (BookEntry) -> Unit,
   onRemove: (BookEntry) -> Unit,
 ) {
   val spacing = if (columns >= 4) 10.dp else 14.dp
@@ -966,12 +1054,15 @@ private fun BookGrid(
         grayscaleCover = grayscaleCovers,
         coverFile = coverOf(book),
         onOpen = { onOpenBook(book.id) },
+        onToggleCompleted = { completed -> onToggleCompleted(book, completed) },
+        onShowDetails = { onShowDetails(book) },
         onRemove = { onRemove(book) },
       )
     }
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookGridCard(
   book: BookEntry,
@@ -979,11 +1070,16 @@ private fun BookGridCard(
   grayscaleCover: Boolean,
   coverFile: File?,
   onOpen: () -> Unit,
+  onToggleCompleted: (Boolean) -> Unit,
+  onShowDetails: () -> Unit,
   onRemove: () -> Unit,
 ) {
   val compact = columns >= 3
+  var menuExpanded by remember { mutableStateOf(false) }
   Column(
-    modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+    modifier =
+      Modifier.fillMaxWidth()
+        .combinedClickable(onClick = onOpen, onLongClick = { menuExpanded = true }),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     BookCover(
@@ -1015,33 +1111,48 @@ private fun BookGridCard(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.weight(1f),
       )
-      TextButton(
-        onClick = onRemove,
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-      ) {
-        EInkText(
-          text = stringResource(com.example.emptyapp.R.string.action_delete),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.secondary,
+      Box {
+        val actionsCd = stringResource(com.example.emptyapp.R.string.cd_book_actions)
+        Box(
+          modifier =
+            Modifier.size(36.dp)
+              .clickable { menuExpanded = true }
+              .semantics { contentDescription = actionsCd },
+          contentAlignment = Alignment.Center,
+        ) {
+          OverflowDotsIcon(modifier = Modifier.size(16.dp))
+        }
+        BookActionMenu(
+          book = book,
+          expanded = menuExpanded,
+          onDismiss = { menuExpanded = false },
+          onOpen = onOpen,
+          onToggleCompleted = onToggleCompleted,
+          onShowDetails = onShowDetails,
+          onDelete = onRemove,
         )
       }
     }
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookRow(
   book: BookEntry,
   grayscaleCover: Boolean,
   coverFile: File?,
   onOpen: () -> Unit,
+  onToggleCompleted: (Boolean) -> Unit,
+  onShowDetails: () -> Unit,
   onRemove: () -> Unit,
 ) {
+  var menuExpanded by remember { mutableStateOf(false) }
   Row(
     modifier =
       Modifier.fillMaxWidth()
-        .clickable(onClick = onOpen)
-        .padding(horizontal = 16.dp, vertical = 14.dp),
+        .combinedClickable(onClick = onOpen, onLongClick = { menuExpanded = true })
+        .padding(start = 16.dp, end = 6.dp, top = 14.dp, bottom = 14.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -1071,11 +1182,22 @@ private fun BookRow(
         color = MaterialTheme.colorScheme.secondary,
       )
     }
-    TextButton(onClick = onRemove) {
-      EInkText(
-        text = stringResource(com.example.emptyapp.R.string.action_delete),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.secondary,
+    Box {
+      val actionsCd = stringResource(com.example.emptyapp.R.string.cd_book_actions)
+      IconButton(
+        onClick = { menuExpanded = true },
+        modifier = Modifier.size(48.dp).semantics { contentDescription = actionsCd },
+      ) {
+        OverflowDotsIcon(modifier = Modifier.size(18.dp))
+      }
+      BookActionMenu(
+        book = book,
+        expanded = menuExpanded,
+        onDismiss = { menuExpanded = false },
+        onOpen = onOpen,
+        onToggleCompleted = onToggleCompleted,
+        onShowDetails = onShowDetails,
+        onDelete = onRemove,
       )
     }
   }
