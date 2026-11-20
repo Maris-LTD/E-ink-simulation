@@ -35,16 +35,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +76,7 @@ import com.example.emptyapp.reader.AppLanguage
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.reader.OrientationLock
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
@@ -92,6 +94,10 @@ import com.example.emptyapp.data.sync.SyncActionResult
 import com.example.emptyapp.data.sync.SyncUiState
 import com.example.emptyapp.data.sync.SyncedBookProgress
 import com.example.emptyapp.system.EInkWallpaperService
+import com.example.emptyapp.ui.eink.BackArrowIcon
+import com.example.emptyapp.ui.eink.CheckIcon
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.text.SimpleDateFormat
@@ -279,44 +285,53 @@ fun ReadingStatsScreen(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
   ) {
     Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       val backCd = stringResource(R.string.cd_back)
-      TextButton(
+      IconButton(
         onClick = onBack,
-        modifier =
-          Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-            .semantics { contentDescription = backCd },
-      ) { EInkText("‹", style = MaterialTheme.typography.titleLarge) }
+        modifier = Modifier.size(48.dp).semantics { contentDescription = backCd },
+      ) {
+        BackArrowIcon(modifier = Modifier.size(20.dp))
+      }
       EInkText(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge)
     }
-    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
     Row(modifier = Modifier.fillMaxWidth()) {
       listOf(R.string.stats_tab_overview, R.string.stats_tab_settings).forEachIndexed { index, labelRes ->
         val active = selectedTab == index
-        Box(
+        Column(
           modifier =
             Modifier.weight(1f)
-              .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
               .clickable { selectedTab = index }
               .semantics {
                 role = androidx.compose.ui.semantics.Role.Tab
                 selected = active
               }
-              .padding(vertical = 11.dp),
-          contentAlignment = Alignment.Center,
+              .padding(top = 11.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           EInkText(
             text = stringResource(labelRes),
-            style = MaterialTheme.typography.titleMedium,
-            color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.titleSmall.copy(
+              fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+            ),
+            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
             maxLines = 1,
+          )
+          Box(
+            modifier =
+              Modifier.fillMaxWidth(0.36f)
+                .height(2.5.dp)
+                .clip(EInkShapes.Pill)
+                .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background),
           )
         }
       }
     }
-    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
 
     Column(
       modifier =
@@ -378,7 +393,9 @@ fun ReadingStatsScreen(
       Column(
         modifier =
           Modifier.fillMaxWidth()
-            .border(1.5.dp, MaterialTheme.colorScheme.outline)
+            .clip(EInkShapes.Card)
+            .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
+            .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
@@ -391,7 +408,8 @@ fun ReadingStatsScreen(
             modifier =
               Modifier.size(52.dp)
                 .clip(CircleShape)
-                .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                .background(MaterialTheme.colorScheme.background, CircleShape)
+                .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, CircleShape),
             contentAlignment = Alignment.Center,
           ) {
             ReaderAvatarIcon(modifier = Modifier.size(38.dp))
@@ -417,8 +435,9 @@ fun ReadingStatsScreen(
         Box(
           modifier =
             Modifier.fillMaxWidth()
-              .height(10.dp)
-              .border(1.dp, MaterialTheme.colorScheme.outline),
+              .height(6.dp)
+              .clip(EInkShapes.Pill)
+              .background(MaterialTheme.colorScheme.outlineVariant),
         ) {
           if (rank.progressToNext > 0f) {
             Box(
@@ -455,7 +474,8 @@ fun ReadingStatsScreen(
       Column(
         modifier =
           Modifier.fillMaxWidth()
-            .border(1.5.dp, MaterialTheme.colorScheme.outline)
+            .clip(EInkShapes.Card)
+            .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
@@ -473,8 +493,9 @@ fun ReadingStatsScreen(
         Box(
           modifier =
             Modifier.fillMaxWidth()
-              .height(16.dp)
-              .border(1.5.dp, MaterialTheme.colorScheme.outline),
+              .height(8.dp)
+              .clip(EInkShapes.Pill)
+              .background(MaterialTheme.colorScheme.outlineVariant),
         ) {
           if (progress > 0f) {
             Box(
@@ -566,7 +587,8 @@ private fun InkifyProSettingsCard(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(2.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Active, MaterialTheme.colorScheme.outline, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
@@ -579,7 +601,8 @@ private fun InkifyProSettingsCard(
       if (entitlement.isPro) {
         Box(
           modifier =
-            Modifier.background(MaterialTheme.colorScheme.primary)
+            Modifier.clip(EInkShapes.Badge)
+              .background(MaterialTheme.colorScheme.primary, EInkShapes.Badge)
               .padding(horizontal = 8.dp, vertical = 2.dp),
         ) {
           EInkText(
@@ -612,6 +635,7 @@ private fun InkifyProSettingsCard(
     if (entitlement.isPro) {
       OutlinedButton(
         onClick = onOpenPaywall,
+        shape = EInkShapes.Control,
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
       ) {
         EInkText(stringResource(R.string.pro_card_cta_manage), style = MaterialTheme.typography.labelLarge)
@@ -619,7 +643,7 @@ private fun InkifyProSettingsCard(
     } else {
       Button(
         onClick = onOpenPaywall,
-        shape = RectangleShape,
+        shape = EInkShapes.Control,
         colors =
           ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
@@ -646,8 +670,12 @@ private fun InkifyProCompactRow(
     modifier =
       Modifier.fillMaxWidth()
         .defaultMinSize(minHeight = 48.dp)
-        .background(if (entitlement.isPro) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surfaceVariant)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .background(
+          if (entitlement.isPro) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surfaceVariant,
+          EInkShapes.Card,
+        )
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .clickable(onClick = onOpenPaywall)
         .padding(horizontal = 14.dp, vertical = 12.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
@@ -673,7 +701,8 @@ private fun SystemEInkModeCard(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
@@ -687,6 +716,7 @@ private fun SystemEInkModeCard(
       onClick = {
         com.example.emptyapp.system.EInkSystemSetupHelper.openHomeLauncherSettings(context)
       },
+      shape = EInkShapes.Control,
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_launcher))
@@ -695,6 +725,7 @@ private fun SystemEInkModeCard(
       onClick = {
         com.example.emptyapp.system.EInkSystemSetupHelper.openLiveWallpaperPicker(context)
       },
+      shape = EInkShapes.Control,
       modifier = Modifier.fillMaxWidth(),
     ) {
       EInkText(stringResource(R.string.stats_set_wallpaper))
@@ -702,6 +733,7 @@ private fun SystemEInkModeCard(
     if (onOpenTutorial != null) {
       OutlinedButton(
         onClick = onOpenTutorial,
+        shape = EInkShapes.Control,
         modifier = Modifier.fillMaxWidth(),
       ) {
         EInkText(stringResource(R.string.stats_open_setup_guide))
@@ -716,7 +748,8 @@ private fun AchievementsCard(badges: List<ReadingBadge>) {
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -752,9 +785,17 @@ private fun BadgeCard(
 ) {
   val borderColor =
     if (badge.unlocked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant
-  val borderWidth = if (badge.unlocked) 1.5.dp else 1.dp
+  val borderWidth = if (badge.unlocked) EInkBorder.Card else EInkBorder.Hairline
   Row(
-    modifier = modifier.border(borderWidth, borderColor).padding(10.dp),
+    modifier =
+      modifier
+        .clip(EInkShapes.Control)
+        .background(
+          if (badge.unlocked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background,
+          EInkShapes.Control,
+        )
+        .border(borderWidth, borderColor, EInkShapes.Control)
+        .padding(10.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
@@ -763,15 +804,11 @@ private fun BadgeCard(
         Modifier.size(24.dp)
           .clip(CircleShape)
           .background(if (badge.unlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-          .border(1.5.dp, borderColor, CircleShape),
+          .border(EInkBorder.Card, borderColor, CircleShape),
       contentAlignment = Alignment.Center,
     ) {
       if (badge.unlocked) {
-        EInkText(
-          text = "✓",
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.onPrimary,
-        )
+        CheckIcon(modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onPrimary)
       }
     }
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -846,7 +883,8 @@ private fun SevenDayBarChartCard(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -874,6 +912,7 @@ private fun SevenDayBarChartCard(
         val minutes = stat.secondsRead / 60
         val fraction = (minutes.toFloat() / maxMinutes.toFloat()).coerceIn(0f, 1f)
         val metGoal = minutes >= goalMinutes
+        val barShape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
         Column(
           modifier = Modifier.weight(1f).fillMaxHeight(),
           horizontalAlignment = Alignment.CenterHorizontally,
@@ -893,6 +932,7 @@ private fun SevenDayBarChartCard(
               modifier =
                 Modifier.fillMaxWidth(0.62f)
                   .fillMaxHeight(fraction.coerceAtLeast(if (minutes > 0) 0.08f else 0.03f))
+                  .clip(barShape)
                   .background(
                     if (metGoal) MaterialTheme.colorScheme.primary
                     else if (minutes > 0) lerp(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.onBackground, 0.45f)
@@ -934,10 +974,12 @@ private fun ReadingHeatmapCard(
       )
     }
 
+  val cellShape = RoundedCornerShape(3.dp)
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
@@ -966,8 +1008,9 @@ private fun ReadingHeatmapCard(
             Box(
               modifier =
                 Modifier.size(16.dp)
-                  .background(cellColor)
-                  .border(1.dp, border),
+                  .clip(cellShape)
+                  .background(cellColor, cellShape)
+                  .border(0.5.dp, border, cellShape),
             )
           }
         }
@@ -982,7 +1025,7 @@ private fun ReadingHeatmapCard(
       Spacer(modifier = Modifier.width(6.dp))
       listOf(0f, 0.28f, 0.6f, 1f).forEach { level ->
         val c = if (level == 0f) bg else lerp(bg, fg, level)
-        Box(modifier = Modifier.size(12.dp).background(c).border(1.dp, border))
+        Box(modifier = Modifier.size(12.dp).clip(cellShape).background(c, cellShape).border(0.5.dp, border, cellShape))
         Spacer(modifier = Modifier.width(4.dp))
       }
       EInkText(stringResource(R.string.stats_more), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
@@ -1020,7 +1063,8 @@ private fun GoalStepCircleButton(
     modifier =
       Modifier.size(48.dp)
         .clip(CircleShape)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+        .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, CircleShape)
         .clickable(onClick = onClick)
         .semantics { contentDescription = contentDesc },
     contentAlignment = Alignment.Center,
@@ -1038,7 +1082,9 @@ private fun StatSummaryBox(
   Column(
     modifier =
       modifier
-        .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        .clip(EInkShapes.Card)
+        .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
+        .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(horizontal = 8.dp, vertical = 12.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
@@ -1067,7 +1113,8 @@ private fun GoogleSyncCard(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -1125,6 +1172,7 @@ private fun GoogleSyncCard(
         OutlinedButton(
           onClick = onSyncOrSignIn,
           enabled = !syncState.syncing,
+          shape = EInkShapes.Control,
         ) {
           val btnText =
             when {
@@ -1137,6 +1185,7 @@ private fun GoogleSyncCard(
         OutlinedButton(
           onClick = { confirmDeleteAll = true },
           enabled = !syncState.syncing,
+          shape = EInkShapes.Control,
         ) {
           EInkText(stringResource(R.string.stats_sync_delete_all_btn))
         }
@@ -1148,7 +1197,7 @@ private fun GoogleSyncCard(
         }
       }
       if (syncState.cloudBooks.isNotEmpty()) {
-        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         EInkText(
           text = stringResource(R.string.stats_sync_cloud_books_header, syncState.cloudBooks.size),
           style = MaterialTheme.typography.labelMedium,
@@ -1159,7 +1208,8 @@ private fun GoogleSyncCard(
             Row(
               modifier =
                 Modifier.fillMaxWidth()
-                  .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                  .clip(EInkShapes.Control)
+                  .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Control)
                   .padding(horizontal = 10.dp, vertical = 8.dp),
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically,
@@ -1213,6 +1263,7 @@ private fun GoogleSyncCard(
       OutlinedButton(
         onClick = onSyncOrSignIn,
         enabled = !syncState.syncing,
+        shape = EInkShapes.Control,
       ) {
         EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_connecting) else stringResource(R.string.stats_sign_in_google))
       }
@@ -1222,6 +1273,7 @@ private fun GoogleSyncCard(
   if (confirmDeleteAll) {
     AlertDialog(
       onDismissRequest = { confirmDeleteAll = false },
+      shape = EInkShapes.Card,
       containerColor = MaterialTheme.colorScheme.background,
       title = { EInkText(stringResource(R.string.stats_sync_delete_all_title), style = MaterialTheme.typography.titleMedium) },
       text = { EInkText(stringResource(R.string.stats_sync_delete_all_message), style = MaterialTheme.typography.bodyMedium) },
@@ -1246,6 +1298,7 @@ private fun GoogleSyncCard(
   pendingDeleteCloudBook?.let { targetBook ->
     AlertDialog(
       onDismissRequest = { pendingDeleteCloudBook = null },
+      shape = EInkShapes.Card,
       containerColor = MaterialTheme.colorScheme.background,
       title = { EInkText(stringResource(R.string.stats_sync_delete_book_title), style = MaterialTheme.typography.titleMedium) },
       text = {
@@ -1281,7 +1334,8 @@ private fun EInkDisplaySettingsCard(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -1310,9 +1364,16 @@ private fun EInkDisplaySettingsCard(
           }
         Box(
           modifier =
-            Modifier
-              .border(1.5.dp, MaterialTheme.colorScheme.outline)
-              .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+            Modifier.clip(EInkShapes.Control)
+              .background(
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                EInkShapes.Control,
+              )
+              .border(
+                width = if (selected) EInkBorder.Card else EInkBorder.Hairline,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                shape = EInkShapes.Control,
+              )
               .selectable(
                 selected = selected,
                 role = Role.RadioButton,
@@ -1403,8 +1464,16 @@ private fun EInkDisplaySettingsCard(
         Box(
           modifier =
             Modifier.weight(1f)
-              .border(1.5.dp, MaterialTheme.colorScheme.outline)
-              .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+              .clip(EInkShapes.Control)
+              .background(
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                EInkShapes.Control,
+              )
+              .border(
+                width = if (selected) EInkBorder.Card else EInkBorder.Hairline,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                shape = EInkShapes.Control,
+              )
               .selectable(
                 selected = selected,
                 role = Role.RadioButton,
@@ -1433,7 +1502,8 @@ private fun LanguageCard(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
@@ -1457,11 +1527,16 @@ private fun LanguageCard(
         Box(
           modifier =
             Modifier.weight(1f)
-              .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+              .clip(EInkShapes.Control)
+              .background(
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                EInkShapes.Control,
               )
-              .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+              .border(
+                width = if (selected) EInkBorder.Card else EInkBorder.Hairline,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                shape = EInkShapes.Control,
+              )
               .selectable(
                 selected = selected,
                 role = Role.RadioButton,
@@ -1491,7 +1566,8 @@ private fun PrivacyPolicyCard() {
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -1506,7 +1582,7 @@ private fun PrivacyPolicyCard() {
       color = MaterialTheme.colorScheme.secondary,
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      OutlinedButton(onClick = { showDialog = true }) {
+      OutlinedButton(onClick = { showDialog = true }, shape = EInkShapes.Control) {
         EInkText(stringResource(R.string.stats_privacy_view_btn))
       }
       TextButton(
@@ -1523,6 +1599,7 @@ private fun PrivacyPolicyCard() {
   if (showDialog) {
     AlertDialog(
       onDismissRequest = { showDialog = false },
+      shape = EInkShapes.Card,
       containerColor = MaterialTheme.colorScheme.background,
       title = { EInkText(stringResource(R.string.privacy_dialog_title), style = MaterialTheme.typography.titleMedium) },
       text = {
@@ -1554,7 +1631,8 @@ private fun ContactCard() {
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -1571,6 +1649,7 @@ private fun ContactCard() {
     EInkText(text = email, style = MaterialTheme.typography.titleSmall)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       OutlinedButton(
+        shape = EInkShapes.Control,
         onClick = {
           val intent =
             Intent(Intent.ACTION_SENDTO).apply {

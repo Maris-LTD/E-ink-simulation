@@ -508,4 +508,23 @@
     <string name="milestone_nudge_title">Nice reading habit!</string>
     <string name="milestone_nudge_desc">Enjoying Inkify? Unlock Adaptive PDF Reflow, Drive Sync &amp; Focus Mode with Inkify Pro.</string>
     <string name="milestone_nudge_cta">Explore Pro</string>
+
+    <!-- Editorial UI & Reader Settings Tabs -->
+    <string name="lib_continue_reading">CONTINUE READING</string>
+    <string name="lib_start_reading">START READING</string>
+    <string name="lib_resume_btn">Resume</string>
+    <string name="lib_read_btn">Read</string>
+    <string name="lib_sort_label">Sort</string>
+    <string name="settings_tab_text">Text</string>
+    <string name="settings_tab_pdf">PDF</string>
+    <string name="settings_tab_display">Display</string>
+    <string name="settings_tab_controls">Controls</string>
+    <string name="settings_section_typography">TYPOGRAPHY</string>
+    <string name="settings_section_layout">LAYOUT</string>
+    <string name="settings_section_eink">E-INK EFFECTS</string>
+    <string name="settings_section_reading">READING</string>
+    <string name="reader_brightness_label">Brightness</string>
+    <string name="reader_tone_label">Tone</string>
+    <string name="cd_contents">Contents</string>
+    <string name="cd_reader_settings">Reader settings</string>
 </resources>

@@ -24,6 +24,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -502,9 +503,8 @@ fun ReaderScreen(
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
-            .padding(bottom = bottomOffsetDp)
-            .fillMaxHeight(0.6f)
-            .background(MaterialTheme.colorScheme.background),
+            .padding(start = 12.dp, end = 12.dp, bottom = bottomOffsetDp + 8.dp)
+            .heightIn(max = 380.dp),
       )
     }
     if (contentsOpen) {

@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -22,12 +24,16 @@ import com.example.emptyapp.R
 import com.example.emptyapp.data.billing.ProEntitlement
 import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.billing.PurchaseType
+import com.example.emptyapp.ui.eink.CheckIcon
+import com.example.emptyapp.ui.eink.CloseIcon
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 
 @Composable
 internal fun PaywallTopBar(onDismiss: () -> Unit) {
   Row(
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -38,8 +44,9 @@ internal fun PaywallTopBar(onDismiss: () -> Unit) {
       EInkText(text = stringResource(R.string.paywall_title), style = MaterialTheme.typography.titleLarge)
       Box(
         modifier =
-          Modifier.background(MaterialTheme.colorScheme.primary)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+          Modifier.clip(EInkShapes.Badge)
+            .background(MaterialTheme.colorScheme.primary, EInkShapes.Badge)
+            .padding(horizontal = 7.dp, vertical = 2.dp),
       ) {
         EInkText(
           text = stringResource(R.string.paywall_badge_pro),
@@ -49,11 +56,11 @@ internal fun PaywallTopBar(onDismiss: () -> Unit) {
       }
     }
     val closeCd = stringResource(R.string.action_close)
-    TextButton(
+    IconButton(
       onClick = onDismiss,
-      modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = closeCd },
+      modifier = Modifier.size(48.dp).semantics { contentDescription = closeCd },
     ) {
-      EInkText(text = "✕", style = MaterialTheme.typography.titleMedium)
+      CloseIcon(modifier = Modifier.size(18.dp))
     }
   }
 }
@@ -88,9 +95,10 @@ internal fun PaywallFeatureList() {
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
-        .padding(12.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
+        .padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     features.forEach { (titleRes, descRes) ->
       Row(
@@ -98,7 +106,7 @@ internal fun PaywallFeatureList() {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
       ) {
-        EInkText(text = "✓", style = MaterialTheme.typography.titleSmall)
+        CheckIcon(modifier = Modifier.padding(top = 3.dp).size(15.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
           EInkText(text = stringResource(titleRes), style = MaterialTheme.typography.titleSmall)
           EInkText(
@@ -123,8 +131,9 @@ internal fun PaywallTrustBadges() {
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .background(MaterialTheme.colorScheme.surfaceVariant)
-        .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        .clip(EInkShapes.Card)
+        .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
+        .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(12.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
@@ -145,13 +154,15 @@ internal fun ActiveProSummaryCard(entitlement: ProEntitlement) {
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(2.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Active, MaterialTheme.colorScheme.outline, EInkShapes.Card)
         .padding(14.dp),
-    verticalArrangement = Arrangement.spacedBy(6.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     Box(
       modifier =
-        Modifier.background(MaterialTheme.colorScheme.primary)
+        Modifier.clip(EInkShapes.Badge)
+          .background(MaterialTheme.colorScheme.primary, EInkShapes.Badge)
           .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
       EInkText(
@@ -169,8 +180,9 @@ internal fun PendingBannerCard() {
   Box(
     modifier =
       Modifier.fillMaxWidth()
-        .background(MaterialTheme.colorScheme.surfaceVariant)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(12.dp),
   ) {
     EInkText(

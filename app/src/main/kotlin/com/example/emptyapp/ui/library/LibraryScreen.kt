@@ -15,16 +15,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
@@ -34,8 +38,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -69,6 +77,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,7 +88,16 @@ import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.SampleBooksSeeder
 import com.example.emptyapp.data.stats.ReadingGamification
+import com.example.emptyapp.ui.eink.BookOpenIcon
+import com.example.emptyapp.ui.eink.CloseIcon
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.eink.OverflowDotsIcon
+import com.example.emptyapp.ui.eink.PlusIcon
+import com.example.emptyapp.ui.eink.SearchIcon
+import com.example.emptyapp.ui.eink.SettingsGearIcon
+import com.example.emptyapp.ui.eink.SortIcon
 import com.example.emptyapp.ui.monet.LibraryProMilestoneNudge
 import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
@@ -313,13 +331,16 @@ fun LibraryScreen(
       if (shouldShowSetupBanner(setupBannerDismissed, lockFeaturesCount, hasStartedReading)) {
         Row(
           modifier =
-            Modifier.fillMaxWidth()
-              .background(MaterialTheme.colorScheme.surfaceVariant)
+            Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+              .fillMaxWidth()
+              .clip(EInkShapes.Card)
+              .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
+              .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
               .clickable {
                 tutorialInitialPage = 1
                 tutorialOpen = true
               }
-              .padding(horizontal = 16.dp, vertical = 8.dp),
+              .padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -329,20 +350,20 @@ fun LibraryScreen(
             modifier = Modifier.weight(1f),
           )
           val dismissBannerCd = stringResource(com.example.emptyapp.R.string.cd_dismiss_banner)
-          EInkText(
-            text = "✕",
-            style = MaterialTheme.typography.labelLarge,
+          Box(
             modifier =
-              Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+              Modifier.size(48.dp)
+                .clip(CircleShape)
                 .clickable {
                   setupBannerDismissed = true
                   tutorialPrefs.edit().putBoolean("setup_banner_dismissed", true).apply()
                 }
-                .semantics { contentDescription = dismissBannerCd }
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-          )
+                .semantics { contentDescription = dismissBannerCd },
+            contentAlignment = Alignment.Center,
+          ) {
+            CloseIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+          }
         }
-        HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
       }
       val completedBooksCount = remember(books) { books.count { it.progress >= 0.99f } }
       if (
@@ -368,7 +389,7 @@ fun LibraryScreen(
         )
       }
       EInkTabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
-      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && (authors.isNotEmpty() || tabBooks.isNotEmpty())) {
+      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && tabBooks.isNotEmpty()) {
         AuthorFilterRow(
           totalCount = tabBooks.size,
           authors = authors,
@@ -377,7 +398,7 @@ fun LibraryScreen(
           onSelectSort = { sortMode = it },
           onSelect = { selectedAuthor = it },
         )
-        HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
       }
       Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         if (selectedTab == LibraryTab.BOOKMARKS) {
@@ -460,27 +481,40 @@ fun LibraryScreen(
             onImportBook = { launchImportPicker() },
             onImportFolder = { launchFolderPicker() },
           )
-        } else if (viewMode == LibraryViewMode.LIST) {
-          BookList(
-            books = filteredBooks,
-            grayscaleCovers = grayscaleCovers,
-            coverOf = viewModel::coverFileOf,
-            onOpenBook = { id -> onOpenBook(id, null) },
-            onToggleCompleted = { book, completed -> viewModel.setBookCompleted(book.id, completed) },
-            onShowDetails = { book -> pendingDetailsBook = book },
-            onRemove = { book -> pendingDeleteBook = book },
-          )
         } else {
-          BookGrid(
-            books = filteredBooks,
-            columns = viewMode.columns,
-            grayscaleCovers = grayscaleCovers,
-            coverOf = viewModel::coverFileOf,
-            onOpenBook = { id -> onOpenBook(id, null) },
-            onToggleCompleted = { book, completed -> viewModel.setBookCompleted(book.id, completed) },
-            onShowDetails = { book -> pendingDetailsBook = book },
-            onRemove = { book -> pendingDeleteBook = book },
-          )
+          val heroBook =
+            remember(books, selectedTab, query, selectedAuthor) {
+              resolveHeroBook(
+                books = books,
+                isAllOrReadingTab = selectedTab == LibraryTab.ALL || selectedTab == LibraryTab.READING,
+                query = query,
+                selectedAuthor = selectedAuthor,
+              )
+            }
+          if (viewMode == LibraryViewMode.LIST) {
+            BookList(
+              heroBook = heroBook,
+              books = filteredBooks,
+              grayscaleCovers = grayscaleCovers,
+              coverOf = viewModel::coverFileOf,
+              onOpenBook = { id -> onOpenBook(id, null) },
+              onToggleCompleted = { book, completed -> viewModel.setBookCompleted(book.id, completed) },
+              onShowDetails = { book -> pendingDetailsBook = book },
+              onRemove = { book -> pendingDeleteBook = book },
+            )
+          } else {
+            BookGrid(
+              heroBook = heroBook,
+              books = filteredBooks,
+              columns = viewMode.columns,
+              grayscaleCovers = grayscaleCovers,
+              coverOf = viewModel::coverFileOf,
+              onOpenBook = { id -> onOpenBook(id, null) },
+              onToggleCompleted = { book, completed -> viewModel.setBookCompleted(book.id, completed) },
+              onShowDetails = { book -> pendingDetailsBook = book },
+              onRemove = { book -> pendingDeleteBook = book },
+            )
+          }
         }
       }
       val searchPlaceholder =
@@ -601,7 +635,7 @@ private fun LibraryHeader(
   onOpenStats: () -> Unit,
 ) {
   Row(
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
@@ -618,11 +652,13 @@ private fun LibraryHeader(
         ) {
           Box(
             modifier =
-              Modifier.background(
-                if (isPro) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
-              )
-                .border(1.5.dp, MaterialTheme.colorScheme.outline)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+              Modifier.clip(EInkShapes.Badge)
+                .background(
+                  if (isPro) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                  EInkShapes.Badge,
+                )
+                .border(EInkBorder.Card, MaterialTheme.colorScheme.outline, EInkShapes.Badge)
+                .padding(horizontal = 8.dp, vertical = 5.dp),
             contentAlignment = Alignment.Center,
           ) {
             EInkText(
@@ -643,9 +679,9 @@ private fun LibraryHeader(
       ) {
         Box(
           modifier =
-            Modifier.size(36.dp)
+            Modifier.size(38.dp)
               .clip(CircleShape)
-              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+              .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
           contentAlignment = Alignment.Center,
         ) {
           SettingsGearIcon(modifier = Modifier.size(20.dp))
@@ -661,12 +697,12 @@ private fun LibraryHeader(
       ) {
         Box(
           modifier =
-            Modifier.size(36.dp)
+            Modifier.size(38.dp)
               .clip(CircleShape)
-              .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+              .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
           contentAlignment = Alignment.Center,
         ) {
-          ReaderAvatarIcon(modifier = Modifier.size(28.dp))
+          ReaderAvatarIcon(modifier = Modifier.size(26.dp))
         }
       }
     }
@@ -712,7 +748,7 @@ private fun LibraryBottomBar(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
       )
     }
-    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
     Row(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -745,22 +781,19 @@ private fun LibraryBottomBar(
         ) {
           Box(
             modifier =
-              Modifier.size(40.dp)
+              Modifier.size(42.dp)
                 .clip(CircleShape)
-                .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                .background(MaterialTheme.colorScheme.primary, CircleShape),
             contentAlignment = Alignment.Center,
           ) {
             if (importing) {
               CircularProgressIndicator(
                 modifier = Modifier.size(18.dp),
                 strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = MaterialTheme.colorScheme.onPrimary,
               )
             } else {
-              EInkText(
-                text = "+",
-                style = MaterialTheme.typography.titleLarge,
-              )
+              PlusIcon(modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimary)
             }
           }
         }
@@ -786,25 +819,15 @@ private fun GoogleStyleSearchBar(
   Row(
     modifier =
       modifier
-        .height(48.dp)
-        .clip(RoundedCornerShape(50))
-        .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
-        .background(MaterialTheme.colorScheme.background)
+        .height(44.dp)
+        .clip(EInkShapes.Pill)
+        .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Pill)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Pill)
         .padding(start = 14.dp, end = if (query.isNotEmpty()) 4.dp else 14.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    Canvas(modifier = Modifier.size(16.dp)) {
-      val radius = size.minDimension * 0.34f
-      val center = Offset(size.width * 0.4f, size.height * 0.4f)
-      drawCircle(color = ink, radius = radius, center = center, style = Stroke(width = 1.8.dp.toPx()))
-      drawLine(
-        color = ink,
-        start = Offset(center.x + radius * 0.7f, center.y + radius * 0.7f),
-        end = Offset(size.width * 0.92f, size.height * 0.92f),
-        strokeWidth = 1.8.dp.toPx(),
-      )
-    }
+    SearchIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
       if (query.isEmpty()) {
         EInkText(
@@ -828,13 +851,13 @@ private fun GoogleStyleSearchBar(
       val clearCd = stringResource(com.example.emptyapp.R.string.cd_clear_search)
       Box(
         modifier =
-          Modifier.size(48.dp)
+          Modifier.size(40.dp)
             .clip(CircleShape)
             .clickable { onQueryChange("") }
             .semantics { contentDescription = clearCd },
         contentAlignment = Alignment.Center,
       ) {
-        EInkText("×", style = MaterialTheme.typography.titleMedium)
+        CloseIcon(modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
       }
     }
   }
@@ -871,37 +894,46 @@ private fun ViewModeIcon(viewMode: LibraryViewMode) {
 @Composable
 private fun EInkTabRow(selectedTab: LibraryTab, onSelect: (LibraryTab) -> Unit) {
   Column {
-    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
-    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+    Row(
+      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+      horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
       LibraryTab.entries.forEach { tab ->
         val active = tab == selectedTab
-        Box(
+        Column(
           modifier =
-            Modifier
-              .background(
-                if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
-              )
-              .clickable { onSelect(tab) }
+            Modifier.clickable { onSelect(tab) }
               .semantics {
                 role = Role.Tab
                 selected = active
               }
-              .padding(horizontal = 14.dp, vertical = 12.dp),
-          contentAlignment = Alignment.Center,
+              .padding(horizontal = 12.dp, vertical = 10.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           EInkText(
             text = stringResource(tab.labelRes),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall.copy(
+              fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+            ),
             color =
-              if (active) MaterialTheme.colorScheme.onPrimary
-              else MaterialTheme.colorScheme.onBackground,
+              if (active) MaterialTheme.colorScheme.primary
+              else MaterialTheme.colorScheme.secondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+          )
+          Box(
+            modifier =
+              Modifier.width(24.dp)
+                .height(2.5.dp)
+                .clip(EInkShapes.Pill)
+                .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background),
           )
         }
       }
     }
-    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
   }
 }
 
@@ -914,31 +946,74 @@ private fun AuthorFilterRow(
   onSelectSort: (LibrarySort) -> Unit,
   onSelect: (String?) -> Unit,
 ) {
+  var sortMenuOpen by remember { mutableStateOf(false) }
   Row(
     modifier =
       Modifier.fillMaxWidth()
         .horizontalScroll(rememberScrollState())
-        .padding(horizontal = 16.dp, vertical = 12.dp),
+        .padding(horizontal = 16.dp, vertical = 10.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically,
   ) {
-    LibrarySort.entries.forEach { option ->
-      FilterPill(
-        label = stringResource(option.labelRes),
-        active = sortMode == option,
-        onClick = { onSelectSort(option) },
-      )
+    Box {
+      val sortCd = stringResource(com.example.emptyapp.R.string.lib_sort_label)
+      Row(
+        modifier =
+          Modifier.clip(EInkShapes.Pill)
+            .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Pill)
+            .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Pill)
+            .clickable { sortMenuOpen = true }
+            .semantics { contentDescription = sortCd }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+      ) {
+        SortIcon(modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onBackground)
+        EInkText(
+          text = stringResource(sortMode.labelRes),
+          style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+          maxLines = 1,
+        )
+      }
+      DropdownMenu(
+        expanded = sortMenuOpen,
+        onDismissRequest = { sortMenuOpen = false },
+        modifier =
+          Modifier.clip(EInkShapes.Card)
+            .background(MaterialTheme.colorScheme.background, EInkShapes.Card)
+            .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card),
+      ) {
+        LibrarySort.entries.forEach { option ->
+          DropdownMenuItem(
+            text = {
+              EInkText(
+                text = stringResource(option.labelRes),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                  fontWeight = if (option == sortMode) FontWeight.Bold else FontWeight.Normal,
+                ),
+              )
+            },
+            onClick = {
+              sortMenuOpen = false
+              onSelectSort(option)
+            },
+          )
+        }
+      }
     }
-    FilterPill(
-      label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
-      active = selectedAuthor == null,
-      onClick = { onSelect(null) },
-    )
-    authors.forEach { author ->
+    if (authors.size > 1 || selectedAuthor != null) {
       FilterPill(
-        label = author,
-        active = selectedAuthor == author,
-        onClick = { onSelect(if (selectedAuthor == author) null else author) },
+        label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
+        active = selectedAuthor == null,
+        onClick = { onSelect(null) },
       )
+      authors.forEach { author ->
+        FilterPill(
+          label = author,
+          active = selectedAuthor == author,
+          onClick = { onSelect(if (selectedAuthor == author) null else author) },
+        )
+      }
     }
   }
 }
@@ -947,9 +1022,16 @@ private fun AuthorFilterRow(
 private fun FilterPill(label: String, active: Boolean, onClick: () -> Unit) {
   Box(
     modifier =
-      Modifier.clip(RoundedCornerShape(50))
-        .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
+      Modifier.clip(EInkShapes.Pill)
+        .background(
+          if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+          EInkShapes.Pill,
+        )
+        .border(
+          width = if (active) EInkBorder.Card else EInkBorder.Hairline,
+          color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+          shape = EInkShapes.Pill,
+        )
         .selectable(selected = active, role = Role.RadioButton, onClick = onClick)
         .padding(horizontal = 14.dp, vertical = 6.dp)
   ) {
@@ -975,20 +1057,38 @@ private fun EmptyLibrary(
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+      Box(
+        modifier =
+          Modifier.size(64.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+        contentAlignment = Alignment.Center,
+      ) {
+        BookOpenIcon(modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.secondary)
+      }
       EInkText(
         text =
           if (hasAnyBooks) stringResource(com.example.emptyapp.R.string.lib_empty_filtered)
           else stringResource(com.example.emptyapp.R.string.lib_empty_all),
-        style = MaterialTheme.typography.titleSmall,
+        style = MaterialTheme.typography.bodyMedium.copy(textAlign = TextAlign.Center),
         color = MaterialTheme.colorScheme.secondary,
       )
       if (!hasAnyBooks) {
         Box {
-          androidx.compose.material3.OutlinedButton(
+          Button(
             onClick = { importMenuOpen = true },
             enabled = importEnabled,
+            shape = EInkShapes.Control,
+            colors =
+              ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+              ),
           ) {
-            EInkText(stringResource(com.example.emptyapp.R.string.lib_import_first_book))
+            EInkText(
+              stringResource(com.example.emptyapp.R.string.lib_import_first_book),
+              color = MaterialTheme.colorScheme.onPrimary,
+            )
           }
           ImportSourceMenu(
             expanded = importMenuOpen,
@@ -1004,6 +1104,7 @@ private fun EmptyLibrary(
 
 @Composable
 private fun BookList(
+  heroBook: BookEntry?,
   books: List<BookEntry>,
   grayscaleCovers: Boolean,
   coverOf: (BookEntry) -> File?,
@@ -1013,6 +1114,17 @@ private fun BookList(
   onRemove: (BookEntry) -> Unit,
 ) {
   LazyColumn {
+    if (heroBook != null) {
+      item(key = "continue_reading_hero") {
+        ContinueReadingHeroCard(
+          book = heroBook,
+          grayscaleCover = grayscaleCovers,
+          coverFile = coverOf(heroBook),
+          onOpen = { onOpenBook(heroBook.id) },
+          modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+      }
+    }
     items(books, key = { it.id }) { book ->
       BookRow(
         book = book,
@@ -1023,13 +1135,14 @@ private fun BookList(
         onShowDetails = { onShowDetails(book) },
         onRemove = { onRemove(book) },
       )
-      HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
     }
   }
 }
 
 @Composable
 private fun BookGrid(
+  heroBook: BookEntry?,
   books: List<BookEntry>,
   columns: Int,
   grayscaleCovers: Boolean,
@@ -1047,6 +1160,16 @@ private fun BookGrid(
     verticalArrangement = Arrangement.spacedBy(16.dp),
     modifier = Modifier.fillMaxSize(),
   ) {
+    if (heroBook != null) {
+      item(key = "continue_reading_hero", span = { GridItemSpan(maxLineSpan) }) {
+        ContinueReadingHeroCard(
+          book = heroBook,
+          grayscaleCover = grayscaleCovers,
+          coverFile = coverOf(heroBook),
+          onOpen = { onOpenBook(heroBook.id) },
+        )
+      }
+    }
     gridItems(books, key = { it.id }) { book ->
       BookGridCard(
         book = book,
@@ -1089,6 +1212,22 @@ private fun BookGridCard(
       grayscale = grayscaleCover,
       modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
     )
+    if (book.progress > 0f) {
+      Box(
+        modifier =
+          Modifier.fillMaxWidth()
+            .height(3.dp)
+            .clip(EInkShapes.Pill)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+      ) {
+        Box(
+          modifier =
+            Modifier.fillMaxWidth(book.progress.coerceIn(0f, 1f))
+              .fillMaxHeight()
+              .background(MaterialTheme.colorScheme.primary),
+        )
+      }
+    }
     EInkText(
       text = book.title,
       style = if (columns >= 4) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleSmall,
@@ -1120,7 +1259,7 @@ private fun BookGridCard(
               .semantics { contentDescription = actionsCd },
           contentAlignment = Alignment.Center,
         ) {
-          OverflowDotsIcon(modifier = Modifier.size(16.dp))
+          OverflowDotsIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
         }
         BookActionMenu(
           book = book,
@@ -1163,7 +1302,7 @@ private fun BookRow(
       grayscale = grayscaleCover,
       modifier = Modifier.size(width = 48.dp, height = 68.dp),
     )
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
       EInkText(
         text = book.title,
         style = MaterialTheme.typography.titleSmall,
@@ -1181,6 +1320,22 @@ private fun BookRow(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.secondary,
       )
+      if (book.progress > 0f) {
+        Box(
+          modifier =
+            Modifier.fillMaxWidth(0.55f)
+              .height(3.dp)
+              .clip(EInkShapes.Pill)
+              .background(MaterialTheme.colorScheme.outlineVariant),
+        ) {
+          Box(
+            modifier =
+              Modifier.fillMaxWidth(book.progress.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.primary),
+          )
+        }
+      }
     }
     Box {
       val actionsCd = stringResource(com.example.emptyapp.R.string.cd_book_actions)
@@ -1188,7 +1343,7 @@ private fun BookRow(
         onClick = { menuExpanded = true },
         modifier = Modifier.size(48.dp).semantics { contentDescription = actionsCd },
       ) {
-        OverflowDotsIcon(modifier = Modifier.size(18.dp))
+        OverflowDotsIcon(modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
       }
       BookActionMenu(
         book = book,

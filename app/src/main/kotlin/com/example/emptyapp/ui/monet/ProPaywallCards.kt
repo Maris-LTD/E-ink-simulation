@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -25,6 +28,9 @@ import com.example.emptyapp.R
 import com.example.emptyapp.data.billing.BillingConstants
 import com.example.emptyapp.data.billing.BillingMessage
 import com.example.emptyapp.data.billing.BillingProductUi
+import com.example.emptyapp.ui.eink.CloseIcon
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 
 @Composable
@@ -36,37 +42,44 @@ internal fun PaywallTierCard(
   isSelected: Boolean,
   onClick: () -> Unit,
 ) {
-  val borderWidth = if (isSelected) 2.dp else 1.dp
-  val borderColor = if (isSelected) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant
+  val borderWidth = if (isSelected) EInkBorder.Active else EInkBorder.Card
+  val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
   val bg = if (isSelected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background
   Row(
     modifier =
       Modifier.fillMaxWidth()
-        .defaultMinSize(minHeight = 56.dp)
-        .background(bg)
-        .border(borderWidth, borderColor)
+        .defaultMinSize(minHeight = 58.dp)
+        .clip(EInkShapes.Card)
+        .background(bg, EInkShapes.Card)
+        .border(borderWidth, borderColor, EInkShapes.Card)
         .clickable(onClick = onClick)
         .semantics {
           role = Role.RadioButton
           selected = isSelected
         }
-        .padding(12.dp),
+        .padding(14.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Box(
       modifier =
-        Modifier.background(
-          if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
-        )
-          .border(1.5.dp, MaterialTheme.colorScheme.outline)
-          .padding(horizontal = 6.dp, vertical = 2.dp),
+        Modifier.size(20.dp)
+          .clip(CircleShape)
+          .border(
+            width = if (isSelected) 2.dp else EInkBorder.Card,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            shape = CircleShape,
+          ),
+      contentAlignment = Alignment.Center,
     ) {
-      EInkText(
-        text = if (isSelected) "●" else "○",
-        style = MaterialTheme.typography.labelLarge,
-        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
-      )
+      if (isSelected) {
+        Box(
+          modifier =
+            Modifier.size(10.dp)
+              .clip(CircleShape)
+              .background(MaterialTheme.colorScheme.primary, CircleShape),
+        )
+      }
     }
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Row(
@@ -77,7 +90,8 @@ internal fun PaywallTierCard(
         if (badge != null) {
           Box(
             modifier =
-              Modifier.background(MaterialTheme.colorScheme.primary)
+              Modifier.clip(EInkShapes.Badge)
+                .background(MaterialTheme.colorScheme.primary, EInkShapes.Badge)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
           ) {
             EInkText(
@@ -108,7 +122,8 @@ internal fun PaywallTipJarSection(
   Column(
     modifier =
       Modifier.fillMaxWidth()
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
@@ -125,6 +140,7 @@ internal fun PaywallTipJarSection(
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       OutlinedButton(
         onClick = { onTip(BillingConstants.PRODUCT_TIP_COFFEE) },
+        shape = EInkShapes.Control,
         modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
       ) {
         val label =
@@ -134,6 +150,7 @@ internal fun PaywallTipJarSection(
       }
       OutlinedButton(
         onClick = { onTip(BillingConstants.PRODUCT_TIP_BOOK) },
+        shape = EInkShapes.Control,
         modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
       ) {
         val label =
@@ -163,20 +180,22 @@ internal fun PaywallMessageBanner(
   Row(
     modifier =
       Modifier.fillMaxWidth()
-        .background(MaterialTheme.colorScheme.surfaceVariant)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
-        .padding(horizontal = 12.dp, vertical = 10.dp),
+        .clip(EInkShapes.Card)
+        .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
+        .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     EInkText(text = text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-    EInkText(
-      text = "✕",
-      style = MaterialTheme.typography.labelLarge,
+    Box(
       modifier =
-        Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 36.dp)
-          .clickable(onClick = onDismiss)
-          .padding(8.dp),
-    )
+        Modifier.size(36.dp)
+          .clip(CircleShape)
+          .clickable(onClick = onDismiss),
+      contentAlignment = Alignment.Center,
+    ) {
+      CloseIcon(modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
+    }
   }
 }

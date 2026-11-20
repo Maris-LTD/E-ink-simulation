@@ -18,12 +18,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 
 @Composable
@@ -49,9 +51,10 @@ fun PdfProPreviewLimitCard(
       modifier =
         Modifier.widthIn(max = 420.dp)
           .fillMaxWidth()
-          .background(backgroundColor)
-          .border(1.5.dp, textColor)
-          .padding(20.dp),
+          .clip(EInkShapes.Hero)
+          .background(backgroundColor, EInkShapes.Hero)
+          .border(EInkBorder.Card, textColor.copy(alpha = 0.35f), EInkShapes.Hero)
+          .padding(22.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       EInkText(
@@ -66,7 +69,7 @@ fun PdfProPreviewLimitCard(
       )
       Button(
         onClick = onUnlockPro,
-        shape = RectangleShape,
+        shape = EInkShapes.Control,
         colors =
           ButtonDefaults.buttonColors(
             containerColor = textColor,
@@ -82,7 +85,7 @@ fun PdfProPreviewLimitCard(
       }
       OutlinedButton(
         onClick = onUseStandardPdf,
-        shape = RectangleShape,
+        shape = EInkShapes.Control,
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
       ) {
         EInkText(

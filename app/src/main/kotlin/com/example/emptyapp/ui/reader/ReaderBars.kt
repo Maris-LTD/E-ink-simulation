@@ -1,6 +1,5 @@
 package com.example.emptyapp.ui.reader
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -36,13 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Fill
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -50,16 +42,22 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkTone
+import com.example.emptyapp.ui.eink.BackArrowIcon
+import com.example.emptyapp.ui.eink.BookmarkIcon
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
-import kotlin.math.PI
-import kotlin.math.cos
+import com.example.emptyapp.ui.eink.FocusMoonIcon
+import com.example.emptyapp.ui.eink.SearchIcon
+import com.example.emptyapp.ui.eink.SlidersIcon
+import com.example.emptyapp.ui.eink.SunIcon
+import com.example.emptyapp.ui.eink.TocListIcon
 import kotlin.math.roundToInt
-import kotlin.math.sin
 import kotlinx.coroutines.delay
 
 @Composable
@@ -86,34 +84,33 @@ fun ReaderTopBar(
         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
   ) {
     Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       val backCd = stringResource(R.string.cd_back)
-      TextButton(
+      IconButton(
         onClick = onClose,
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-        modifier =
-          Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-            .semantics { contentDescription = backCd },
+        modifier = Modifier.size(48.dp).semantics { contentDescription = backCd },
       ) {
-        EInkText("‹", style = MaterialTheme.typography.titleLarge)
+        BackArrowIcon(modifier = Modifier.size(20.dp))
       }
       EInkText(
         text = title,
         style = MaterialTheme.typography.titleMedium,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.weight(1f).padding(end = 4.dp),
+        modifier = Modifier.weight(1f).padding(end = 6.dp),
       )
       if (pdfModeLabel != null && onTogglePdfMode != null) {
-        TextButton(
-          onClick = onTogglePdfMode,
-          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        Box(
           modifier =
             Modifier.padding(end = 4.dp)
-              .border(1.dp, MaterialTheme.colorScheme.outline)
-              .defaultMinSize(minWidth = 48.dp, minHeight = 36.dp),
+              .clip(EInkShapes.Badge)
+              .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Badge)
+              .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Badge)
+              .clickable(onClick = onTogglePdfMode)
+              .padding(horizontal = 10.dp, vertical = 6.dp),
+          contentAlignment = Alignment.Center,
         ) {
           EInkText(pdfModeLabel, style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
@@ -123,18 +120,18 @@ fun ReaderTopBar(
         val increaseFontCd = stringResource(R.string.cd_increase_font)
         TextButton(
           onClick = onDecreaseFont,
-          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+          contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
           modifier =
-            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+            Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
               .semantics { contentDescription = decreaseFontCd },
         ) {
           EInkText("A−", style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
         TextButton(
           onClick = onIncreaseFont,
-          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+          contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
           modifier =
-            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+            Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
               .semantics { contentDescription = increaseFontCd },
         ) {
           EInkText("A+", style = MaterialTheme.typography.labelLarge, maxLines = 1)
@@ -146,20 +143,7 @@ fun ReaderTopBar(
           onClick = onOpenSearch,
           modifier = Modifier.size(48.dp).semantics { contentDescription = searchCd },
         ) {
-          val ink = MaterialTheme.colorScheme.onBackground
-          Canvas(modifier = Modifier.size(19.dp)) {
-            val r = size.minDimension * 0.3f
-            val center = Offset(size.width * 0.42f, size.height * 0.42f)
-            val stroke = 2.dp.toPx()
-            drawCircle(color = ink, radius = r, center = center, style = Stroke(width = stroke))
-            drawLine(
-              color = ink,
-              start = Offset(center.x + r * 0.7f, center.y + r * 0.7f),
-              end = Offset(size.width * 0.85f, size.height * 0.85f),
-              strokeWidth = stroke,
-              cap = StrokeCap.Round,
-            )
-          }
+          SearchIcon(modifier = Modifier.size(19.dp))
         }
       }
       val bookmarkCd = stringResource(R.string.cd_save_bookmark)
@@ -173,38 +157,17 @@ fun ReaderTopBar(
             stateDescription = bookmarkStateDesc
           },
       ) {
-        val ink = MaterialTheme.colorScheme.onBackground
-        Canvas(modifier = Modifier.size(20.dp)) {
-          val w = size.width
-          val h = size.height
-          val path =
-            Path().apply {
-              moveTo(w * 0.2f, h * 0.1f)
-              lineTo(w * 0.8f, h * 0.1f)
-              lineTo(w * 0.8f, h * 0.9f)
-              lineTo(w * 0.5f, h * 0.68f)
-              lineTo(w * 0.2f, h * 0.9f)
-              close()
-            }
-          if (isBookmarked) {
-            drawPath(path, color = ink, style = Fill)
-          }
-          drawPath(path, color = ink, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Miter))
-        }
+        BookmarkIcon(filled = isBookmarked, modifier = Modifier.size(19.dp))
       }
-      TextButton(
+      val contentsCd = stringResource(R.string.cd_contents)
+      IconButton(
         onClick = onOpenContents,
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-        modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 40.dp),
+        modifier = Modifier.size(48.dp).semantics { contentDescription = contentsCd },
       ) {
-        EInkText(
-          text = stringResource(R.string.reader_contents_button),
-          style = MaterialTheme.typography.labelLarge,
-          maxLines = 1,
-        )
+        TocListIcon(modifier = Modifier.size(19.dp))
       }
     }
-    HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
   }
 }
 
@@ -228,9 +191,7 @@ fun ReaderBottomBar(
   var sliderValue by remember { mutableFloatStateOf(progress.coerceIn(0f, 1f)) }
 
   LaunchedEffect(progress) {
-    if (!dragging && !pendingSeek) {
-      sliderValue = progress.coerceIn(0f, 1f)
-    }
+    if (!dragging && !pendingSeek) sliderValue = progress.coerceIn(0f, 1f)
   }
   LaunchedEffect(pendingSeek) {
     if (pendingSeek) {
@@ -244,130 +205,145 @@ fun ReaderBottomBar(
     modifier =
       modifier
         .fillMaxWidth()
-        .background(MaterialTheme.colorScheme.background)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline)
+        .clip(EInkShapes.SheetTop)
+        .background(MaterialTheme.colorScheme.background, EInkShapes.SheetTop)
+        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.SheetTop)
         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-        .padding(horizontal = 16.dp, vertical = 6.dp),
+        .padding(horizontal = 16.dp, vertical = 12.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    ThemeAndBrightnessRow(
-      tone = tone,
+    if (seekEnabled) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Slider(
+          value = sliderValue,
+          onValueChange = {
+            dragging = true
+            pendingSeek = false
+            sliderValue = it
+          },
+          onValueChangeFinished = {
+            dragging = false
+            pendingSeek = true
+            onSeekToProgress(sliderValue)
+          },
+          modifier = Modifier.weight(1f),
+          colors =
+            SliderDefaults.colors(
+              thumbColor = MaterialTheme.colorScheme.primary,
+              activeTrackColor = MaterialTheme.colorScheme.primary,
+              inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
+            ),
+        )
+        EInkText(
+          text = "${(sliderValue * 100).toInt()}%",
+          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+        )
+      }
+    }
+    ToneSwatchStrip(tone = tone, onToneChange = onToneChange)
+    BrightnessStrip(
       brightness = brightness,
-      onToneChange = onToneChange,
       onBrightnessChange = onBrightnessChange,
       onBrightnessChangeFinished = onBrightnessChangeFinished,
     )
-    if (seekEnabled) {
-      Slider(
-        value = sliderValue,
-        onValueChange = {
-          dragging = true
-          pendingSeek = false
-          sliderValue = it
-        },
-        onValueChangeFinished = {
-          dragging = false
-          pendingSeek = true
-          onSeekToProgress(sliderValue)
-        },
-        colors =
-          SliderDefaults.colors(
-            thumbColor = MaterialTheme.colorScheme.primary,
-            activeTrackColor = MaterialTheme.colorScheme.primary,
-            inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
-          ),
-      )
-    }
     Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      EInkText("${(sliderValue * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
+      FocusModeToggleChip(enabled = focusMode, onToggle = onToggleFocusMode)
+      val settingsCd = stringResource(R.string.cd_reader_settings)
       Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier =
+          Modifier.clip(EInkShapes.Pill)
+            .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Pill)
+            .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Pill)
+            .clickable(onClick = onToggleSettings)
+            .semantics { contentDescription = settingsCd }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        FocusModeToggleChip(enabled = focusMode, onToggle = onToggleFocusMode)
-        TextButton(onClick = onToggleSettings) { EInkText(stringResource(R.string.reader_settings_button)) }
+        SlidersIcon(modifier = Modifier.size(16.dp))
+        EInkText(stringResource(R.string.reader_settings_button), style = MaterialTheme.typography.labelLarge)
       }
     }
   }
 }
 
 @Composable
-private fun FocusModeToggleChip(
-  enabled: Boolean,
-  onToggle: () -> Unit,
+private fun ToneSwatchStrip(
+  tone: EInkTone,
+  onToneChange: (EInkTone) -> Unit,
 ) {
-  val bg = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.background
-  val fg = if (enabled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onBackground
-  val focusCd =
-    if (enabled) stringResource(R.string.cd_focus_disable) else stringResource(R.string.cd_focus_enable)
-  Box(
-    modifier =
-      Modifier
-        .background(bg)
-        .border(1.5.dp, MaterialTheme.colorScheme.onBackground)
-        .clickable(onClick = onToggle)
-        .padding(horizontal = 10.dp, vertical = 6.dp)
-        .semantics { contentDescription = focusCd },
-    contentAlignment = Alignment.Center,
+  val toneDesc = stringResource(R.string.reader_tone_label)
+  Row(
+    modifier = Modifier.fillMaxWidth().semantics { contentDescription = toneDesc },
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
   ) {
-    EInkText(
-      text = if (enabled) stringResource(R.string.reader_focus_on) else stringResource(R.string.reader_focus_off),
-      color = fg,
-      style = MaterialTheme.typography.labelLarge,
-    )
+    EInkTone.entries.forEach { option ->
+      val isSelected = option == tone
+      val optionLabel = toneLabel(option)
+      Column(
+        modifier =
+          Modifier.clip(EInkShapes.Control)
+            .clickable { onToneChange(option) }
+            .semantics {
+              contentDescription = optionLabel
+              role = Role.RadioButton
+              selected = isSelected
+            }
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+      ) {
+        Box(
+          modifier =
+            Modifier.size(26.dp)
+              .clip(CircleShape)
+              .background(Color(option.background), CircleShape)
+              .border(
+                width = if (isSelected) 2.dp else EInkBorder.Card,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                shape = CircleShape,
+              ),
+        )
+        EInkText(
+          text = optionLabel,
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+          ),
+          color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+          maxLines = 1,
+        )
+      }
+    }
   }
 }
 
 @Composable
-private fun ThemeAndBrightnessRow(
-  tone: EInkTone,
+private fun BrightnessStrip(
   brightness: Float,
-  onToneChange: (EInkTone) -> Unit,
   onBrightnessChange: (Float) -> Unit,
   onBrightnessChangeFinished: () -> Unit,
 ) {
   val isAuto = brightness < 0f
   val displayValue = if (isAuto) 0.5f else brightness.coerceIn(0.02f, 1f)
+  val brightnessDesc = stringResource(R.string.reader_brightness_label)
+  val toggleCd =
+    if (isAuto) stringResource(R.string.cd_brightness_auto)
+    else stringResource(R.string.cd_brightness_pct, (displayValue * 100).roundToInt())
   Row(
-    modifier = Modifier.fillMaxWidth(),
+    modifier = Modifier.fillMaxWidth().semantics { contentDescription = brightnessDesc },
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-      EInkTone.entries.forEach { option ->
-        val isSelected = option == tone
-        val optionLabel = toneLabel(option)
-        Box(
-          modifier =
-            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-              .clickable { onToneChange(option) }
-              .semantics {
-                contentDescription = optionLabel
-                role = Role.RadioButton
-                selected = isSelected
-              },
-          contentAlignment = Alignment.Center,
-        ) {
-          Box(
-            modifier =
-              Modifier.size(22.dp)
-                .clip(CircleShape)
-                .background(Color(option.background))
-                .border(
-                  width = if (isSelected) 2.5.dp else 1.dp,
-                  color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                  shape = CircleShape,
-                ),
-          )
-        }
-      }
-    }
+    SunIcon(modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
     Slider(
       value = displayValue,
       onValueChange = { onBrightnessChange(it.coerceIn(0.02f, 1f)) },
@@ -381,58 +357,57 @@ private fun ThemeAndBrightnessRow(
           inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
         ),
     )
-    BrightnessSunBadge(
-      label = if (isAuto) "A" else "${(displayValue * 100).roundToInt()}",
-      contentDescription =
-        if (isAuto) stringResource(R.string.cd_brightness_auto)
-        else stringResource(R.string.cd_brightness_pct, (displayValue * 100).roundToInt()),
-      onClick = {
-        onBrightnessChange(if (isAuto) 0.5f else -1f)
-        onBrightnessChangeFinished()
-      },
-    )
+    Box(
+      modifier =
+        Modifier.clip(EInkShapes.Pill)
+          .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Pill)
+          .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Pill)
+          .clickable {
+            onBrightnessChange(if (isAuto) 0.5f else -1f)
+            onBrightnessChangeFinished()
+          }
+          .semantics { contentDescription = toggleCd }
+          .padding(horizontal = 10.dp, vertical = 5.dp),
+      contentAlignment = Alignment.Center,
+    ) {
+      EInkText(
+        text = if (isAuto) "Auto" else "${(displayValue * 100).roundToInt()}%",
+        style = MaterialTheme.typography.labelMedium,
+        maxLines = 1,
+      )
+    }
   }
 }
 
 @Composable
-private fun BrightnessSunBadge(
-  label: String,
-  contentDescription: String,
-  onClick: () -> Unit,
+private fun FocusModeToggleChip(
+  enabled: Boolean,
+  onToggle: () -> Unit,
 ) {
-  val ink = MaterialTheme.colorScheme.onBackground
-  Box(
+  val bg = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+  val fg = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground
+  val focusCd =
+    if (enabled) stringResource(R.string.cd_focus_disable) else stringResource(R.string.cd_focus_enable)
+  Row(
     modifier =
-      Modifier.size(34.dp)
-        .clickable(onClick = onClick)
-        .semantics { this.contentDescription = contentDescription },
-    contentAlignment = Alignment.Center,
-  ) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-      val cx = size.width / 2f
-      val cy = size.height / 2f
-      val r = size.minDimension * 0.28f
-      val rayInner = size.minDimension * 0.36f
-      val rayOuter = size.minDimension * 0.48f
-      val stroke = 1.4.dp.toPx()
-      for (i in 0 until 8) {
-        val angle = (i * PI / 4.0).toFloat()
-        val dx = cos(angle)
-        val dy = sin(angle)
-        drawLine(
-          color = ink,
-          start = Offset(cx + rayInner * dx, cy + rayInner * dy),
-          end = Offset(cx + rayOuter * dx, cy + rayOuter * dy),
-          strokeWidth = stroke,
-          cap = StrokeCap.Round,
+      Modifier.clip(EInkShapes.Pill)
+        .background(bg, EInkShapes.Pill)
+        .border(
+          width = if (enabled) EInkBorder.Card else EInkBorder.Hairline,
+          color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+          shape = EInkShapes.Pill,
         )
-      }
-      drawCircle(color = ink, radius = r, style = Stroke(width = stroke))
-    }
+        .clickable(onClick = onToggle)
+        .padding(horizontal = 14.dp, vertical = 8.dp)
+        .semantics { contentDescription = focusCd },
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    FocusMoonIcon(modifier = Modifier.size(16.dp), tint = fg)
     EInkText(
-      text = label,
-      style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 0.sp),
-      maxLines = 1,
+      text = if (enabled) stringResource(R.string.reader_focus_on) else stringResource(R.string.reader_focus_off),
+      color = fg,
+      style = MaterialTheme.typography.labelLarge,
     )
   }
 }

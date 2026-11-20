@@ -29,7 +29,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -42,6 +41,8 @@ import com.example.emptyapp.data.billing.BillingMessage
 import com.example.emptyapp.data.billing.PlayBillingManager
 import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.billing.ProFeatureGate
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 import kotlinx.coroutines.launch
 
@@ -82,7 +83,7 @@ fun ProPaywallSheet(
           .background(MaterialTheme.colorScheme.background),
     ) {
       PaywallTopBar(onDismiss = onDismiss)
-      HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
       Column(
         modifier =
           Modifier.weight(1f)
@@ -148,7 +149,7 @@ fun ProPaywallSheet(
             }
           Button(
             onClick = { context.findActivity()?.let { billing.launchPurchase(it, selectedProductId) } },
-            shape = RectangleShape,
+            shape = EInkShapes.Control,
             colors =
               ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,

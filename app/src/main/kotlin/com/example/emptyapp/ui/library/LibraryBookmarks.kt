@@ -1,6 +1,5 @@
 package com.example.emptyapp.ui.library
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,20 +12,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
 import com.example.emptyapp.data.annotation.BookmarkEntry
+import com.example.emptyapp.ui.eink.BookmarkIcon
+import com.example.emptyapp.ui.eink.EInkBorder
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.eink.TrashIcon
 
 @Composable
 fun LibraryBookmarkList(
@@ -45,7 +46,7 @@ fun LibraryBookmarkList(
     }
     return
   }
-  val ink = MaterialTheme.colorScheme.onBackground
+  val deleteCd = stringResource(R.string.action_delete)
   LazyColumn(modifier = Modifier.fillMaxSize()) {
     items(bookmarks, key = { it.id }) { item ->
       val bookTitle = bookTitlesById[item.bookId]
@@ -53,23 +54,14 @@ fun LibraryBookmarkList(
         modifier =
           Modifier.fillMaxWidth()
             .clickable { onOpenBookmark(item.bookId, item.locatorJson) }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(start = 16.dp, end = 6.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        Canvas(modifier = Modifier.padding(end = 12.dp).size(18.dp)) {
-          val w = size.width
-          val h = size.height
-          val path =
-            Path().apply {
-              moveTo(w * 0.2f, h * 0.1f)
-              lineTo(w * 0.8f, h * 0.1f)
-              lineTo(w * 0.8f, h * 0.9f)
-              lineTo(w * 0.5f, h * 0.68f)
-              lineTo(w * 0.2f, h * 0.9f)
-              close()
-            }
-          drawPath(path, color = ink, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Miter))
-        }
+        BookmarkIcon(
+          filled = false,
+          tint = MaterialTheme.colorScheme.secondary,
+          modifier = Modifier.padding(end = 12.dp).size(18.dp),
+        )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
           EInkText(
             text = item.title,
@@ -88,15 +80,14 @@ fun LibraryBookmarkList(
             color = MaterialTheme.colorScheme.secondary,
           )
         }
-        TextButton(onClick = { onRemove(item.id) }) {
-          EInkText(
-            text = stringResource(R.string.action_delete),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.secondary,
-          )
+        IconButton(
+          onClick = { onRemove(item.id) },
+          modifier = Modifier.size(48.dp).semantics { contentDescription = deleteCd },
+        ) {
+          TrashIcon(modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
         }
       }
-      HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
     }
   }
 }

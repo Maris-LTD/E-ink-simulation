@@ -6,8 +6,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,12 +19,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.ui.eink.CoverBitmapCache
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkSerifFamily
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -47,8 +53,9 @@ fun BookCover(
   Box(
     modifier =
       modifier
-        .background(MaterialTheme.colorScheme.background)
-        .border(1.5.dp, MaterialTheme.colorScheme.outline),
+        .clip(EInkShapes.Cover)
+        .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Cover)
+        .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Cover),
     contentAlignment = Alignment.Center,
   ) {
     val current = bitmap
@@ -62,22 +69,53 @@ fun BookCover(
         modifier = Modifier.fillMaxSize(),
       )
     } else {
-      Column(
-        modifier = Modifier.fillMaxSize().padding(if (compact) 4.dp else 10.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-      ) {
-        EInkText(
-          text = book.format.label,
-          style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
-          color = MaterialTheme.colorScheme.secondary,
+      Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+          modifier =
+            Modifier.align(Alignment.CenterStart)
+              .padding(start = if (compact) 4.dp else 8.dp)
+              .width(1.dp)
+              .fillMaxHeight()
+              .background(MaterialTheme.colorScheme.outlineVariant),
         )
-        if (!compact) {
+        Column(
+          modifier =
+            Modifier.fillMaxSize()
+              .padding(
+                start = if (compact) 8.dp else 14.dp,
+                end = if (compact) 5.dp else 10.dp,
+                top = if (compact) 5.dp else 10.dp,
+                bottom = if (compact) 5.dp else 10.dp,
+              ),
+          verticalArrangement = Arrangement.SpaceBetween,
+        ) {
           EInkText(
-            text = book.title,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis,
+            text = book.format.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.secondary,
           )
+          if (!compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+              EInkText(
+                text = book.title,
+                style = MaterialTheme.typography.titleSmall.copy(
+                  fontFamily = EInkSerifFamily,
+                  fontWeight = FontWeight.SemiBold,
+                ),
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+              )
+              if (book.author.isNotBlank()) {
+                EInkText(
+                  text = book.author,
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.secondary,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+                )
+              }
+            }
+          }
         }
       }
     }

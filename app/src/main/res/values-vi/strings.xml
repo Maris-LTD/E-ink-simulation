@@ -504,4 +504,23 @@
     <string name="milestone_nudge_title">Thói quen đọc tuyệt vời!</string>
     <string name="milestone_nudge_desc">Bạn thích Inkify? Mở khóa Adaptive PDF, Đồng bộ Drive &amp; Focus Mode với Inkify Pro.</string>
     <string name="milestone_nudge_cta">Xem Inkify Pro</string>
+
+    <!-- Editorial UI & Reader Settings Tabs -->
+    <string name="lib_continue_reading">TIẾP TỤC ĐỌC</string>
+    <string name="lib_start_reading">BẮT ĐẦU ĐỌC</string>
+    <string name="lib_resume_btn">Đọc tiếp</string>
+    <string name="lib_read_btn">Đọc ngay</string>
+    <string name="lib_sort_label">Sắp xếp</string>
+    <string name="settings_tab_text">Chữ</string>
+    <string name="settings_tab_pdf">PDF</string>
+    <string name="settings_tab_display">Màn hình</string>
+    <string name="settings_tab_controls">Điều khiển</string>
+    <string name="settings_section_typography">KIỂU CHỮ</string>
+    <string name="settings_section_layout">BỐ CỤC</string>
+    <string name="settings_section_eink">HIỆU ỨNG E-INK</string>
+    <string name="settings_section_reading">ĐỌC SÁCH</string>
+    <string name="reader_brightness_label">Độ sáng</string>
+    <string name="reader_tone_label">Tông màu</string>
+    <string name="cd_contents">Mục lục</string>
+    <string name="cd_reader_settings">Cài đặt đọc</string>
 </resources>

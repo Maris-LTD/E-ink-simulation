@@ -2,6 +2,7 @@ package com.example.emptyapp.ui.eink
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -25,31 +26,31 @@ private fun eInkColorScheme(tone: EInkTone): ColorScheme {
     return darkColorScheme(
       primary = fg,
       onPrimary = bg,
-      secondary = lerp(fg, bg, 0.15f),
+      secondary = lerp(fg, bg, 0.38f),
       onSecondary = bg,
       background = bg,
       onBackground = fg,
       surface = bg,
       onSurface = fg,
-      surfaceVariant = lerp(bg, fg, 0.08f),
+      surfaceVariant = lerp(bg, fg, 0.09f),
       onSurfaceVariant = fg,
-      outline = lerp(bg, fg, 0.5f),
-      outlineVariant = lerp(bg, fg, 0.22f),
+      outline = lerp(fg, bg, 0.58f),
+      outlineVariant = lerp(fg, bg, 0.80f),
     )
   }
   return lightColorScheme(
     primary = fg,
     onPrimary = bg,
-    secondary = lerp(fg, bg, 0.12f),
+    secondary = lerp(fg, bg, 0.36f),
     onSecondary = bg,
     background = bg,
     onBackground = fg,
     surface = bg,
     onSurface = fg,
-    surfaceVariant = lerp(bg, fg, 0.06f),
+    surfaceVariant = lerp(bg, fg, 0.055f),
     onSurfaceVariant = fg,
-    outline = fg,
-    outlineVariant = lerp(bg, fg, 0.18f),
+    outline = lerp(fg, bg, 0.65f),
+    outlineVariant = lerp(fg, bg, 0.84f),
   )
 }
 
@@ -57,35 +58,73 @@ private fun eInkColorScheme(tone: EInkTone): ColorScheme {
 private val EInkSansFamily =
   FontFamily(
     Font(
-      resId = R.font.rubik,
+      resId = R.font.jakarta,
       weight = FontWeight.Light,
       variationSettings = FontVariation.Settings(FontVariation.weight(300)),
     ),
     Font(
-      resId = R.font.rubik,
+      resId = R.font.jakarta,
       weight = FontWeight.Normal,
       variationSettings = FontVariation.Settings(FontVariation.weight(400)),
     ),
     Font(
-      resId = R.font.rubik,
+      resId = R.font.jakarta,
       weight = FontWeight.Medium,
       variationSettings = FontVariation.Settings(FontVariation.weight(500)),
     ),
     Font(
-      resId = R.font.rubik,
+      resId = R.font.jakarta,
       weight = FontWeight.SemiBold,
       variationSettings = FontVariation.Settings(FontVariation.weight(600)),
     ),
     Font(
-      resId = R.font.rubik,
+      resId = R.font.jakarta,
       weight = FontWeight.Bold,
       variationSettings = FontVariation.Settings(FontVariation.weight(700)),
     ),
     Font(
-      resId = R.font.rubik,
+      resId = R.font.jakarta,
       weight = FontWeight.ExtraBold,
       variationSettings = FontVariation.Settings(FontVariation.weight(800)),
     ),
+  )
+
+@OptIn(ExperimentalTextApi::class)
+val EInkSerifFamily =
+  FontFamily(
+    Font(
+      resId = R.font.bitter,
+      weight = FontWeight.Normal,
+      variationSettings = FontVariation.Settings(FontVariation.weight(400)),
+    ),
+    Font(
+      resId = R.font.bitter,
+      weight = FontWeight.Medium,
+      variationSettings = FontVariation.Settings(FontVariation.weight(500)),
+    ),
+    Font(
+      resId = R.font.bitter,
+      weight = FontWeight.SemiBold,
+      variationSettings = FontVariation.Settings(FontVariation.weight(600)),
+    ),
+    Font(
+      resId = R.font.bitter,
+      weight = FontWeight.Bold,
+      variationSettings = FontVariation.Settings(FontVariation.weight(700)),
+    ),
+    Font(
+      resId = R.font.bitter,
+      weight = FontWeight.ExtraBold,
+      variationSettings = FontVariation.Settings(FontVariation.weight(800)),
+    ),
+  )
+
+private val EInkMaterialShapes =
+  Shapes(
+    extraSmall = EInkShapes.Badge,
+    small = EInkShapes.Control,
+    medium = EInkShapes.Card,
+    large = EInkShapes.Hero,
   )
 
 @Composable
@@ -93,34 +132,40 @@ fun EInkTheme(
   tone: EInkTone = EInkTone.HIGH_CONTRAST,
   content: @Composable () -> Unit,
 ) {
-  MaterialTheme(colorScheme = eInkColorScheme(tone), typography = eInkTypography(), content = content)
+  MaterialTheme(
+    colorScheme = eInkColorScheme(tone),
+    typography = eInkTypography(),
+    shapes = EInkMaterialShapes,
+    content = content,
+  )
 }
 
 private fun TextStyle.sans() = copy(fontFamily = EInkSansFamily)
+private fun TextStyle.serif() = copy(fontFamily = EInkSerifFamily)
 
 private fun eInkTypography(): Typography {
   val base = Typography()
   return base.copy(
-    displayLarge = base.displayLarge.sans(),
-    displayMedium = base.displayMedium.sans(),
-    displaySmall = base.displaySmall.sans(),
+    displayLarge = base.displayLarge.serif(),
+    displayMedium = base.displayMedium.serif(),
+    displaySmall = base.displaySmall.serif(),
     headlineLarge =
-      base.headlineLarge.sans().copy(
-        fontSize = 26.sp,
-        lineHeight = 32.sp,
+      base.headlineLarge.serif().copy(
+        fontSize = 27.sp,
+        lineHeight = 33.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-0.4).sp,
       ),
     headlineMedium =
-      base.headlineMedium.sans().copy(
+      base.headlineMedium.serif().copy(
         fontSize = 22.sp,
         lineHeight = 28.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-0.3).sp,
       ),
-    headlineSmall = base.headlineSmall.sans(),
+    headlineSmall = base.headlineSmall.serif(),
     titleLarge =
-      base.titleLarge.sans().copy(
+      base.titleLarge.serif().copy(
         fontSize = 20.sp,
         lineHeight = 26.sp,
         fontWeight = FontWeight.Bold,
