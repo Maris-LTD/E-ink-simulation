@@ -27,8 +27,6 @@ data class EInkSettings(
   val contrast: Float = 1.25f,
   val brightness: Float = -1f,
   val orientationLock: OrientationLock = OrientationLock.AUTO,
-  val flashEnabled: Boolean = false,
-  val flashEveryPages: Int = 6,
   val animations: Boolean = false,
   val paperGrain: Boolean = true,
   val ghosting: Boolean = false,

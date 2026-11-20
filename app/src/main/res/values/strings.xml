@@ -396,7 +396,6 @@
     <string name="onboard_tone_contrast">High Contrast</string>
     <string name="onboard_tone_paper">Warm Paper</string>
     <string name="onboard_tone_gray">Soft Gray</string>
-    <string name="onboard_toggle_flash">E-Ink Refresh Flash</string>
 
     <string name="onboard_s2_tag">STEP 2 / 4 · LOCK SCREEN</string>
     <string name="onboard_s2_title">Read Right on the Lock Screen</string>

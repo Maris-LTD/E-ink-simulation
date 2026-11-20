@@ -16,7 +16,7 @@ import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkSettingsStore
-import com.example.emptyapp.reader.RefreshFlashController
+import com.example.emptyapp.reader.GhostingController
 import com.example.emptyapp.reader.pdf.PdfBookConfig
 import com.example.emptyapp.reader.pdf.PdfBookConfigStore
 import com.example.emptyapp.reader.pdf.PdfDocumentClassifier
@@ -90,10 +90,11 @@ class ReaderViewModel(
   private val context: Context? = null,
   private val elapsedRealtimeMs: () -> Long = { SystemClock.elapsedRealtime() },
   private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+  private val ghostingCyclePages: Int = GhostingController.DEFAULT_CYCLE_PAGES,
 ) : ViewModel() {
   private fun str(resId: Int, fallback: String): String =
     context?.let { LocaleHelper.wrap(it).getString(resId) } ?: fallback
-  private val flashController = RefreshFlashController()
+  private val ghostingController = GhostingController(ghostingCyclePages)
   private var publication: Publication? = null
   private var loadJob: Job? = null
   private var searchIterator: SearchIterator? = null
@@ -117,9 +118,8 @@ class ReaderViewModel(
 
   private val mutableState = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
   private val mutableProgress = MutableStateFlow(0f)
-  private val mutableFlashTrigger = MutableStateFlow(0)
   private val mutablePageTurnTrigger = MutableStateFlow(0)
-  private val mutablePagesSinceFlash = MutableStateFlow(0)
+  private val mutableGhostingSteps = MutableStateFlow(0)
   private val mutableDictionaryState = MutableStateFlow<DictionaryUiState?>(null)
   private val mutableSearchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
   private val mutableOverlayOpen = MutableStateFlow(false)
@@ -129,9 +129,8 @@ class ReaderViewModel(
 
   val state: StateFlow<ReaderUiState> = mutableState.asStateFlow()
   val progress: StateFlow<Float> = mutableProgress.asStateFlow()
-  val flashTrigger: StateFlow<Int> = mutableFlashTrigger.asStateFlow()
   val pageTurnTrigger: StateFlow<Int> = mutablePageTurnTrigger.asStateFlow()
-  val pagesSinceFlash: StateFlow<Int> = mutablePagesSinceFlash.asStateFlow()
+  val ghostingSteps: StateFlow<Int> = mutableGhostingSteps.asStateFlow()
   val dictionaryState: StateFlow<DictionaryUiState?> = mutableDictionaryState.asStateFlow()
   val searchState: StateFlow<SearchUiState> = mutableSearchState.asStateFlow()
   val overlayOpen: StateFlow<Boolean> = mutableOverlayOpen.asStateFlow()
@@ -205,8 +204,8 @@ class ReaderViewModel(
       expectRelayout()
     }
     if (before.copy(brightness = after.brightness) != after) {
-      flashController.reset()
-      mutablePagesSinceFlash.value = 0
+      ghostingController.reset()
+      mutableGhostingSteps.value = 0
     }
   }
 
@@ -314,13 +313,8 @@ class ReaderViewModel(
 
   private fun recordPageTurnStep() {
     pendingPages += 1
-    val step = flashController.onPageTurnStep(settings.value)
-    mutablePagesSinceFlash.value = step.pagesSinceFlash
-    if (step.fullRefresh) {
-      mutableFlashTrigger.value += 1
-    } else {
-      mutablePageTurnTrigger.value += 1
-    }
+    mutableGhostingSteps.value = ghostingController.onPageTurn(settings.value)
+    mutablePageTurnTrigger.value += 1
   }
 
   private suspend fun flushProgress() {

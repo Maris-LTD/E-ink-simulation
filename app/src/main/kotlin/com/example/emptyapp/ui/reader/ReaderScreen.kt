@@ -72,7 +72,7 @@ import com.example.emptyapp.reader.pdf.PdfReadingMode
 import com.example.emptyapp.reader.attachReaderInput
 import com.example.emptyapp.reader.awaitView
 import com.example.emptyapp.ui.eink.PaperGrainOverlay
-import com.example.emptyapp.ui.eink.RefreshFlashOverlay
+import com.example.emptyapp.ui.eink.GhostingOverlay
 import com.example.emptyapp.ui.monet.PdfProPreviewLimitCard
 import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
@@ -81,7 +81,6 @@ import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
@@ -350,13 +349,12 @@ fun ReaderScreen(
           onUpdate = { fragment -> if (navigator == null) navigator = fragment },
         )
     }
-    ReaderGhostAndFlashLayer(
+    ReaderGhostLayer(
       navigator = navigator,
       bookFormat = bookFormat,
       settings = settings,
-      flashTriggerFlow = viewModel.flashTrigger,
       pageTurnTriggerFlow = viewModel.pageTurnTrigger,
-      pagesSinceFlashFlow = viewModel.pagesSinceFlash,
+      ghostingStepsFlow = viewModel.ghostingSteps,
     )
     if (isAdaptivePdfBlocked) {
       PdfProPreviewLimitCard(
@@ -722,16 +720,14 @@ private fun ReaderFooterBarContainer(
 }
 
 @Composable
-private fun ReaderGhostAndFlashLayer(
+private fun ReaderGhostLayer(
   navigator: NavigatorFragment?,
   bookFormat: BookFormat,
   settings: EInkSettings,
-  flashTriggerFlow: StateFlow<Int>,
   pageTurnTriggerFlow: StateFlow<Int>,
-  pagesSinceFlashFlow: StateFlow<Int>,
+  ghostingStepsFlow: StateFlow<Int>,
 ) {
-  val flashTrigger by flashTriggerFlow.collectAsStateWithLifecycle()
-  val pagesSinceFlash by pagesSinceFlashFlow.collectAsStateWithLifecycle()
+  val ghostingSteps by ghostingStepsFlow.collectAsStateWithLifecycle()
   var latestSnapshot by remember { mutableStateOf<GhostSnapshotCapture?>(null) }
   var activeGhost by remember { mutableStateOf<GhostSnapshotCapture?>(null) }
   val bufferA = remember { arrayOfNulls<Bitmap>(1) }
@@ -746,8 +742,8 @@ private fun ReaderGhostAndFlashLayer(
       return@LaunchedEffect
     }
     val view = nav.awaitView()
-    merge(pageTurnTriggerFlow, flashTriggerFlow).collect {
-      activeGhost = if (pagesSinceFlashFlow.value > 0) latestSnapshot else null
+    pageTurnTriggerFlow.collect {
+      activeGhost = if (ghostingStepsFlow.value > 0) latestSnapshot else null
       delay(220L)
       val slotIndex = nextBufferSlot
       val slot = if (slotIndex == 0) bufferA else bufferB
@@ -760,7 +756,7 @@ private fun ReaderGhostAndFlashLayer(
   }
 
   val ghostAlpha =
-    if (settings.ghosting && pagesSinceFlash > 0) (pagesSinceFlash * 0.014f).coerceAtMost(0.07f) else 0f
+    if (settings.ghosting && ghostingSteps > 0) (ghostingSteps * 0.014f).coerceAtMost(0.07f) else 0f
   val activeGhostCapture = activeGhost
   val applyGhostFilter =
     activeGhostCapture != null &&
@@ -781,10 +777,9 @@ private fun ReaderGhostAndFlashLayer(
       }
     }
 
-  RefreshFlashOverlay(
+  GhostingOverlay(
     ghostBitmap = activeGhostCapture?.bitmap,
     ghostAlpha = ghostAlpha,
-    flashTrigger = flashTrigger,
     ghostColorFilter = ghostColorFilter,
   )
 }

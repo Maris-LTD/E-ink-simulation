@@ -340,11 +340,6 @@ private fun StepDisplaySetup(
   }
 
   ToggleOptionRow(
-    label = stringResource(R.string.onboard_toggle_flash),
-    checked = settings.flashEnabled,
-    onCheckedChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
-  )
-  ToggleOptionRow(
     label = stringResource(R.string.settings_paper_grain),
     checked = settings.paperGrain,
     onCheckedChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },

@@ -11,6 +11,7 @@ import com.example.emptyapp.data.dictionary.DictionaryService
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkSettingsStore
+import com.example.emptyapp.reader.GhostingController
 import com.example.emptyapp.reader.pdf.PdfBookConfigStore
 import com.example.emptyapp.reader.pdf.PdfGuidedNavigation
 import com.example.emptyapp.reader.pdf.PdfReadingMode
@@ -68,6 +69,7 @@ class ReaderViewModelPageTurnTest {
     dir: File,
     initialSettings: EInkSettings,
     nowProvider: () -> Long,
+    ghostingCyclePages: Int = GhostingController.DEFAULT_CYCLE_PAGES,
   ): Triple<ReaderViewModel, ReadingStatsRepository, EInkSettingsStore> {
     val repo =
       LibraryRepository(
@@ -112,12 +114,13 @@ class ReaderViewModelPageTurnTest {
         statsRepository = stats,
         elapsedRealtimeMs = nowProvider,
         ioDispatcher = Dispatchers.Unconfined,
+        ghostingCyclePages = ghostingCyclePages,
       )
     return Triple(vm, stats, settingsStore)
   }
 
   @Test
-  fun subPageScreenTurnsIncrementPendingPagesAndTriggerFlashOnInterval() = runBlocking {
+  fun subPageScreenTurnsIncrementPendingPagesAndCycleGhostingOnInterval() = runBlocking {
     val dir = createTempDirectory("reader_vm_subpage_test").toFile()
     var nowMs = 5_000L
     var vmRef: ReaderViewModel? = null
@@ -125,33 +128,30 @@ class ReaderViewModelPageTurnTest {
       val (vm, stats, _) =
         createViewModel(
           dir = dir,
-          initialSettings = EInkSettings(flashEnabled = true, flashEveryPages = 3),
+          initialSettings = EInkSettings(ghosting = true),
           nowProvider = { nowMs },
+          ghostingCyclePages = 3,
         )
       vmRef = vm
 
       vm.onReaderForegroundChanged(true)
       vm.simulatePdfPageChanged(pageIndex = 0)
-      assertEquals(0, vm.pagesSinceFlash.value)
-      assertEquals(0, vm.flashTrigger.value)
+      assertEquals(0, vm.ghostingSteps.value)
       assertEquals(0, vm.pageTurnTrigger.value)
 
       // 2 sub-page turns within PDF page 0
       vm.onSubPageScreenTurned()
-      assertEquals(1, vm.pagesSinceFlash.value)
+      assertEquals(1, vm.ghostingSteps.value)
       assertEquals(1, vm.pageTurnTrigger.value)
-      assertEquals(0, vm.flashTrigger.value)
 
       vm.onSubPageScreenTurned()
-      assertEquals(2, vm.pagesSinceFlash.value)
+      assertEquals(2, vm.ghostingSteps.value)
       assertEquals(2, vm.pageTurnTrigger.value)
-      assertEquals(0, vm.flashTrigger.value)
 
-      // 3rd turn crosses to PDF page 1 -> hits flash interval 3, resets counter
+      // 3rd turn crosses to PDF page 1 -> hits ghosting cycle 3, resets counter
       vm.simulatePdfPageChanged(pageIndex = 1)
-      assertEquals(0, vm.pagesSinceFlash.value)
-      assertEquals(2, vm.pageTurnTrigger.value)
-      assertEquals(1, vm.flashTrigger.value)
+      assertEquals(0, vm.ghostingSteps.value)
+      assertEquals(3, vm.pageTurnTrigger.value)
 
       vm.onReaderForegroundChanged(false)
       stats.recordReading(0, 0)
@@ -171,8 +171,9 @@ class ReaderViewModelPageTurnTest {
       val (vm, stats, _) =
         createViewModel(
           dir = dir,
-          initialSettings = EInkSettings(flashEnabled = true, flashEveryPages = 4),
+          initialSettings = EInkSettings(ghosting = true),
           nowProvider = { nowMs },
+          ghostingCyclePages = 4,
         )
       vmRef = vm
 
@@ -249,10 +250,10 @@ class ReaderViewModelPageTurnTest {
 
       vm.onReaderForegroundChanged(false)
       stats.recordReading(0, 0)
-      // Total steps: 2 reflow screens + 1 guided region step + 1 guided page turn = 4 -> triggers 1 flash
+      // Total steps: 2 reflow screens + 1 guided region step + 1 guided page turn = 4 -> cycles ghosting back to 0
       assertEquals(4, stats.stats.value.totalPagesTurned)
-      assertEquals(1, vm.flashTrigger.value)
-      assertEquals(0, vm.pagesSinceFlash.value)
+      assertEquals(4, vm.pageTurnTrigger.value)
+      assertEquals(0, vm.ghostingSteps.value)
     } finally {
       vmRef?.onReaderForegroundChanged(false)
       dir.deleteRecursively()
@@ -268,8 +269,9 @@ class ReaderViewModelPageTurnTest {
       val (vm, stats, _) =
         createViewModel(
           dir = dir,
-          initialSettings = EInkSettings(flashEnabled = true, flashEveryPages = 3),
+          initialSettings = EInkSettings(ghosting = true),
           nowProvider = { nowMs },
+          ghostingCyclePages = 3,
         )
       vmRef = vm
 
@@ -280,39 +282,39 @@ class ReaderViewModelPageTurnTest {
       vm.updateSettings { it.copy(fontScale = 1.6) }
       nowMs += 2_000L
       vm.simulatePdfPageChanged(1)
-      assertEquals(0, vm.pagesSinceFlash.value)
+      assertEquals(0, vm.ghostingSteps.value)
       assertEquals(0, vm.pageTurnTrigger.value)
 
       // Real user page turn right after (100 ms later) is counted immediately because the one-shot flag was consumed
       nowMs += 100L
       vm.simulatePdfPageChanged(2)
-      assertEquals(1, vm.pagesSinceFlash.value)
+      assertEquals(1, vm.ghostingSteps.value)
       assertEquals(1, vm.pageTurnTrigger.value)
 
       // Same one-shot behavior for expectRelayout() (e.g. onConfigurationChanged) + sub-page turn
       vm.expectRelayout()
       nowMs += 1_800L
       vm.onSubPageScreenTurned()
-      assertEquals(1, vm.pagesSinceFlash.value)
+      assertEquals(1, vm.ghostingSteps.value)
       assertEquals(1, vm.pageTurnTrigger.value)
 
       nowMs += 150L
       vm.onSubPageScreenTurned()
-      assertEquals(2, vm.pagesSinceFlash.value)
+      assertEquals(2, vm.ghostingSteps.value)
       assertEquals(2, vm.pageTurnTrigger.value)
 
       // Same one-shot behavior for expectJump() (TOC / search / slider / bookmark jump)
       vm.expectJump()
       nowMs += 400L
       vm.simulatePdfPageChanged(7)
-      assertEquals(2, vm.pagesSinceFlash.value)
+      assertEquals(2, vm.ghostingSteps.value)
       assertEquals(2, vm.pageTurnTrigger.value)
 
-      // Next real turn after jump hits flashEveryPages = 3
+      // Next real turn after jump hits ghostingCyclePages = 3
       nowMs += 200L
       vm.simulatePdfPageChanged(8)
-      assertEquals(0, vm.pagesSinceFlash.value)
-      assertEquals(1, vm.flashTrigger.value)
+      assertEquals(0, vm.ghostingSteps.value)
+      assertEquals(3, vm.pageTurnTrigger.value)
 
       vm.onReaderForegroundChanged(false)
       stats.recordReading(0, 0)
@@ -332,8 +334,9 @@ class ReaderViewModelPageTurnTest {
       val (vm, stats, _) =
         createViewModel(
           dir = dir,
-          initialSettings = EInkSettings(flashEnabled = true, flashEveryPages = 3),
+          initialSettings = EInkSettings(ghosting = true),
           nowProvider = { nowMs },
+          ghostingCyclePages = 3,
         )
       vmRef = vm
 
@@ -343,19 +346,19 @@ class ReaderViewModelPageTurnTest {
       // Jump to the same page -> no locator change arrives
       vm.expectJump()
       vm.simulatePdfPageChanged(3)
-      assertEquals(0, vm.pagesSinceFlash.value)
+      assertEquals(0, vm.ghostingSteps.value)
 
       // After fallback timeout (> 3_000 ms), the next real page turn is counted normally
       nowMs += ReaderViewModel.RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS + 100L
       vm.simulatePdfPageChanged(4)
-      assertEquals(1, vm.pagesSinceFlash.value)
+      assertEquals(1, vm.ghostingSteps.value)
       assertEquals(1, vm.pageTurnTrigger.value)
 
       // Same expiry check for expectRelayout() with no position change
       vm.expectRelayout()
       nowMs += ReaderViewModel.RELAYOUT_JUMP_FALLBACK_TIMEOUT_MS + 50L
       vm.onSubPageScreenTurned()
-      assertEquals(2, vm.pagesSinceFlash.value)
+      assertEquals(2, vm.ghostingSteps.value)
       assertEquals(2, vm.pageTurnTrigger.value)
 
       vm.onReaderForegroundChanged(false)

@@ -258,9 +258,6 @@ private fun DisplaySettingsTab(
   SettingsSwitchRow(stringResource(R.string.settings_paper_grain), settings.paperGrain) { on ->
     onChange { it.copy(paperGrain = on) }
   }
-  SettingsSwitchRow(stringResource(R.string.onboard_toggle_flash), settings.flashEnabled) { on ->
-    onChange { it.copy(flashEnabled = on) }
-  }
   SettingsSwitchRow(stringResource(R.string.settings_ghosting), settings.ghosting) { on ->
     onChange { it.copy(ghosting = on) }
   }

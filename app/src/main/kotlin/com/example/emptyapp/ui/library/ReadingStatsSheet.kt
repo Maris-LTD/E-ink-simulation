@@ -1427,24 +1427,6 @@ private fun EInkDisplaySettingsCard(
         onCheckedChange = null,
       )
     }
-    Row(
-      modifier =
-        Modifier.fillMaxWidth()
-          .toggleable(
-            value = settings.flashEnabled,
-            role = Role.Switch,
-            onValueChange = { on -> onUpdateSettings { it.copy(flashEnabled = on) } },
-          )
-          .semantics(mergeDescendants = true) {},
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-      EInkText(stringResource(R.string.onboard_toggle_flash), style = MaterialTheme.typography.bodyMedium)
-      Switch(
-        checked = settings.flashEnabled,
-        onCheckedChange = null,
-      )
-    }
     EInkText(
       text = stringResource(R.string.settings_orientation),
       style = MaterialTheme.typography.bodyMedium,
