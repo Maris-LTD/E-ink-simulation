@@ -13,6 +13,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +39,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,16 +47,20 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -303,8 +310,6 @@ fun LibraryScreen(
           paywallFeature = null
           paywallOpen = true
         },
-        onOpenSettings = onOpenSettings,
-        onOpenStats = onOpenStats,
       )
       var wallpaperActive by remember {
         mutableStateOf(com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context))
@@ -328,7 +333,8 @@ fun LibraryScreen(
       val hasStartedReading = remember(books, stats.totalPagesTurned) {
         stats.totalPagesTurned >= 3 || books.any { it.progress > 0f }
       }
-      if (shouldShowSetupBanner(setupBannerDismissed, lockFeaturesCount, hasStartedReading)) {
+      val showSetupBanner = shouldShowSetupBanner(setupBannerDismissed, lockFeaturesCount, hasStartedReading)
+      if (showSetupBanner) {
         Row(
           modifier =
             Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -367,7 +373,8 @@ fun LibraryScreen(
       }
       val completedBooksCount = remember(books) { books.count { it.progress >= 0.99f } }
       if (
-        billing != null &&
+        !showSetupBanner &&
+          billing != null &&
           proGate != null &&
           ReadingGamification.shouldShowMilestoneNudge(
             isPro = entitlement.isPro,
@@ -388,18 +395,16 @@ fun LibraryScreen(
           modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
       }
-      EInkTabRow(selectedTab = selectedTab, onSelect = { selectedTab = it })
-      if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS && tabBooks.isNotEmpty()) {
-        AuthorFilterRow(
-          totalCount = tabBooks.size,
-          authors = authors,
-          selectedAuthor = selectedAuthor,
-          sortMode = sortMode,
-          onSelectSort = { sortMode = it },
-          onSelect = { selectedAuthor = it },
-        )
-        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+      val clearFilters = {
+        selectedTab = LibraryTab.ALL
+        sortMode = LibrarySort.RECENT
+        selectedAuthor = null
       }
+      var filterSheetOpen by rememberSaveable { mutableStateOf(false) }
+      val isFilterActive =
+        selectedTab != LibraryTab.ALL || sortMode != LibrarySort.RECENT || selectedAuthor != null
+      val filterLabel = stringResource(selectedTab.labelRes)
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
       Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         if (selectedTab == LibraryTab.BOOKMARKS) {
           val bookmarkDeletedMsg = stringResource(com.example.emptyapp.R.string.lib_bookmark_deleted)
@@ -491,10 +496,14 @@ fun LibraryScreen(
                 selectedAuthor = selectedAuthor,
               )
             }
+          val listBooks =
+            remember(filteredBooks, heroBook) {
+              if (heroBook != null) filteredBooks.filterNot { it.id == heroBook.id } else filteredBooks
+            }
           if (viewMode == LibraryViewMode.LIST) {
             BookList(
               heroBook = heroBook,
-              books = filteredBooks,
+              books = listBooks,
               grayscaleCovers = grayscaleCovers,
               coverOf = viewModel::coverFileOf,
               onOpenBook = { id -> onOpenBook(id, null) },
@@ -505,7 +514,7 @@ fun LibraryScreen(
           } else {
             BookGrid(
               heroBook = heroBook,
-              books = filteredBooks,
+              books = listBooks,
               columns = viewMode.columns,
               grayscaleCovers = grayscaleCovers,
               coverOf = viewModel::coverFileOf,
@@ -516,6 +525,13 @@ fun LibraryScreen(
             )
           }
         }
+        LibraryFilterFloatingButton(
+          filterLabel = filterLabel,
+          isFilterActive = isFilterActive,
+          onClick = { filterSheetOpen = true },
+          onClear = clearFilters,
+          modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 14.dp),
+        )
       }
       val searchPlaceholder =
         when (selectedTab) {
@@ -536,6 +552,20 @@ fun LibraryScreen(
         onAddBook = { launchImportPicker() },
         onAddFolder = { launchFolderPicker() },
       )
+      if (filterSheetOpen) {
+        LibraryFilterSheet(
+          selectedTab = selectedTab,
+          sortMode = sortMode,
+          totalCount = tabBooks.size,
+          authors = authors,
+          selectedAuthor = selectedAuthor,
+          onSelectTab = { selectedTab = it },
+          onSelectSort = { sortMode = it },
+          onSelectAuthor = { selectedAuthor = it },
+          onReset = clearFilters,
+          onDismiss = { filterSheetOpen = false },
+        )
+      }
     }
     pendingDetailsBook?.let { bookToInspect ->
       val fileSizeBytes = remember(bookToInspect.id) {
@@ -631,8 +661,6 @@ private fun LibraryHeader(
   isPro: Boolean,
   showProButton: Boolean,
   onOpenPaywall: () -> Unit,
-  onOpenSettings: () -> Unit,
-  onOpenStats: () -> Unit,
 ) {
   Row(
     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -640,71 +668,92 @@ private fun LibraryHeader(
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     EInkText(stringResource(com.example.emptyapp.R.string.app_name), style = MaterialTheme.typography.headlineLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-      if (showProButton) {
-        val proCd = stringResource(com.example.emptyapp.R.string.pro_card_title)
-        Box(
-          modifier =
-            Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-              .clickable(onClick = onOpenPaywall)
-              .semantics { contentDescription = proCd },
-          contentAlignment = Alignment.Center,
-        ) {
-          Box(
-            modifier =
-              Modifier.clip(EInkShapes.Badge)
-                .background(
-                  if (isPro) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                  EInkShapes.Badge,
-                )
-                .border(EInkBorder.Card, MaterialTheme.colorScheme.outline, EInkShapes.Badge)
-                .padding(horizontal = 8.dp, vertical = 5.dp),
-            contentAlignment = Alignment.Center,
-          ) {
-            EInkText(
-              text = stringResource(com.example.emptyapp.R.string.paywall_badge_pro),
-              style = MaterialTheme.typography.labelSmall,
-              color = if (isPro) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
-            )
-          }
-        }
-      }
-      val settingsCd = stringResource(com.example.emptyapp.R.string.cd_settings)
+    if (showProButton) {
+      val proCd = stringResource(com.example.emptyapp.R.string.pro_card_title)
       Box(
         modifier =
-          Modifier.size(48.dp)
-            .clickable(onClick = onOpenSettings)
-            .semantics { contentDescription = settingsCd },
+          Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+            .clickable(onClick = onOpenPaywall)
+            .semantics { contentDescription = proCd },
         contentAlignment = Alignment.Center,
       ) {
         Box(
           modifier =
-            Modifier.size(38.dp)
-              .clip(CircleShape)
-              .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+            Modifier.clip(EInkShapes.Badge)
+              .background(
+                if (isPro) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                EInkShapes.Badge,
+              )
+              .border(EInkBorder.Card, MaterialTheme.colorScheme.outline, EInkShapes.Badge)
+              .padding(horizontal = 8.dp, vertical = 5.dp),
           contentAlignment = Alignment.Center,
         ) {
-          SettingsGearIcon(modifier = Modifier.size(20.dp))
+          EInkText(
+            text = stringResource(com.example.emptyapp.R.string.paywall_badge_pro),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isPro) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
+          )
         }
       }
-      val statsCd = stringResource(com.example.emptyapp.R.string.cd_reading_stats)
+    }
+  }
+}
+
+@Composable
+private fun LibraryFilterFloatingButton(
+  filterLabel: String,
+  isFilterActive: Boolean,
+  onClick: () -> Unit,
+  onClear: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val filterCd = stringResource(com.example.emptyapp.R.string.cd_library_filter)
+  val fg = if (isFilterActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground
+  val bg = if (isFilterActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
+  val borderWidth = if (isFilterActive) EInkBorder.Active else EInkBorder.Card
+  val borderColor = if (isFilterActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+  Row(
+    modifier = modifier,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    if (isFilterActive) {
+      val clearFilterCd = stringResource(com.example.emptyapp.R.string.cd_clear_filter)
       Box(
         modifier =
           Modifier.size(48.dp)
-            .clickable(onClick = onOpenStats)
-            .semantics { contentDescription = statsCd },
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.background, CircleShape)
+            .border(EInkBorder.Card, MaterialTheme.colorScheme.outline, CircleShape)
+            .clickable(onClick = onClear)
+            .semantics { contentDescription = clearFilterCd },
         contentAlignment = Alignment.Center,
       ) {
-        Box(
-          modifier =
-            Modifier.size(38.dp)
-              .clip(CircleShape)
-              .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-          contentAlignment = Alignment.Center,
-        ) {
-          ReaderAvatarIcon(modifier = Modifier.size(26.dp))
-        }
+        CloseIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onBackground)
       }
+    }
+    Row(
+      modifier =
+        Modifier.defaultMinSize(minHeight = 48.dp)
+          .clip(EInkShapes.Pill)
+          .background(bg, EInkShapes.Pill)
+          .border(width = borderWidth, color = borderColor, shape = EInkShapes.Pill)
+          .clickable(onClick = onClick)
+          .semantics { contentDescription = filterCd }
+          .padding(horizontal = 14.dp, vertical = 10.dp),
+      horizontalArrangement = Arrangement.spacedBy(5.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      SortIcon(
+        modifier = Modifier.size(14.dp),
+        tint = fg,
+      )
+      EInkText(
+        text = filterLabel,
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = fg,
+        maxLines = 1,
+      )
     }
   }
 }
@@ -891,128 +940,158 @@ private fun ViewModeIcon(viewMode: LibraryViewMode) {
   }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun EInkTabRow(selectedTab: LibraryTab, onSelect: (LibraryTab) -> Unit) {
-  Column {
-    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
-    Row(
-      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
-      horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-      LibraryTab.entries.forEach { tab ->
-        val active = tab == selectedTab
-        Column(
-          modifier =
-            Modifier.clickable { onSelect(tab) }
-              .semantics {
-                role = Role.Tab
-                selected = active
-              }
-              .padding(horizontal = 12.dp, vertical = 10.dp),
-          horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-          EInkText(
-            text = stringResource(tab.labelRes),
-            style = MaterialTheme.typography.titleSmall.copy(
-              fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-            ),
-            color =
-              if (active) MaterialTheme.colorScheme.primary
-              else MaterialTheme.colorScheme.secondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-          )
-          Box(
-            modifier =
-              Modifier.width(24.dp)
-                .height(2.5.dp)
-                .clip(EInkShapes.Pill)
-                .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background),
-          )
-        }
-      }
-    }
-    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
-  }
-}
-
-@Composable
-private fun AuthorFilterRow(
+private fun LibraryFilterSheet(
+  selectedTab: LibraryTab,
+  sortMode: LibrarySort,
   totalCount: Int,
   authors: List<String>,
   selectedAuthor: String?,
-  sortMode: LibrarySort,
+  onSelectTab: (LibraryTab) -> Unit,
   onSelectSort: (LibrarySort) -> Unit,
-  onSelect: (String?) -> Unit,
+  onSelectAuthor: (String?) -> Unit,
+  onReset: () -> Unit,
+  onDismiss: () -> Unit,
 ) {
-  var sortMenuOpen by remember { mutableStateOf(false) }
-  Row(
-    modifier =
-      Modifier.fillMaxWidth()
-        .horizontalScroll(rememberScrollState())
-        .padding(horizontal = 16.dp, vertical = 10.dp),
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-    verticalAlignment = Alignment.CenterVertically,
+  val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+  val hasActiveFilter =
+    selectedTab != LibraryTab.ALL || sortMode != LibrarySort.RECENT || selectedAuthor != null
+  ModalBottomSheet(
+    onDismissRequest = onDismiss,
+    sheetState = sheetState,
+    shape = EInkShapes.SheetTop,
+    containerColor = MaterialTheme.colorScheme.background,
+    dragHandle = null,
   ) {
-    Box {
-      val sortCd = stringResource(com.example.emptyapp.R.string.lib_sort_label)
+    Column(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+      verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
       Row(
-        modifier =
-          Modifier.clip(EInkShapes.Pill)
-            .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Pill)
-            .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Pill)
-            .clickable { sortMenuOpen = true }
-            .semantics { contentDescription = sortCd }
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
-        SortIcon(modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onBackground)
         EInkText(
-          text = stringResource(sortMode.labelRes),
-          style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-          maxLines = 1,
+          text = stringResource(com.example.emptyapp.R.string.lib_filter_title),
+          style = MaterialTheme.typography.titleLarge,
         )
-      }
-      DropdownMenu(
-        expanded = sortMenuOpen,
-        onDismissRequest = { sortMenuOpen = false },
-        modifier =
-          Modifier.clip(EInkShapes.Card)
-            .background(MaterialTheme.colorScheme.background, EInkShapes.Card)
-            .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card),
-      ) {
-        LibrarySort.entries.forEach { option ->
-          DropdownMenuItem(
-            text = {
-              EInkText(
-                text = stringResource(option.labelRes),
-                style = MaterialTheme.typography.bodyMedium.copy(
-                  fontWeight = if (option == sortMode) FontWeight.Bold else FontWeight.Normal,
-                ),
-              )
-            },
-            onClick = {
-              sortMenuOpen = false
-              onSelectSort(option)
-            },
-          )
+        val closeCd = stringResource(com.example.emptyapp.R.string.action_close)
+        IconButton(
+          onClick = onDismiss,
+          modifier = Modifier.size(48.dp).semantics { contentDescription = closeCd },
+        ) {
+          CloseIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
         }
       }
-    }
-    if (authors.size > 1 || selectedAuthor != null) {
-      FilterPill(
-        label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
-        active = selectedAuthor == null,
-        onClick = { onSelect(null) },
-      )
-      authors.forEach { author ->
-        FilterPill(
-          label = author,
-          active = selectedAuthor == author,
-          onClick = { onSelect(if (selectedAuthor == author) null else author) },
-        )
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+      Column(
+        modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          EInkText(
+            text = stringResource(com.example.emptyapp.R.string.lib_filter_view),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.secondary,
+          )
+          FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            LibraryTab.entries.forEach { tab ->
+              FilterPill(
+                label = stringResource(tab.labelRes),
+                active = tab == selectedTab,
+                onClick = { onSelectTab(tab) },
+              )
+            }
+          }
+        }
+        if (selectedTab != LibraryTab.HIGHLIGHTS && selectedTab != LibraryTab.BOOKMARKS) {
+          HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            EInkText(
+              text = stringResource(com.example.emptyapp.R.string.lib_sort_label),
+              style = MaterialTheme.typography.labelSmall,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+            FlowRow(
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              LibrarySort.entries.forEach { option ->
+                FilterPill(
+                  label = stringResource(option.labelRes),
+                  active = option == sortMode,
+                  onClick = { onSelectSort(option) },
+                )
+              }
+            }
+          }
+          if (authors.size > 1 || selectedAuthor != null) {
+            HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              EInkText(
+                text = stringResource(com.example.emptyapp.R.string.lib_filter_author),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary,
+              )
+              FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+              ) {
+                FilterPill(
+                  label = stringResource(com.example.emptyapp.R.string.lib_author_all, totalCount),
+                  active = selectedAuthor == null,
+                  onClick = { onSelectAuthor(null) },
+                )
+                authors.forEach { author ->
+                  FilterPill(
+                    label = author,
+                    active = selectedAuthor == author,
+                    onClick = { onSelectAuthor(if (selectedAuthor == author) null else author) },
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        OutlinedButton(
+          onClick = onReset,
+          enabled = hasActiveFilter,
+          shape = EInkShapes.Control,
+          modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
+        ) {
+          EInkText(
+            text = stringResource(com.example.emptyapp.R.string.lib_filter_reset),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (hasActiveFilter) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.secondary,
+          )
+        }
+        Button(
+          onClick = onDismiss,
+          shape = EInkShapes.Control,
+          colors =
+            ButtonDefaults.buttonColors(
+              containerColor = MaterialTheme.colorScheme.primary,
+              contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+          modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
+        ) {
+          EInkText(
+            text = stringResource(com.example.emptyapp.R.string.lib_filter_done),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onPrimary,
+          )
+        }
       }
     }
   }
@@ -1113,7 +1192,7 @@ private fun BookList(
   onShowDetails: (BookEntry) -> Unit,
   onRemove: (BookEntry) -> Unit,
 ) {
-  LazyColumn {
+  LazyColumn(contentPadding = PaddingValues(bottom = 76.dp)) {
     if (heroBook != null) {
       item(key = "continue_reading_hero") {
         ContinueReadingHeroCard(
@@ -1121,6 +1200,9 @@ private fun BookList(
           grayscaleCover = grayscaleCovers,
           coverFile = coverOf(heroBook),
           onOpen = { onOpenBook(heroBook.id) },
+          onToggleCompleted = { completed -> onToggleCompleted(heroBook, completed) },
+          onShowDetails = { onShowDetails(heroBook) },
+          onRemove = { onRemove(heroBook) },
           modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
       }
@@ -1153,9 +1235,10 @@ private fun BookGrid(
   onRemove: (BookEntry) -> Unit,
 ) {
   val spacing = if (columns >= 4) 10.dp else 14.dp
+  val basePadding = if (columns >= 4) 12.dp else 16.dp
   LazyVerticalGrid(
     columns = GridCells.Fixed(columns),
-    contentPadding = PaddingValues(if (columns >= 4) 12.dp else 16.dp),
+    contentPadding = PaddingValues(start = basePadding, top = basePadding, end = basePadding, bottom = basePadding + 64.dp),
     horizontalArrangement = Arrangement.spacedBy(spacing),
     verticalArrangement = Arrangement.spacedBy(16.dp),
     modifier = Modifier.fillMaxSize(),
@@ -1167,6 +1250,9 @@ private fun BookGrid(
           grayscaleCover = grayscaleCovers,
           coverFile = coverOf(heroBook),
           onOpen = { onOpenBook(heroBook.id) },
+          onToggleCompleted = { completed -> onToggleCompleted(heroBook, completed) },
+          onShowDetails = { onShowDetails(heroBook) },
+          onRemove = { onRemove(heroBook) },
         )
       }
     }
@@ -1254,7 +1340,7 @@ private fun BookGridCard(
         val actionsCd = stringResource(com.example.emptyapp.R.string.cd_book_actions)
         Box(
           modifier =
-            Modifier.size(36.dp)
+            Modifier.size(48.dp)
               .clickable { menuExpanded = true }
               .semantics { contentDescription = actionsCd },
           contentAlignment = Alignment.Center,

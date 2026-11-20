@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,7 +48,7 @@ fun LibraryBookmarkList(
     return
   }
   val deleteCd = stringResource(R.string.action_delete)
-  LazyColumn(modifier = Modifier.fillMaxSize()) {
+  LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 76.dp)) {
     items(bookmarks, key = { it.id }) { item ->
       val bookTitle = bookTitlesById[item.bookId]
       Row(

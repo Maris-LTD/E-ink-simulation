@@ -150,22 +150,22 @@ private fun eInkTypography(): Typography {
     displayMedium = base.displayMedium.serif(),
     displaySmall = base.displaySmall.serif(),
     headlineLarge =
-      base.headlineLarge.serif().copy(
+      base.headlineLarge.sans().copy(
         fontSize = 27.sp,
         lineHeight = 33.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-0.4).sp,
       ),
     headlineMedium =
-      base.headlineMedium.serif().copy(
+      base.headlineMedium.sans().copy(
         fontSize = 22.sp,
         lineHeight = 28.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-0.3).sp,
       ),
-    headlineSmall = base.headlineSmall.serif(),
+    headlineSmall = base.headlineSmall.sans(),
     titleLarge =
-      base.titleLarge.serif().copy(
+      base.titleLarge.sans().copy(
         fontSize = 20.sp,
         lineHeight = 26.sp,
         fontWeight = FontWeight.Bold,

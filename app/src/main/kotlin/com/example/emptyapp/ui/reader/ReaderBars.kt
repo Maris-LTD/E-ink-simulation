@@ -244,7 +244,6 @@ fun ReaderBottomBar(
         )
       }
     }
-    ToneSwatchStrip(tone = tone, onToneChange = onToneChange)
     BrightnessStrip(
       brightness = brightness,
       onBrightnessChange = onBrightnessChange,
@@ -259,12 +258,13 @@ fun ReaderBottomBar(
       val settingsCd = stringResource(R.string.cd_reader_settings)
       Row(
         modifier =
-          Modifier.clip(EInkShapes.Pill)
+          Modifier.defaultMinSize(minHeight = 48.dp)
+            .clip(EInkShapes.Pill)
             .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Pill)
             .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Pill)
             .clickable(onClick = onToggleSettings)
             .semantics { contentDescription = settingsCd }
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
       ) {

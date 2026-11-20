@@ -456,37 +456,37 @@ fun ReaderScreen(
         },
         modifier = Modifier.align(Alignment.TopCenter),
       )
-      val bottomBarProgress by viewModel.progress.collectAsStateWithLifecycle()
-      ReaderBottomBar(
-        progress = bottomBarProgress,
-        seekEnabled = positions.isNotEmpty(),
-        tone = settings.tone,
-        brightness = settings.brightness,
-        onToneChange = { tone -> viewModel.updateSettings { it.copy(tone = tone) } },
-        onBrightnessChange = viewModel::previewBrightness,
-        onBrightnessChangeFinished = viewModel::commitBrightness,
-        onSeekToProgress = { fraction ->
-          if (positions.isNotEmpty()) {
-            val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
-            viewModel.expectJump()
-            if (bookFormat == BookFormat.PDF) {
-              pdfController.jumpToPage(index)
-            } else {
-              navigator?.go(positions[index], animated = false)
+      if (!settingsOpen) {
+        val bottomBarProgress by viewModel.progress.collectAsStateWithLifecycle()
+        ReaderBottomBar(
+          progress = bottomBarProgress,
+          seekEnabled = positions.isNotEmpty(),
+          tone = settings.tone,
+          brightness = settings.brightness,
+          onToneChange = { tone -> viewModel.updateSettings { it.copy(tone = tone) } },
+          onBrightnessChange = viewModel::previewBrightness,
+          onBrightnessChangeFinished = viewModel::commitBrightness,
+          onSeekToProgress = { fraction ->
+            if (positions.isNotEmpty()) {
+              val index = (fraction * (positions.size - 1)).toInt().coerceIn(0, positions.lastIndex)
+              viewModel.expectJump()
+              if (bookFormat == BookFormat.PDF) {
+                pdfController.jumpToPage(index)
+              } else {
+                navigator?.go(positions[index], animated = false)
+              }
             }
-          }
-        },
-        focusMode = settings.focusMode,
-        onToggleFocusMode = { handleToggleFocusMode(!settings.focusMode) },
-        onToggleSettings = { settingsOpen = !settingsOpen },
-        modifier =
-          Modifier.align(Alignment.BottomCenter)
-            .onSizeChanged { bottomBarHeightPx = it.height },
-      )
+          },
+          focusMode = settings.focusMode,
+          onToggleFocusMode = { handleToggleFocusMode(!settings.focusMode) },
+          onToggleSettings = { settingsOpen = !settingsOpen },
+          modifier =
+            Modifier.align(Alignment.BottomCenter)
+              .onSizeChanged { bottomBarHeightPx = it.height },
+        )
+      }
     }
     if (settingsOpen) {
-      val bottomOffsetDp =
-        if (bottomBarHeightPx > 0) with(density) { bottomBarHeightPx.toDp() } else 148.dp
       ReaderSettingsPanel(
         settings = settings,
         isReflowable =
@@ -501,8 +501,8 @@ fun ReaderScreen(
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
-            .padding(start = 12.dp, end = 12.dp, bottom = bottomOffsetDp + 8.dp)
-            .heightIn(max = 380.dp),
+            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+            .heightIn(max = 420.dp),
       )
     }
     if (contentsOpen) {

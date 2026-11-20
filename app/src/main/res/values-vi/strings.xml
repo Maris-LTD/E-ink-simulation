@@ -4,6 +4,11 @@
     <string name="eink_launcher_label">eInk Launcher</string>
     <string name="contact_email">ebuyami2609@gmail.com</string>
 
+    <!-- Navigation -->
+    <string name="nav_library">Thư viện</string>
+    <string name="nav_stats">Hồ sơ &amp; Thống kê</string>
+    <string name="nav_settings">Cài đặt</string>
+
     <!-- Common actions -->
     <string name="action_close">Đóng</string>
     <string name="action_retry">Thử lại</string>
@@ -267,6 +272,9 @@
     <plurals name="stats_xp_streak_plurals">
         <item quantity="other">%1$d XP · Chuỗi: %2$d ngày (Kỷ lục: %3$d)</item>
     </plurals>
+    <plurals name="stats_streak_days">
+        <item quantity="other">Chuỗi: %1$d ngày (Kỷ lục: %2$d)</item>
+    </plurals>
     <string name="stats_xp_to_next">Còn %1$d XP để lên %2$s</string>
     <string name="stats_max_rank">Đã đạt cấp bậc cao nhất</string>
     <string name="stats_daily_goal">Mục tiêu hôm nay</string>
@@ -510,6 +518,13 @@
     <string name="lib_resume_btn">Đọc tiếp</string>
     <string name="lib_read_btn">Đọc ngay</string>
     <string name="lib_sort_label">Sắp xếp</string>
+    <string name="lib_filter_title">Lọc &amp; Sắp xếp</string>
+    <string name="lib_filter_view">Hiển thị</string>
+    <string name="lib_filter_author">Tác giả</string>
+    <string name="lib_filter_reset">Xóa tất cả</string>
+    <string name="lib_filter_done">Xong</string>
+    <string name="cd_library_filter">Lọc và sắp xếp thư viện</string>
+    <string name="cd_clear_filter">Xóa bộ lọc</string>
     <string name="settings_tab_text">Chữ</string>
     <string name="settings_tab_pdf">PDF</string>
     <string name="settings_tab_display">Màn hình</string>

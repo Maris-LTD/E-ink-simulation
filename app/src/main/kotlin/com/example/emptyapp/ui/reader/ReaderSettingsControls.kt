@@ -102,14 +102,14 @@ internal fun SettingsStepperRow(
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    EInkText(label, style = MaterialTheme.typography.labelLarge)
+    EInkText(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f).padding(end = 8.dp))
     Row(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       Box(
         modifier =
-          Modifier.size(36.dp)
+          Modifier.size(48.dp)
             .clip(EInkShapes.Control)
             .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Control)
             .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Control)
@@ -125,7 +125,7 @@ internal fun SettingsStepperRow(
       )
       Box(
         modifier =
-          Modifier.size(36.dp)
+          Modifier.size(48.dp)
             .clip(EInkShapes.Control)
             .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Control)
             .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Control)

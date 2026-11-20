@@ -86,14 +86,11 @@ import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.billing.PurchaseType
 import com.example.emptyapp.data.stats.DailyReadingStat
-import com.example.emptyapp.data.stats.ReadingBadge
-import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.data.sync.SyncActionResult
 import com.example.emptyapp.data.sync.SyncUiState
 import com.example.emptyapp.data.sync.SyncedBookProgress
-import com.example.emptyapp.system.EInkWallpaperService
 import com.example.emptyapp.ui.eink.BackArrowIcon
 import com.example.emptyapp.ui.eink.CheckIcon
 import com.example.emptyapp.ui.eink.EInkBorder
@@ -108,20 +105,22 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
-fun ReaderAvatarIcon(modifier: Modifier = Modifier) {
-  val ink = MaterialTheme.colorScheme.onBackground
+fun ReaderAvatarIcon(
+  modifier: Modifier = Modifier,
+  tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
+) {
   Canvas(modifier = modifier) {
     val stroke = 1.6.dp.toPx()
     val headRadius = size.minDimension * 0.19f
     val headCenter = Offset(size.width / 2f, size.height * 0.36f)
     drawCircle(
-      color = ink,
+      color = tint,
       radius = headRadius,
       center = headCenter,
       style = Stroke(width = stroke),
     )
     drawArc(
-      color = ink,
+      color = tint,
       startAngle = 195f,
       sweepAngle = 150f,
       useCenter = false,
@@ -158,8 +157,9 @@ fun ReadingStatsScreen(
   billing: PlayBillingManager? = null,
   proGate: ProFeatureGate? = null,
   initialTab: Int = 0,
+  showTopBar: Boolean = false,
   onOpenTutorial: (() -> Unit)? = null,
-  onBack: () -> Unit,
+  onBack: () -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
@@ -269,76 +269,84 @@ fun ReadingStatsScreen(
       if (stats.totalSeconds >= 60L) ((stats.totalPagesTurned * 3600L) / stats.totalSeconds).toInt()
       else 0
     }
-  val rank =
-    remember(stats, completedBooksCount, highlightsCount) {
-      ReadingGamification.rankFor(stats, completedBooksCount, highlightsCount, context)
-    }
-  val badges =
-    remember(stats, completedBooksCount, highlightsCount) {
-      ReadingGamification.badgesFor(stats, completedBooksCount, highlightsCount, context)
-    }
 
   var selectedTab by androidx.compose.runtime.saveable.rememberSaveable(initialTab) {
     mutableIntStateOf(initialTab.coerceIn(0, 1))
   }
+  LaunchedEffect(initialTab) {
+    selectedTab = initialTab.coerceIn(0, 1)
+  }
   Column(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
   ) {
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      val backCd = stringResource(R.string.cd_back)
-      IconButton(
-        onClick = onBack,
-        modifier = Modifier.size(48.dp).semantics { contentDescription = backCd },
+    if (showTopBar) {
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        BackArrowIcon(modifier = Modifier.size(20.dp))
-      }
-      EInkText(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge)
-    }
-    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
-    Row(modifier = Modifier.fillMaxWidth()) {
-      listOf(R.string.stats_tab_overview, R.string.stats_tab_settings).forEachIndexed { index, labelRes ->
-        val active = selectedTab == index
-        Column(
-          modifier =
-            Modifier.weight(1f)
-              .clickable { selectedTab = index }
-              .semantics {
-                role = androidx.compose.ui.semantics.Role.Tab
-                selected = active
-              }
-              .padding(top = 11.dp),
-          horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(8.dp),
+        val backCd = stringResource(R.string.cd_back)
+        IconButton(
+          onClick = onBack,
+          modifier = Modifier.size(48.dp).semantics { contentDescription = backCd },
         ) {
-          EInkText(
-            text = stringResource(labelRes),
-            style = MaterialTheme.typography.titleSmall.copy(
-              fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-            ),
-            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-            maxLines = 1,
-          )
-          Box(
+          BackArrowIcon(modifier = Modifier.size(20.dp))
+        }
+        EInkText(stringResource(R.string.stats_title), style = MaterialTheme.typography.titleLarge)
+      }
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+      Row(modifier = Modifier.fillMaxWidth()) {
+        listOf(R.string.stats_tab_overview, R.string.stats_tab_settings).forEachIndexed { index, labelRes ->
+          val active = selectedTab == index
+          Column(
             modifier =
-              Modifier.fillMaxWidth(0.36f)
-                .height(2.5.dp)
-                .clip(EInkShapes.Pill)
-                .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background),
-          )
+              Modifier.weight(1f)
+                .clickable { selectedTab = index }
+                .semantics {
+                  role = androidx.compose.ui.semantics.Role.Tab
+                  selected = active
+                }
+                .padding(top = 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            EInkText(
+              text = stringResource(labelRes),
+              style = MaterialTheme.typography.titleSmall.copy(
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+              ),
+              color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+              maxLines = 1,
+            )
+            Box(
+              modifier =
+                Modifier.fillMaxWidth(0.36f)
+                  .height(2.5.dp)
+                  .clip(EInkShapes.Pill)
+                  .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background),
+            )
+          }
         }
       }
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+    } else {
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        EInkText(
+          text = stringResource(if (selectedTab == 1) R.string.nav_settings else R.string.nav_stats),
+          style = MaterialTheme.typography.headlineLarge,
+        )
+      }
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
     }
-    HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
 
     Column(
       modifier =
         Modifier.fillMaxSize()
           .verticalScroll(rememberScrollState())
-          .padding(16.dp),
-      verticalArrangement = Arrangement.spacedBy(18.dp),
+          .padding(horizontal = 16.dp, vertical = 18.dp),
+      verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
       if (selectedTab == 1) {
         if (billing != null && proGate != null) {
@@ -349,9 +357,12 @@ fun ReadingStatsScreen(
               paywallOpen = true
             },
           )
+          HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         }
         EInkDisplaySettingsCard(settings = settings, onUpdateSettings = onUpdateSettings)
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         GoogleSyncCard(
           syncState = syncState,
           onSyncOrSignIn = ::triggerSync,
@@ -379,193 +390,113 @@ fun ReadingStatsScreen(
           },
           onSignOut = onSignOutSync,
         )
-        SystemEInkModeCard(
-          proGate = proGate,
-          onRequirePro = { feature ->
-            paywallFeature = feature
-            paywallOpen = true
-          },
-          onOpenTutorial = onOpenTutorial,
-        )
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+        SystemEInkModeCard(onOpenTutorial = onOpenTutorial)
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         PrivacyPolicyCard()
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         ContactCard()
       } else {
-      Column(
-        modifier =
-          Modifier.fillMaxWidth()
-            .clip(EInkShapes.Card)
-            .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Card)
-            .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        Row(
+        Column(
           modifier = Modifier.fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(14.dp),
+          verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            EInkText(stringResource(R.string.stats_daily_goal), style = MaterialTheme.typography.titleSmall)
+            EInkText(
+              text = stringResource(R.string.stats_goal_progress, todayMinutes, goalMinutes, (progress * 100).toInt()),
+              style = MaterialTheme.typography.labelLarge,
+            )
+          }
           Box(
             modifier =
-              Modifier.size(52.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.background, CircleShape)
-                .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-            contentAlignment = Alignment.Center,
+              Modifier.fillMaxWidth()
+                .height(8.dp)
+                .clip(EInkShapes.Pill)
+                .background(MaterialTheme.colorScheme.outlineVariant),
           ) {
-            ReaderAvatarIcon(modifier = Modifier.size(38.dp))
+            if (progress > 0f) {
+              Box(
+                modifier =
+                  Modifier.fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.primary),
+              )
+            }
           }
-          Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            EInkText(
-              text = stringResource(R.string.stats_rank_format, rank.level, rank.title),
-              style = MaterialTheme.typography.titleMedium,
-            )
-            EInkText(
-              text = androidx.compose.ui.res.pluralStringResource(
-                R.plurals.stats_xp_streak_plurals,
-                stats.currentStreak,
-                rank.xp,
-                stats.currentStreak,
-                stats.longestStreak,
-              ),
-              style = MaterialTheme.typography.labelMedium,
-              color = MaterialTheme.colorScheme.secondary,
-            )
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            EInkText(stringResource(R.string.stats_set_daily_goal), style = MaterialTheme.typography.bodyMedium)
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              GoalStepCircleButton(
+                label = "−5",
+                contentDesc = stringResource(R.string.cd_goal_decrease),
+                onClick = { onChangeGoalMinutes(goalMinutes - 5) },
+              )
+              EInkText(stringResource(R.string.stats_goal_chip_min, goalMinutes), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+              GoalStepCircleButton(
+                label = "+5",
+                contentDesc = stringResource(R.string.cd_goal_increase),
+                onClick = { onChangeGoalMinutes(goalMinutes + 5) },
+              )
+            }
           }
-        }
-        Box(
-          modifier =
-            Modifier.fillMaxWidth()
-              .height(6.dp)
-              .clip(EInkShapes.Pill)
-              .background(MaterialTheme.colorScheme.outlineVariant),
-        ) {
-          if (rank.progressToNext > 0f) {
-            Box(
-              modifier =
-                Modifier.fillMaxWidth(rank.progressToNext)
-                  .fillMaxHeight()
-                  .background(MaterialTheme.colorScheme.primary),
-            )
-          }
-        }
-        val nextLabel =
-          if (rank.nextLevelXp != null && rank.nextLevelTitle != null) {
-            stringResource(R.string.stats_xp_to_next, (rank.nextLevelXp - rank.xp).coerceAtLeast(0), rank.nextLevelTitle)
-          } else {
-            stringResource(R.string.stats_max_rank)
-          }
-        EInkText(
-          text = nextLabel,
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.secondary,
-        )
-      }
-
-      if (billing != null && proGate != null) {
-        InkifyProCompactRow(
-          entitlement = entitlement,
-          onOpenPaywall = {
-            paywallFeature = null
-            paywallOpen = true
-          },
-        )
-      }
-
-      Column(
-        modifier =
-          Modifier.fillMaxWidth()
-            .clip(EInkShapes.Card)
-            .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          EInkText(stringResource(R.string.stats_daily_goal), style = MaterialTheme.typography.titleSmall)
           EInkText(
-            text = stringResource(R.string.stats_goal_progress, todayMinutes, goalMinutes, (progress * 100).toInt()),
-            style = MaterialTheme.typography.labelLarge,
+            text = pluralStringResource(R.plurals.stats_streak_days, stats.currentStreak, stats.currentStreak, stats.longestStreak),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.secondary,
           )
         }
-        Box(
-          modifier =
-            Modifier.fillMaxWidth()
-              .height(8.dp)
-              .clip(EInkShapes.Pill)
-              .background(MaterialTheme.colorScheme.outlineVariant),
-        ) {
-          if (progress > 0f) {
-            Box(
-              modifier =
-                Modifier.fillMaxWidth(progress)
-                  .fillMaxHeight()
-                  .background(MaterialTheme.colorScheme.primary),
-            )
-          }
-        }
+
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+
         Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-          EInkText(stringResource(R.string.stats_set_daily_goal), style = MaterialTheme.typography.bodyMedium)
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-          ) {
-            GoalStepCircleButton(
-              label = "−5",
-              contentDesc = stringResource(R.string.cd_goal_decrease),
-              onClick = { onChangeGoalMinutes(goalMinutes - 5) },
-            )
-            EInkText(stringResource(R.string.stats_goal_chip_min, goalMinutes), style = MaterialTheme.typography.labelLarge, maxLines = 1)
-            GoalStepCircleButton(
-              label = "+5",
-              contentDesc = stringResource(R.string.cd_goal_increase),
-              onClick = { onChangeGoalMinutes(goalMinutes + 5) },
-            )
-          }
+          StatSummaryBox(
+            label = stringResource(R.string.stats_total_time),
+            value = formatDuration(stats.totalSeconds),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+          )
+          StatSummaryBox(
+            label = stringResource(R.string.stats_pages_turned),
+            value = "${stats.totalPagesTurned}",
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+          )
+          StatSummaryBox(
+            label = stringResource(R.string.stats_books_finished),
+            value = "$completedBooksCount",
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+          )
         }
-      }
 
-      Row(
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-      ) {
-        StatSummaryBox(
-          label = stringResource(R.string.stats_total_time),
-          value = formatDuration(stats.totalSeconds),
-          modifier = Modifier.weight(1f).fillMaxHeight(),
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+
+        SevenDayBarChartCard(
+          weekSeries = weekSeries,
+          goalMinutes = goalMinutes,
+          avgMinutes7d = avgMinutes7d,
+          pagesPerHour = pagesPerHour,
         )
-        StatSummaryBox(
-          label = stringResource(R.string.stats_pages_turned),
-          value = "${stats.totalPagesTurned}",
-          modifier = Modifier.weight(1f).fillMaxHeight(),
+
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+
+        ReadingHeatmapCard(
+          days = heatmapDays,
+          goalSeconds = goalMinutes * 60,
+          activeDaysCount = activeDaysCount,
         )
-        StatSummaryBox(
-          label = stringResource(R.string.stats_books_finished),
-          value = "$completedBooksCount",
-          modifier = Modifier.weight(1f).fillMaxHeight(),
-        )
-      }
-
-      SevenDayBarChartCard(
-        weekSeries = weekSeries,
-        goalMinutes = goalMinutes,
-        avgMinutes7d = avgMinutes7d,
-        pagesPerHour = pagesPerHour,
-      )
-
-      ReadingHeatmapCard(
-        days = heatmapDays,
-        goalSeconds = goalMinutes * 60,
-        activeDaysCount = activeDaysCount,
-      )
-
-        AchievementsCard(badges = badges)
       }
     }
   }
@@ -693,17 +624,11 @@ private fun InkifyProCompactRow(
 
 @Composable
 private fun SystemEInkModeCard(
-  proGate: ProFeatureGate? = null,
-  onRequirePro: (ProFeature) -> Unit = {},
   onOpenTutorial: (() -> Unit)? = null,
 ) {
   val context = LocalContext.current
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
     EInkText(stringResource(R.string.stats_eink_system_title), style = MaterialTheme.typography.titleSmall)
@@ -738,90 +663,6 @@ private fun SystemEInkModeCard(
       ) {
         EInkText(stringResource(R.string.stats_open_setup_guide))
       }
-    }
-  }
-}
-
-@Composable
-private fun AchievementsCard(badges: List<ReadingBadge>) {
-  val unlockedCount = badges.count { it.unlocked }
-  Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      EInkText(stringResource(R.string.stats_badges), style = MaterialTheme.typography.titleSmall)
-      EInkText(
-        text = "$unlockedCount / ${badges.size}",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.secondary,
-      )
-    }
-    badges.chunked(2).forEach { pair ->
-      Row(
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-      ) {
-        pair.forEach { badge ->
-          BadgeCard(badge = badge, modifier = Modifier.weight(1f).fillMaxHeight())
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun BadgeCard(
-  badge: ReadingBadge,
-  modifier: Modifier = Modifier,
-) {
-  val borderColor =
-    if (badge.unlocked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant
-  val borderWidth = if (badge.unlocked) EInkBorder.Card else EInkBorder.Hairline
-  Row(
-    modifier =
-      modifier
-        .clip(EInkShapes.Control)
-        .background(
-          if (badge.unlocked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background,
-          EInkShapes.Control,
-        )
-        .border(borderWidth, borderColor, EInkShapes.Control)
-        .padding(10.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
-  ) {
-    Box(
-      modifier =
-        Modifier.size(24.dp)
-          .clip(CircleShape)
-          .background(if (badge.unlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
-          .border(EInkBorder.Card, borderColor, CircleShape),
-      contentAlignment = Alignment.Center,
-    ) {
-      if (badge.unlocked) {
-        CheckIcon(modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onPrimary)
-      }
-    }
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      EInkText(
-        text = badge.title,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (badge.unlocked) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.secondary,
-      )
-      EInkText(
-        text = badge.description,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.secondary,
-      )
     }
   }
 }
@@ -881,11 +722,7 @@ private fun SevenDayBarChartCard(
       )
     }
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Row(
@@ -975,12 +812,9 @@ private fun ReadingHeatmapCard(
     }
 
   val cellShape = RoundedCornerShape(3.dp)
+  val zeroCellColor = MaterialTheme.colorScheme.surfaceVariant
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
     Row(
@@ -1004,13 +838,14 @@ private fun ReadingHeatmapCard(
       weeks.forEach { week ->
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
           week.forEach { stat ->
-            val cellColor = heatmapCellColor(stat.secondsRead, goalSeconds, bg, fg)
+            val cellColor =
+              if (stat.secondsRead <= 0) zeroCellColor
+              else heatmapCellColor(stat.secondsRead, goalSeconds, bg, fg)
             Box(
               modifier =
                 Modifier.size(16.dp)
                   .clip(cellShape)
-                  .background(cellColor, cellShape)
-                  .border(0.5.dp, border, cellShape),
+                  .background(cellColor, cellShape),
             )
           }
         }
@@ -1024,8 +859,8 @@ private fun ReadingHeatmapCard(
       EInkText(stringResource(R.string.stats_less), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
       Spacer(modifier = Modifier.width(6.dp))
       listOf(0f, 0.28f, 0.6f, 1f).forEach { level ->
-        val c = if (level == 0f) bg else lerp(bg, fg, level)
-        Box(modifier = Modifier.size(12.dp).clip(cellShape).background(c, cellShape).border(0.5.dp, border, cellShape))
+        val c = if (level == 0f) zeroCellColor else lerp(bg, fg, level)
+        Box(modifier = Modifier.size(12.dp).clip(cellShape).background(c, cellShape))
         Spacer(modifier = Modifier.width(4.dp))
       }
       EInkText(stringResource(R.string.stats_more), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
@@ -1109,13 +944,10 @@ private fun GoogleSyncCard(
 ) {
   var confirmDeleteAll by remember { mutableStateOf(false) }
   var pendingDeleteCloudBook by remember { mutableStateOf<SyncedBookProgress?>(null) }
+  var showCloudBooksDialog by remember { mutableStateOf(false) }
 
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     EInkText(
@@ -1197,54 +1029,12 @@ private fun GoogleSyncCard(
         }
       }
       if (syncState.cloudBooks.isNotEmpty()) {
-        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
-        EInkText(
-          text = stringResource(R.string.stats_sync_cloud_books_header, syncState.cloudBooks.size),
-          style = MaterialTheme.typography.labelMedium,
-          color = MaterialTheme.colorScheme.secondary,
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-          syncState.cloudBooks.forEach { cloudBook ->
-            Row(
-              modifier =
-                Modifier.fillMaxWidth()
-                  .clip(EInkShapes.Control)
-                  .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Control)
-                  .padding(horizontal = 10.dp, vertical = 8.dp),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Column(modifier = Modifier.weight(1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                EInkText(
-                  text = cloudBook.title,
-                  style = MaterialTheme.typography.bodyMedium,
-                  maxLines = 1,
-                )
-                val meta =
-                  listOfNotNull(
-                    cloudBook.format.label,
-                    cloudBook.author.takeIf { it.isNotBlank() },
-                    "${(cloudBook.progress * 100).toInt()}%",
-                  ).joinToString(" · ")
-                EInkText(
-                  text = meta,
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.secondary,
-                  maxLines = 1,
-                )
-              }
-              TextButton(
-                onClick = { pendingDeleteCloudBook = cloudBook },
-                enabled = !syncState.syncing,
-              ) {
-                EInkText(
-                  text = stringResource(R.string.stats_sync_delete_book_btn),
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.secondary,
-                )
-              }
-            }
-          }
+        OutlinedButton(
+          onClick = { showCloudBooksDialog = true },
+          enabled = !syncState.syncing,
+          shape = EInkShapes.Control,
+        ) {
+          EInkText(stringResource(R.string.stats_sync_cloud_books_header, syncState.cloudBooks.size))
         }
       }
     } else {
@@ -1268,6 +1058,73 @@ private fun GoogleSyncCard(
         EInkText(if (syncState.syncing) stringResource(R.string.stats_sync_connecting) else stringResource(R.string.stats_sign_in_google))
       }
     }
+  }
+
+  if (showCloudBooksDialog) {
+    AlertDialog(
+      onDismissRequest = { showCloudBooksDialog = false },
+      shape = EInkShapes.Card,
+      containerColor = MaterialTheme.colorScheme.background,
+      title = {
+        EInkText(
+          stringResource(R.string.stats_sync_cloud_books_header, syncState.cloudBooks.size),
+          style = MaterialTheme.typography.titleMedium,
+        )
+      },
+      text = {
+        Column(
+          modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          syncState.cloudBooks.forEach { cloudBook ->
+            Row(
+              modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Column(modifier = Modifier.weight(1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                EInkText(
+                  text = cloudBook.title,
+                  style = MaterialTheme.typography.bodyMedium,
+                  maxLines = 1,
+                )
+                val meta =
+                  listOfNotNull(
+                    cloudBook.format.label,
+                    cloudBook.author.takeIf { it.isNotBlank() },
+                    "${(cloudBook.progress * 100).toInt()}%",
+                  ).joinToString(" · ")
+                EInkText(
+                  text = meta,
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.secondary,
+                  maxLines = 1,
+                )
+              }
+              TextButton(
+                onClick = {
+                  showCloudBooksDialog = false
+                  pendingDeleteCloudBook = cloudBook
+                },
+                enabled = !syncState.syncing,
+              ) {
+                EInkText(
+                  text = stringResource(R.string.stats_sync_delete_book_btn),
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.secondary,
+                )
+              }
+            }
+            HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(onClick = { showCloudBooksDialog = false }) {
+          EInkText(stringResource(R.string.action_close), style = MaterialTheme.typography.labelLarge)
+        }
+      },
+    )
   }
 
   if (confirmDeleteAll) {
@@ -1332,11 +1189,7 @@ private fun EInkDisplaySettingsCard(
   onUpdateSettings: ((EInkSettings) -> EInkSettings) -> Unit,
 ) {
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     EInkText(
@@ -1482,11 +1335,7 @@ private fun LanguageCard(
   onChangeLanguage: (AppLanguage) -> Unit,
 ) {
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
     EInkText(
@@ -1546,11 +1395,7 @@ private fun PrivacyPolicyCard() {
   var showDialog by remember { mutableStateOf(false) }
 
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     EInkText(
@@ -1611,11 +1456,7 @@ private fun ContactCard() {
   val noEmailAppMsg = stringResource(R.string.stats_no_email_app)
   val copiedEmailMsg = stringResource(R.string.stats_copied_email, email)
   Column(
-    modifier =
-      Modifier.fillMaxWidth()
-        .clip(EInkShapes.Card)
-        .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
+    modifier = Modifier.fillMaxWidth(),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     EInkText(

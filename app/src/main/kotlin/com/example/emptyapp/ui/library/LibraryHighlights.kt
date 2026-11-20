@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,7 +53,7 @@ fun LibraryHighlightList(
     return
   }
   val deleteCd = stringResource(R.string.action_delete)
-  LazyColumn(modifier = Modifier.fillMaxSize()) {
+  LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 76.dp)) {
     items(highlights, key = { it.id }) { item ->
       Row(
         modifier =

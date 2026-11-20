@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -426,11 +427,6 @@ private fun MinimalistHomePage(
       now.format(DateTimeFormatter.ofPattern("EEEE, dd/MM", appLocale))
     }
   val currentBook = remember(books) { books.mostRecentlyReadBook() }
-  val completedCount = remember(books) { books.count { it.progress >= 0.99f } }
-  val rank =
-    remember(stats, completedCount, highlightsCount) {
-      ReadingGamification.rankFor(stats, completedCount, highlightsCount, context)
-    }
   val todayMin = stats.todaySeconds() / 60
   val goalMin = stats.dailyGoalMinutes.coerceAtLeast(5)
   val goalProgress = (stats.todaySeconds().toFloat() / (goalMin * 60f)).coerceIn(0f, 1f)
@@ -448,80 +444,25 @@ private fun MinimalistHomePage(
             .heightIn(min = maxHeight),
         verticalArrangement = HomeSectionArrangement,
       ) {
-        // 1. Top status bar: Battery + Streak + Quick Tone Swatches
-        Row(
+        // 1. Top status bar: Battery + Streak
+        EInkText(
+          text = stringResource(R.string.launcher_status_format, batteryPct, stats.currentStreak),
+          style = MaterialTheme.typography.labelMedium,
+          color = MaterialTheme.colorScheme.secondary,
           modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(4.dp),
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          EInkText(
-            text = stringResource(R.string.launcher_status_format, batteryPct, stats.currentStreak),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.weight(1f),
-          )
-          Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-            EInkTone.entries.forEach { option ->
-              val selected = option == tone
-              val toneLabel =
-                when (option) {
-                  EInkTone.PAPER -> stringResource(R.string.tone_paper)
-                  EInkTone.WARM -> stringResource(R.string.tone_warm)
-                  EInkTone.HIGH_CONTRAST -> stringResource(R.string.tone_white)
-                  EInkTone.SOFT_GRAY -> stringResource(R.string.tone_gray)
-                  EInkTone.DARK -> stringResource(R.string.tone_dark)
-                }
-              Box(
-                modifier =
-                  Modifier.size(48.dp)
-                    .selectable(
-                      selected = selected,
-                      role = Role.RadioButton,
-                      onClick = { onToneChange(option) },
-                    )
-                    .semantics { contentDescription = toneLabel },
-                contentAlignment = Alignment.Center,
-              ) {
-                Box(
-                  modifier =
-                    Modifier.size(18.dp)
-                      .clip(CircleShape)
-                      .background(Color(option.background))
-                      .border(
-                        width = if (selected) 2.2.dp else 1.dp,
-                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                        shape = CircleShape,
-                      ),
-                )
-              }
-            }
-          }
-        }
+        )
 
-        // 2. Hero Clock + Rank + Daily Goal
+        // 2. Hero Clock + Date + Today's Goal
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
           EInkText(
             text = timeText,
             style = MaterialTheme.typography.displayMedium.copy(fontSize = 46.sp),
           )
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-          ) {
-            EInkText(
-              text = dateText,
-              style = MaterialTheme.typography.bodyLarge,
-              color = MaterialTheme.colorScheme.secondary,
-            )
-            EInkText(
-              text = stringResource(R.string.stats_rank_format, rank.level, rank.title),
-              style = MaterialTheme.typography.labelMedium,
-              modifier =
-                Modifier.border(1.dp, MaterialTheme.colorScheme.outline)
-                  .padding(horizontal = 8.dp, vertical = 3.dp),
-            )
-          }
+          EInkText(
+            text = dateText,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.secondary,
+          )
           Spacer(modifier = Modifier.height(4.dp))
           Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
@@ -568,22 +509,11 @@ private fun MinimalistHomePage(
 
         // 4. Pinned Apps Strip / Grid
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-          ) {
-            EInkText(
-              text = stringResource(R.string.launcher_pinned_apps),
-              style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.secondary,
-            )
-            EInkText(
-              text = stringResource(R.string.launcher_long_press_unpin),
-              style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.secondary,
-            )
-          }
+          EInkText(
+            text = stringResource(R.string.launcher_pinned_apps),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.secondary,
+          )
           if (pinnedSlice.visibleApps.isEmpty()) {
             EInkText(
               text = stringResource(R.string.launcher_no_pinned),
@@ -843,12 +773,6 @@ private fun MinimalistAppDrawerPage(
         DrawerViewModeIcon(viewMode = viewMode)
       }
     }
-    EInkText(
-      text = stringResource(R.string.launcher_drawer_hint, stringResource(viewMode.labelRes)),
-      style = MaterialTheme.typography.labelSmall,
-      color = MaterialTheme.colorScheme.secondary,
-      modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-    )
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
 
     when (viewMode) {
@@ -860,6 +784,7 @@ private fun MinimalistAppDrawerPage(
             Row(
               modifier =
                 Modifier.fillMaxWidth()
+                  .defaultMinSize(minHeight = 48.dp)
                   .combinedClickable(
                     onClick = { onLaunchApp(app.packageName) },
                     onLongClick = { onTogglePin(app) },
@@ -949,10 +874,7 @@ private fun MonochromeAppIcon(
   }
 
   Box(
-    modifier =
-      Modifier.size(size)
-        .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        .padding(3.dp),
+    modifier = Modifier.size(size).padding(2.dp),
     contentAlignment = Alignment.Center,
   ) {
     iconBitmap?.let { bmp ->

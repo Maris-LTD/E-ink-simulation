@@ -1,8 +1,10 @@
 package com.example.emptyapp.ui.library
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +16,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,9 +33,9 @@ import com.example.emptyapp.R
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.mostRecentlyReadBook
 import com.example.emptyapp.ui.eink.EInkBorder
-import com.example.emptyapp.ui.eink.EInkSerifFamily
 import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
+import com.example.emptyapp.ui.eink.OverflowDotsIcon
 import java.io.File
 
 internal fun resolveHeroBook(
@@ -40,16 +48,21 @@ internal fun resolveHeroBook(
   return books.mostRecentlyReadBook()
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ContinueReadingHeroCard(
   book: BookEntry,
   grayscaleCover: Boolean,
   coverFile: File?,
   onOpen: () -> Unit,
+  onToggleCompleted: (Boolean) -> Unit = {},
+  onShowDetails: () -> Unit = {},
+  onRemove: () -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val hasProgress = book.progress > 0f
   val pct = (book.progress.coerceIn(0f, 1f) * 100).toInt()
+  var menuExpanded by remember { mutableStateOf(false) }
   Row(
     modifier =
       modifier
@@ -57,8 +70,8 @@ internal fun ContinueReadingHeroCard(
         .clip(EInkShapes.Hero)
         .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Hero)
         .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Hero)
-        .clickable(onClick = onOpen)
-        .padding(14.dp),
+        .combinedClickable(onClick = onOpen, onLongClick = { menuExpanded = true })
+        .padding(start = 14.dp, top = 10.dp, bottom = 14.dp, end = 6.dp),
     horizontalArrangement = Arrangement.spacedBy(14.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -73,15 +86,42 @@ internal fun ContinueReadingHeroCard(
       modifier = Modifier.weight(1f),
       verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      EInkText(
-        text = stringResource(if (hasProgress) R.string.lib_continue_reading else R.string.lib_start_reading),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.secondary,
-      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        EInkText(
+          text = stringResource(if (hasProgress) R.string.lib_continue_reading else R.string.lib_start_reading),
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.secondary,
+          modifier = Modifier.weight(1f),
+        )
+        Box {
+          val actionsCd = stringResource(R.string.cd_book_actions)
+          Box(
+            modifier =
+              Modifier.size(40.dp)
+                .clickable { menuExpanded = true }
+                .semantics { contentDescription = actionsCd },
+            contentAlignment = Alignment.Center,
+          ) {
+            OverflowDotsIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+          }
+          BookActionMenu(
+            book = book,
+            expanded = menuExpanded,
+            onDismiss = { menuExpanded = false },
+            onOpen = onOpen,
+            onToggleCompleted = onToggleCompleted,
+            onShowDetails = onShowDetails,
+            onDelete = onRemove,
+          )
+        }
+      }
       EInkText(
         text = book.title,
         style = MaterialTheme.typography.titleMedium.copy(
-          fontFamily = EInkSerifFamily,
           fontWeight = FontWeight.Bold,
         ),
         maxLines = 2,

@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
+import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.reader.OrientationLock
 import com.example.emptyapp.reader.pdf.PdfReadingMode
 import com.example.emptyapp.ui.eink.EInkBorder
@@ -246,6 +247,26 @@ private fun DisplaySettingsTab(
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
 ) {
   SettingsSectionTitle(stringResource(R.string.settings_section_eink))
+  val paperLabel = stringResource(R.string.tone_paper)
+  val warmLabel = stringResource(R.string.tone_warm)
+  val whiteLabel = stringResource(R.string.tone_white)
+  val grayLabel = stringResource(R.string.tone_gray)
+  val darkLabel = stringResource(R.string.tone_dark)
+  SettingsChoiceRow(
+    label = stringResource(R.string.settings_tone),
+    options = EInkTone.entries,
+    selected = settings.tone,
+    nameOf = {
+      when (it) {
+        EInkTone.PAPER -> paperLabel
+        EInkTone.WARM -> warmLabel
+        EInkTone.HIGH_CONTRAST -> whiteLabel
+        EInkTone.SOFT_GRAY -> grayLabel
+        EInkTone.DARK -> darkLabel
+      }
+    },
+    onSelect = { tone -> onChange { it.copy(tone = tone) } },
+  )
   SettingsSwitchRow(stringResource(R.string.settings_grayscale), settings.grayscale) { on ->
     onChange { it.copy(grayscale = on) }
   }
