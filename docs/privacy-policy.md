@@ -2,7 +2,7 @@
 
 **Cập nhật lần cuối / Last updated:** 2026-11-19  
 **Ứng dụng / Application:** Inkify (`com.eink.reader.app`)  
-**Liên hệ / Contact:** letuandat556@gmail.com
+**Liên hệ / Contact:** ebuyami2609@gmail.com
 
 ---
 
@@ -75,4 +75,4 @@
 - `<queries>` (`ACTION_MAIN` / `CATEGORY_LAUNCHER`): Used solely by the optional *eInk Home Launcher* mode to display launchable apps installed on your device in the App Drawer.
 
 ### 6. Contact
-If you have any questions regarding privacy or data protection, please contact: **letuandat556@gmail.com**
+If you have any questions regarding privacy or data protection, please contact: **ebuyami2609@gmail.com**

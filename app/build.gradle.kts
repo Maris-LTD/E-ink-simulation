@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
+}
+
+val keystoreProperties = Properties().apply {
+  val propsFile = rootProject.file("keystore.properties")
+  if (propsFile.exists()) {
+    propsFile.inputStream().use { load(it) }
+  }
 }
 
 android {
@@ -93,6 +102,7 @@ val packagePdfBoxTestResources =
 fun releaseSigningValue(name: String): String? =
   (findProperty(name) as? String)?.takeIf { it.isNotBlank() }
     ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+    ?: keystoreProperties.getProperty(name)?.takeIf { it.isNotBlank() }
 
 dependencies {
   val composeBom = platform(libs.androidx.compose.bom)
