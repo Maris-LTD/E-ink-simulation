@@ -66,7 +66,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -592,12 +591,12 @@ private fun CurrentBookHeroCard(
   onClick: () -> Unit,
 ) {
   val coverPath = coverFile?.absolutePath
-  val coverBitmap by
-    produceState<ImageBitmap?>(initialValue = CoverBitmapCache.get(coverPath), key1 = coverPath) {
-      if (value == null && coverFile != null) {
-        value = withContext(Dispatchers.IO) { CoverBitmapCache.decodeAndCache(coverFile) }
-      }
+  var coverBitmap by remember(coverPath) { mutableStateOf(CoverBitmapCache.get(coverPath)) }
+  if (coverBitmap == null && coverFile != null) {
+    LaunchedEffect(coverPath) {
+      coverBitmap = withContext(Dispatchers.IO) { CoverBitmapCache.decodeAndCache(coverFile) }
     }
+  }
   val pct = ((book?.progress ?: 0f) * 100).toInt()
 
   Row(
