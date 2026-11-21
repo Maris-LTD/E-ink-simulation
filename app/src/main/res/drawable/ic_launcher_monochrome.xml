@@ -2,41 +2,34 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- Outer book outline for monochrome themed icons -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M30.5,31 L77.5,31 Q80.5,31 80.5,34 L80.5,73 Q80.5,76 77.5,76 L30.5,76 Q27.5,76 27.5,73 L27.5,34 Q27.5,31 30.5,31 Z"
-        android:strokeColor="#000000"
-        android:strokeWidth="3.2" />
-
-    <!-- Center spine -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M54,32 L54,75"
-        android:strokeColor="#000000"
-        android:strokeWidth="2.2" />
-
-    <!-- Left page lines -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M34.5,41 L46.5,41 M34.5,48 L48.5,48 M34.5,55 L48.5,55 M34.5,62 L44,62"
-        android:strokeColor="#000000"
-        android:strokeLineCap="round"
-        android:strokeWidth="2.2" />
-
-    <!-- Right page lines -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M59.5,48 L73.5,48 M59.5,55 L73.5,55 M59.5,62 L69,62"
-        android:strokeColor="#000000"
-        android:strokeLineCap="round"
-        android:strokeWidth="2.2" />
-
-    <!-- Bookmark ribbon -->
-    <path
-        android:fillColor="#000000"
-        android:pathData="M64,28 L72,28 L72,42.5 L68,38.7 L64,42.5 Z" />
+    android:viewportWidth="709"
+    android:viewportHeight="709">
+    <group
+        android:translateX="98.5"
+        android:translateY="98.5">
+        <group
+            android:pivotX="284"
+            android:pivotY="142"
+            android:rotation="-18">
+            <path
+                android:fillColor="#000000"
+                android:pathData="M251,142 A33,38 0 1,0 317,142 A33,38 0 1,0 251,142 Z" />
+        </group>
+        <path
+            android:fillColor="#000000"
+            android:pathData="M294,192 C348,202 384,254 382,322 C380,344 368,356 344,360 C306,366 258,358 228,338 C216,330 220,312 238,315 C270,321 304,320 322,305 C334,294 330,270 306,264 C284,258 268,270 260,288 C256,297 244,294 246,280 C248,228 266,188 294,192 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M164,388 C184,368 232,372 272,380 C312,388 348,386 368,378 C374,398 352,414 304,414 C238,414 178,408 164,388 Z" />
+        <path
+            android:fillAlpha="0.72"
+            android:fillColor="#000000"
+            android:pathData="M164,258 C160,230 170,204 190,194 C186,218 184,238 176,260 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M158,264 C140,246 120,232 106,224 C102,252 106,282 118,304 L162,326 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M172,266 C190,248 210,234 224,226 C226,254 222,282 212,304 L176,326 Z" />
+    </group>
 </vector>
