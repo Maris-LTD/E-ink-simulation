@@ -14,6 +14,7 @@ object PdfGraphicMasker {
   private const val MIN_TEXT_GRID_ROWS = 3
 
   private val MULTI_SPACE_REGEX = Regex("""\s{3,}""")
+  private val WHITESPACE_REGEX = Regex("""\s+""")
   private val GRAPHIC_CHARS =
     setOf(
       '-', '–', '—', '_', '=', '|', '+', '*', '/', '\\',
@@ -410,7 +411,7 @@ object PdfGraphicMasker {
     val graphicRatio = graphicCount.toFloat() / nonWs.length
     if (graphicRatio >= 0.50f) return true
 
-    val tokens = text.trim().split(Regex("""\s+""")).filter { it.isNotEmpty() }
+    val tokens = text.trim().split(WHITESPACE_REGEX).filter { it.isNotEmpty() }
     val allSingleCharTokens = tokens.size >= 2 && tokens.all { it.length == 1 }
     val hasNoLongWord = tokens.none { token -> token.count { it.isLetter() } >= 3 }
     return (allSingleCharTokens && hasNoLongWord) || (graphicCount >= 1 && hasNoLongWord && nonWs.length <= 6)

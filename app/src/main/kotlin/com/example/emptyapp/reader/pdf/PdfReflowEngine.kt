@@ -43,6 +43,8 @@ object PdfReflowEngine {
   private const val COMPLEX_VECTOR_THRESHOLD = 300
   private const val MAX_CHARS_FOR_VECTOR_FALLBACK = 250
   private const val HEADER_MAX_BOTTOM = 0.09f
+  private val DIGITS_REGEX = Regex("""\d+""")
+  private val SENTENCE_END_CHARS = charArrayOf('.', '!', '?', ':', '…', '”', '"')
   private const val FOOTER_MIN_TOP = 0.91f
   private const val MIN_IMAGE_AREA_FRACTION = 0.01f
   private const val MAX_INLINE_IMAGE_AREA_FRACTION = 0.85f
@@ -190,7 +192,7 @@ object PdfReflowEngine {
   }
 
   private fun normalizeEdgeText(raw: String): String =
-    raw.trim().replace(Regex("""\d+"""), "#").lowercase()
+    raw.trim().replace(DIGITS_REGEX, "#").lowercase()
 
   private fun mergeLinesIntoParagraphs(lines: List<PdfTextLine>): List<PlacedParagraph> {
     if (lines.isEmpty()) return emptyList()
@@ -258,7 +260,7 @@ object PdfReflowEngine {
       val fontChanged = abs(line.fontSizePt - prev.fontSizePt) > 1.5f
       val lastCharIdx = prev.text.lastNonWhitespaceIndex()
       val lastChar = if (lastCharIdx >= 0) prev.text[lastCharIdx] else null
-      val prevEndedSentence = lastChar != null && lastChar in charArrayOf('.', '!', '?', ':', '…', '”', '"')
+      val prevEndedSentence = lastChar != null && lastChar in SENTENCE_END_CHARS
       val indentedStart = (line.bounds.left - baseLeft) > 0.008f
       val shortPrevLine = prev.bounds.right < (baseRight - 0.08f)
       val startsNewParagraph =

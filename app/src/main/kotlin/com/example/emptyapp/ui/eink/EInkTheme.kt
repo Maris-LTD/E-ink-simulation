@@ -127,14 +127,22 @@ private val EInkMaterialShapes =
     large = EInkShapes.Hero,
   )
 
+private val CachedTypography: Typography by lazy(LazyThreadSafetyMode.PUBLICATION) {
+  buildEInkTypography()
+}
+
+private val CachedColorSchemes: Map<EInkTone, ColorScheme> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+  EInkTone.entries.associateWith { tone -> eInkColorScheme(tone) }
+}
+
 @Composable
 fun EInkTheme(
   tone: EInkTone = EInkTone.HIGH_CONTRAST,
   content: @Composable () -> Unit,
 ) {
   MaterialTheme(
-    colorScheme = eInkColorScheme(tone),
-    typography = eInkTypography(),
+    colorScheme = CachedColorSchemes.getValue(tone),
+    typography = CachedTypography,
     shapes = EInkMaterialShapes,
     content = content,
   )
@@ -143,7 +151,7 @@ fun EInkTheme(
 private fun TextStyle.sans() = copy(fontFamily = EInkSansFamily)
 private fun TextStyle.serif() = copy(fontFamily = EInkSerifFamily)
 
-private fun eInkTypography(): Typography {
+private fun buildEInkTypography(): Typography {
   val base = Typography()
   return base.copy(
     displayLarge = base.displayLarge.serif(),

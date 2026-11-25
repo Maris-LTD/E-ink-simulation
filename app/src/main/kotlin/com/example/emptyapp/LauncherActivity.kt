@@ -110,7 +110,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class LaunchableApp(
+internal data class LaunchableApp(
   val label: String,
   val packageName: String,
 )
@@ -134,7 +134,7 @@ class LauncherActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     appliedLanguage = LocaleHelper.getSavedLanguage(this)
     super.onCreate(savedInstanceState)
-    (application as EmptyApplication).container.warmUpForUiAsync()
+    (application as EmptyApplication).container.warmUpForUiAsync(includeBilling = false)
     enableEdgeToEdge()
     setContent {
       val container = (application as EmptyApplication).container
@@ -282,7 +282,7 @@ private fun EInkHomePager(
   ) { padding ->
     HorizontalPager(
       state = pagerState,
-      beyondViewportPageCount = 1,
+      beyondViewportPageCount = 0,
       verticalAlignment = Alignment.Top,
       modifier = Modifier.padding(padding).fillMaxSize(),
     ) { page ->
@@ -418,7 +418,17 @@ private fun MinimalistHomePage(
     }
   }
 
-  val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+  var is24Hour by remember(context) { mutableStateOf(android.text.format.DateFormat.is24HourFormat(context)) }
+  DisposableEffect(lifecycleOwner, context) {
+    val observer =
+      androidx.lifecycle.LifecycleEventObserver { _, event ->
+        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+          is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+        }
+      }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
   val appLocale = remember(context) { LocaleHelper.effectiveLocale(context) }
   val timeText = remember(now, is24Hour, appLocale) { LocaleHelper.formatClockTime(now, is24Hour, appLocale) }
   val dateText =
@@ -931,13 +941,24 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGridCells(
   }
 }
 
-private object LauncherAppCache {
-  private val iconCache = LruCache<String, ImageBitmap>(256)
+internal object LauncherAppCache {
+  private val iconCache = LruCache<String, ImageBitmap>(DeviceMemoryProfile.current.launcherIconCacheCount)
   @Volatile private var cachedApps: List<LaunchableApp>? = null
   private val grayscalePaint =
     Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
       colorFilter = ColorMatrixColorFilter(AndroidColorMatrix().apply { setSaturation(0f) })
     }
+
+  fun configureForDevice() {
+    iconCache.resize(DeviceMemoryProfile.current.launcherIconCacheCount)
+  }
+
+  fun trimMemory(level: Int) {
+    when {
+      DeviceMemoryProfile.shouldEvictAll(level) -> iconCache.evictAll()
+      DeviceMemoryProfile.shouldTrimHalf(level) -> iconCache.trimToSize(iconCache.maxSize() / 2)
+    }
+  }
 
   fun cachedAppsOrEmpty(): List<LaunchableApp> = cachedApps.orEmpty()
 

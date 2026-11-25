@@ -9,12 +9,15 @@ import android.os.ParcelFileDescriptor
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.example.emptyapp.DeviceMemoryProfile
 import com.example.emptyapp.reader.pdf.PdfDocumentCache
 import com.example.emptyapp.reader.pdf.PdfPageAnalysis
 import com.example.emptyapp.reader.pdf.PdfPageAnalyzer
 import com.example.emptyapp.reader.pdf.PdfRect
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.File
+import java.util.Collections
+import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.sqrt
 import kotlinx.coroutines.CancellationException
@@ -228,9 +231,26 @@ internal class PdfRendererHolder(
     }
   }
 
+  init {
+    PdfRendererHolderRegistry.register(this)
+  }
+
+  fun trimMemory(level: Int) {
+    when {
+      DeviceMemoryProfile.shouldEvictAll(level) -> {
+        pageBitmapCache.evictAll()
+        cropCache.clear()
+      }
+      DeviceMemoryProfile.shouldTrimHalf(level) -> {
+        pageBitmapCache.trimToSize(pageBitmapCache.maxSize() / 2)
+      }
+    }
+  }
+
   fun close() {
     if (closed) return
     closed = true
+    PdfRendererHolderRegistry.unregister(this)
     pageBitmapCache.evictAll()
     analysisSession.close()
     CoroutineScope(Dispatchers.IO + NonCancellable).launch {
@@ -251,7 +271,7 @@ internal class PdfRendererHolder(
     val targetFile = file ?: return null
     if (!targetFile.exists()) return null
     appContext?.let { PdfPageAnalyzer.ensureInitialized(it) }
-    val document = PDDocument.load(targetFile)
+    val document = PDDocument.load(targetFile, PdfPageAnalyzer.memoryUsageSetting())
     val stripper = PdfPageAnalyzer.ReusableLineStripper()
     return object : PdfAnalysisDocument {
       override fun analyzePage(pageIndex: Int): PdfPageAnalysis? {
@@ -287,17 +307,51 @@ internal data class PdfBitmapBudget(
     private const val MAX_CACHE_BYTES = 96L * 1024L * 1024L
     private const val MIN_CACHE_BYTES = 16L * 1024L * 1024L
     private const val MAX_SINGLE_BITMAP_BYTES = 32L * 1024L * 1024L
+    private const val LOW_RAM_MAX_CACHE_BYTES = 32L * 1024L * 1024L
+    private const val LOW_RAM_MIN_CACHE_BYTES = 8L * 1024L * 1024L
+    private const val LOW_RAM_MAX_SINGLE_BITMAP_BYTES = 16L * 1024L * 1024L
 
-    fun fromHeapBytes(maxHeapBytes: Long): PdfBitmapBudget {
-      val cacheBytes = (maxHeapBytes / 8L).coerceIn(MIN_CACHE_BYTES, MAX_CACHE_BYTES)
-      val singleBytes = minOf(MAX_SINGLE_BITMAP_BYTES, maxHeapBytes / 8L)
+    fun fromHeapBytes(
+      maxHeapBytes: Long,
+      isLowRam: Boolean = DeviceMemoryProfile.current.isLowRam,
+    ): PdfBitmapBudget {
+      val cacheBytes =
+        if (isLowRam) {
+          (maxHeapBytes / 10L).coerceIn(LOW_RAM_MIN_CACHE_BYTES, LOW_RAM_MAX_CACHE_BYTES)
+        } else {
+          (maxHeapBytes / 8L).coerceIn(MIN_CACHE_BYTES, MAX_CACHE_BYTES)
+        }
+      val singleBytes =
+        if (isLowRam) {
+          minOf(LOW_RAM_MAX_SINGLE_BITMAP_BYTES, maxHeapBytes / 10L)
+        } else {
+          minOf(MAX_SINGLE_BITMAP_BYTES, maxHeapBytes / 8L)
+        }
       return PdfBitmapBudget(
         cacheKiloBytes = (cacheBytes / 1024L).toInt(),
         maxBitmapPixels = (singleBytes / BYTES_PER_PIXEL).coerceAtLeast(1L),
       )
     }
 
-    fun fromRuntime(): PdfBitmapBudget = fromHeapBytes(Runtime.getRuntime().maxMemory())
+    fun fromRuntime(): PdfBitmapBudget =
+      fromHeapBytes(Runtime.getRuntime().maxMemory(), DeviceMemoryProfile.current.isLowRam)
+  }
+}
+
+internal object PdfRendererHolderRegistry {
+  private val holders = Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<PdfRendererHolder, Boolean>()))
+
+  fun register(holder: PdfRendererHolder) {
+    holders.add(holder)
+  }
+
+  fun unregister(holder: PdfRendererHolder) {
+    holders.remove(holder)
+  }
+
+  fun trimMemory(level: Int) {
+    val snapshot = synchronized(holders) { holders.toList() }
+    snapshot.forEach { it.trimMemory(level) }
   }
 }
 

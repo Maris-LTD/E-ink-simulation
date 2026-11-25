@@ -396,6 +396,8 @@ object PdfReflowPaginator {
     return screens
   }
 
+  private val wordTokenRegex = Regex("""\S+\s*""")
+
   private fun findBestSplitIndex(
     text: String,
     isHeading: Boolean,
@@ -403,7 +405,7 @@ object PdfReflowPaginator {
     availableHeightPx: Int,
     measureTextHeightPx: (String, Boolean, Int) -> Int,
   ): Int {
-    val words = Regex("""\S+\s*""").findAll(text).map { it.range.last + 1 }.toList()
+    val words = wordTokenRegex.findAll(text).map { it.range.last + 1 }.toList()
     if (words.size <= 1) return 0
 
     var low = 0

@@ -18,13 +18,17 @@ import com.example.emptyapp.reader.LockScreenReadingStore
 import com.example.emptyapp.reader.ReadiumEngine
 import com.example.emptyapp.reader.pdf.PdfBookConfigStore
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 
 class AppContainer(context: Context) {
   private val appContext = context.applicationContext
+  private val warmedUp = AtomicBoolean(false)
+  private val billingWarmedUp = AtomicBoolean(false)
   val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private val engineLazy: Lazy<ReadiumEngine> = lazy { ReadiumEngine(appContext) }
   val engine: ReadiumEngine by engineLazy
@@ -54,16 +58,24 @@ class AppContainer(context: Context) {
   }
   val billing: PlayBillingManager by lazy { PlayBillingManager(appContext, proGate, appScope) }
 
-  fun warmUpForUiAsync() {
-    appScope.launch(Dispatchers.IO) { settings }
-    appScope.launch(Dispatchers.IO) { library }
-    appScope.launch(Dispatchers.IO) { pdfBookConfigs }
-    appScope.launch(Dispatchers.IO) { syncTombstones }
-    appScope.launch(Dispatchers.IO) { annotations }
-    appScope.launch(Dispatchers.IO) { stats }
-    appScope.launch(Dispatchers.IO) { lockScreenReading }
-    appScope.launch(Dispatchers.IO) { proGate }
-    appScope.launch(Dispatchers.IO) { billing.startConnection() }
-    appScope.launch(Dispatchers.IO) { sync }
+  fun warmUpForUiAsync(includeBilling: Boolean = true) {
+    if (warmedUp.compareAndSet(false, true)) {
+      appScope.launch(Dispatchers.IO) {
+        yield()
+        pdfBookConfigs
+        syncTombstones
+        lockScreenReading
+        sync
+        if (includeBilling && billingWarmedUp.compareAndSet(false, true)) {
+          proGate
+          billing.startConnection()
+        }
+      }
+    } else if (includeBilling && billingWarmedUp.compareAndSet(false, true)) {
+      appScope.launch(Dispatchers.IO) {
+        proGate
+        billing.startConnection()
+      }
+    }
   }
 }

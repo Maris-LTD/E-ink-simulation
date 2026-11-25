@@ -11,15 +11,25 @@ class PdfBitmapBudgetTest {
 
   @Test
   fun cacheIsOneEighthOfHeapWithinBounds() {
-    assertEquals(32 * 1024, PdfBitmapBudget.fromHeapBytes(256 * mb).cacheKiloBytes)
-    assertEquals(16 * 1024, PdfBitmapBudget.fromHeapBytes(64 * mb).cacheKiloBytes)
-    assertEquals(96 * 1024, PdfBitmapBudget.fromHeapBytes(2048 * mb).cacheKiloBytes)
+    assertEquals(32 * 1024, PdfBitmapBudget.fromHeapBytes(256 * mb, isLowRam = false).cacheKiloBytes)
+    assertEquals(16 * 1024, PdfBitmapBudget.fromHeapBytes(64 * mb, isLowRam = false).cacheKiloBytes)
+    assertEquals(96 * 1024, PdfBitmapBudget.fromHeapBytes(2048 * mb, isLowRam = false).cacheKiloBytes)
+  }
+
+  @Test
+  fun lowRamBudgetScalesDownCacheAndSingleBitmap() {
+    val lowRam = PdfBitmapBudget.fromHeapBytes(256 * mb, isLowRam = true)
+    val normal = PdfBitmapBudget.fromHeapBytes(256 * mb, isLowRam = false)
+    assertTrue(lowRam.cacheKiloBytes < normal.cacheKiloBytes)
+    assertTrue(lowRam.maxBitmapPixels < normal.maxBitmapPixels)
+    assertEquals(8 * 1024, PdfBitmapBudget.fromHeapBytes(64 * mb, isLowRam = true).cacheKiloBytes)
+    assertEquals(32 * 1024, PdfBitmapBudget.fromHeapBytes(1024 * mb, isLowRam = true).cacheKiloBytes)
   }
 
   @Test
   fun singleBitmapCappedAt32MegabytesOrEighthOfHeap() {
-    assertEquals(8L * mb, PdfBitmapBudget.fromHeapBytes(512 * mb).maxBitmapPixels)
-    assertEquals(4L * mb, PdfBitmapBudget.fromHeapBytes(128 * mb).maxBitmapPixels)
+    assertEquals(8L * mb, PdfBitmapBudget.fromHeapBytes(512 * mb, isLowRam = false).maxBitmapPixels)
+    assertEquals(4L * mb, PdfBitmapBudget.fromHeapBytes(128 * mb, isLowRam = false).maxBitmapPixels)
   }
 
   @Test

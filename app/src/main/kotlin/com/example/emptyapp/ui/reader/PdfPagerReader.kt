@@ -411,7 +411,7 @@ fun PdfPagerReader(
     val layoutDirection = LocalLayoutDirection.current
     val backgroundTextMeasurer =
       remember(fontFamilyResolver, density, layoutDirection) {
-        TextMeasurer(fontFamilyResolver, density, layoutDirection, cacheSize = 0)
+        TextMeasurer(fontFamilyResolver, density, layoutDirection, cacheSize = 64)
       }
     val bodyTextStyle =
       remember(reflowFontFamily, bodyFontWeight, baseFontSp, lineHeightSp, textAlign) {

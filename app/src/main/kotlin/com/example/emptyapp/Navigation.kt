@@ -85,7 +85,7 @@ fun MainNavigation(
     HorizontalPager(
       state = pagerState,
       modifier = Modifier.weight(1f).fillMaxWidth(),
-      beyondViewportPageCount = 1,
+      beyondViewportPageCount = 0,
     ) { page ->
       when (page) {
         0 -> {

@@ -198,7 +198,23 @@ class EInkWallpaperService : WallpaperService() {
       if (visible) {
         ensureLockScreenNotificationOnLock()
         handler.post(drawTask)
+      } else {
+        releaseRenderCaches()
       }
+    }
+
+    private fun releaseRenderCaches() {
+      coverLoadJob?.cancel()
+      coverLoadJob = null
+      loadingCoverKey = null
+      cachedCoverBitmap?.recycle()
+      cachedCoverBitmap = null
+      cachedCoverKey = null
+      grainTileBitmap?.recycle()
+      grainTileBitmap = null
+      grainTilePaint.shader = null
+      cachedExcerptLayout = null
+      cachedExcerptKey = null
     }
 
     private fun ensureLockScreenNotificationOnLock() {
@@ -251,19 +267,14 @@ class EInkWallpaperService : WallpaperService() {
       super.onSurfaceDestroyed(holder)
       visible = false
       handler.removeCallbacks(drawTask)
+      releaseRenderCaches()
     }
 
     override fun onDestroy() {
       handler.removeCallbacks(drawTask)
-      coverLoadJob?.cancel()
       observerJob?.cancel()
       engineScope.cancel()
-      cachedCoverBitmap?.recycle()
-      cachedCoverBitmap = null
-      cachedCoverKey = null
-      loadingCoverKey = null
-      grainTileBitmap?.recycle()
-      grainTileBitmap = null
+      releaseRenderCaches()
       super.onDestroy()
     }
 
@@ -584,9 +595,16 @@ class EInkWallpaperService : WallpaperService() {
           engineScope.launch(Dispatchers.IO) {
             val decoded =
               runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(path, bounds)
+                var sample = 1
+                val maxDim = 320
+                while (bounds.outWidth / (sample * 2) >= maxDim || bounds.outHeight / (sample * 2) >= maxDim) {
+                  sample *= 2
+                }
                 val opts =
                   BitmapFactory.Options().apply {
-                    inSampleSize = 2
+                    inSampleSize = sample
                     inPreferredConfig = Bitmap.Config.RGB_565
                   }
                 BitmapFactory.decodeFile(path, opts)

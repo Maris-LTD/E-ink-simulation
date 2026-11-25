@@ -3,9 +3,11 @@ package com.example.emptyapp.reader.pdf
 import android.content.Context
 import android.graphics.Path
 import android.graphics.PointF
+import com.example.emptyapp.DeviceMemoryProfile
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.contentstream.PDFGraphicsStreamEngine
 import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageTree
@@ -77,6 +79,9 @@ object PdfPageAnalyzer {
 
   private class StopBatchException : RuntimeException()
 
+  internal fun memoryUsageSetting(): MemoryUsageSetting =
+    MemoryUsageSetting.setupMixed(DeviceMemoryProfile.current.pdfBoxMainMemoryBytes)
+
   fun analyzeAllPages(
     file: File,
     shouldContinue: () -> Boolean = { true },
@@ -84,7 +89,7 @@ object PdfPageAnalyzer {
   ): List<PdfPageAnalysis> {
     if (!file.exists()) return emptyList()
     return try {
-      PDDocument.load(file).use { document ->
+      PDDocument.load(file, memoryUsageSetting()).use { document ->
         analyzeAllPages(document, shouldContinue, onProgress)
       }
     } catch (e: CancellationException) {
@@ -178,7 +183,7 @@ object PdfPageAnalyzer {
   fun analyzePages(file: File, pageIndices: List<Int>): List<PdfPageAnalysis> {
     if (!file.exists() || pageIndices.isEmpty()) return emptyList()
     return try {
-      PDDocument.load(file).use { document ->
+      PDDocument.load(file, memoryUsageSetting()).use { document ->
         analyzePages(document, pageIndices)
       }
     } catch (e: CancellationException) {
@@ -206,7 +211,7 @@ object PdfPageAnalyzer {
   ): List<PdfPageAnalysis> {
     if (!file.exists()) return emptyList()
     return try {
-      PDDocument.load(file).use { document ->
+      PDDocument.load(file, memoryUsageSetting()).use { document ->
         analyzePages(document, indicesForCount(document.numberOfPages))
       }
     } catch (e: CancellationException) {

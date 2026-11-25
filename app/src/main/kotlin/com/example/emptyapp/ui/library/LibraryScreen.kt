@@ -65,6 +65,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -120,7 +121,7 @@ private val SUPPORTED_MIMES =
     "application/octet-stream",
   )
 
-private enum class LibraryTab(val labelRes: Int) {
+internal enum class LibraryTab(val labelRes: Int) {
   ALL(com.example.emptyapp.R.string.lib_tab_all),
   READING(com.example.emptyapp.R.string.lib_tab_reading),
   UNREAD(com.example.emptyapp.R.string.lib_tab_unread),
@@ -129,7 +130,7 @@ private enum class LibraryTab(val labelRes: Int) {
   HIGHLIGHTS(com.example.emptyapp.R.string.lib_tab_highlights),
 }
 
-private enum class LibrarySort(val labelRes: Int) {
+internal enum class LibrarySort(val labelRes: Int) {
   RECENT(com.example.emptyapp.R.string.lib_sort_recent),
   TITLE(com.example.emptyapp.R.string.lib_sort_title),
   PROGRESS(com.example.emptyapp.R.string.lib_sort_progress);
@@ -242,43 +243,34 @@ fun LibraryScreen(
     }
   }
 
-  val tabBooks =
-    remember(books, selectedTab) {
-      books.filter { book ->
-        when (selectedTab) {
-          LibraryTab.ALL -> true
-          LibraryTab.READING -> book.progress > 0f && book.progress < 0.99f
-          LibraryTab.UNREAD -> book.progress <= 0f
-          LibraryTab.COMPLETED -> book.progress >= 0.99f
-          LibraryTab.BOOKMARKS, LibraryTab.HIGHLIGHTS -> false
-        }
-      }
-    }
-
   val appLocale = remember(context) { com.example.emptyapp.LocaleHelper.effectiveLocale(context) }
   val nameComparator = remember(appLocale) { com.example.emptyapp.LocaleHelper.nameComparator(appLocale) }
 
-  val filteredBooks =
-    remember(tabBooks, selectedTab, selectedAuthor, query, sortMode, nameComparator) {
-      val matching =
-        tabBooks.filter { book ->
-          val authorMatch = selectedAuthor == null || book.author == selectedAuthor
-          val queryMatch =
-            query.isBlank() ||
-              book.title.contains(query, ignoreCase = true) ||
-              book.author.contains(query, ignoreCase = true)
-          authorMatch && queryMatch
+  val filteredState by
+    produceState(
+      initialValue = LibraryFilteredState(),
+      books,
+      selectedTab,
+      selectedAuthor,
+      query,
+      sortMode,
+      nameComparator,
+    ) {
+      value =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+          filterAndSortLibraryBooks(
+            books = books,
+            selectedTab = selectedTab,
+            selectedAuthor = selectedAuthor,
+            query = query,
+            sortMode = sortMode,
+            nameComparator = nameComparator,
+          )
         }
-      when (sortMode) {
-        LibrarySort.RECENT -> matching.sortedByDescending { it.updatedAt }
-        LibrarySort.TITLE -> matching.sortedWith { a, b -> nameComparator.compare(a.title, b.title) }
-        LibrarySort.PROGRESS -> matching.sortedByDescending { it.progress }
-      }
     }
-  val authors =
-    remember(tabBooks, nameComparator) {
-      tabBooks.map { it.author }.filter { it.isNotBlank() }.distinct().sortedWith(nameComparator)
-    }
+  val tabBooks = filteredState.tabBooks
+  val filteredBooks = filteredState.filteredBooks
+  val authors = filteredState.authors
   LaunchedEffect(booksLoaded, authors) {
     if (booksLoaded && selectedAuthor != null && selectedAuthor !in authors) {
       selectedAuthor = null
@@ -311,16 +303,23 @@ fun LibraryScreen(
           paywallOpen = true
         },
       )
-      var wallpaperActive by remember {
-        mutableStateOf(com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context))
+      var wallpaperActive by remember { mutableStateOf(false) }
+      val wallpaperScope = rememberCoroutineScope()
+      LaunchedEffect(context) {
+        wallpaperActive =
+          kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+          }
       }
       val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
       androidx.compose.runtime.DisposableEffect(lifecycleOwner, context) {
         val observer =
           androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-              wallpaperActive =
-                com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+              wallpaperScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                wallpaperActive =
+                  com.example.emptyapp.system.EInkSystemSetupHelper.isLiveWallpaperActive(context)
+              }
             }
           }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -568,9 +567,13 @@ fun LibraryScreen(
       }
     }
     pendingDetailsBook?.let { bookToInspect ->
-      val fileSizeBytes = remember(bookToInspect.id) {
-        runCatching { viewModel.bookFileOf(bookToInspect).length() }.getOrDefault(0L)
-      }
+      val fileSizeBytes by
+        produceState(initialValue = 0L, key1 = bookToInspect.id) {
+          value =
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+              runCatching { viewModel.bookFileOf(bookToInspect).length() }.getOrDefault(0L)
+            }
+        }
       BookDetailsDialog(
         book = bookToInspect,
         fileSizeBytes = fileSizeBytes,

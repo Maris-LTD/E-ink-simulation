@@ -4,21 +4,45 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val GRAIN_SIZE = 128
 
+private object PaperGrainBrushHolder {
+  @Volatile var cachedBrush: ShaderBrush? = null
+
+  suspend fun getOrCreate(): ShaderBrush {
+    cachedBrush?.let { return it }
+    val created =
+      withContext(Dispatchers.Default) {
+        ShaderBrush(ImageShader(createPaperGrainTile(), TileMode.Repeated, TileMode.Repeated))
+      }
+    cachedBrush = created
+    return created
+  }
+}
+
 @Composable
 fun PaperGrainOverlay(modifier: Modifier = Modifier, alpha: Float = 0.055f) {
-  val brush = remember { ShaderBrush(ImageShader(createPaperGrainTile(), TileMode.Repeated, TileMode.Repeated)) }
+  if (alpha <= 0f) return
+  val brush by
+    produceState(initialValue = PaperGrainBrushHolder.cachedBrush) {
+      if (value == null) {
+        value = PaperGrainBrushHolder.getOrCreate()
+      }
+    }
+  val activeBrush = brush ?: return
   Canvas(modifier = modifier.fillMaxSize()) {
-    drawRect(brush = brush, alpha = alpha)
+    drawRect(brush = activeBrush, alpha = alpha)
   }
 }
 
