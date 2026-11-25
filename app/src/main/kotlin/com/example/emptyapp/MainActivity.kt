@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
     setContent {
       val settings by (application as EmptyApplication).container.settings.settings.collectAsStateWithLifecycle()
       val externalBookUri by pendingExternalUri.collectAsStateWithLifecycle()
-      val isDark = settings.tone == EInkTone.DARK
+      val isDark = settings.tone.isDarkTone
       LaunchedEffect(settings.tone) {
         window.decorView.setBackgroundColor(settings.tone.background)
         WindowInsetsControllerCompat(window, window.decorView).apply {

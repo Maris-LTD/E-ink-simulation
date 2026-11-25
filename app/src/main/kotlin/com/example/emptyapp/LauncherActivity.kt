@@ -93,6 +93,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.billing.PlayBillingManager
+import com.example.emptyapp.data.billing.ProFeature
+import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.data.book.BookEntry
 import com.example.emptyapp.data.book.mostRecentlyReadBook
 import com.example.emptyapp.data.stats.ReadingGamification
@@ -101,6 +104,7 @@ import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.CoverBitmapCache
 import com.example.emptyapp.ui.eink.EInkText
 import com.example.emptyapp.ui.eink.EInkTheme
+import com.example.emptyapp.ui.monet.ProPaywallSheet
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -142,7 +146,7 @@ class LauncherActivity : ComponentActivity() {
       val books by container.library.books.collectAsStateWithLifecycle()
       val highlights by container.annotations.highlights.collectAsStateWithLifecycle()
       val stats by container.stats.stats.collectAsStateWithLifecycle()
-      val isDark = settings.tone == EInkTone.DARK
+      val isDark = settings.tone.isDarkTone
 
       LaunchedEffect(settings.tone) {
         window.decorView.setBackgroundColor(settings.tone.background)
@@ -163,6 +167,8 @@ class LauncherActivity : ComponentActivity() {
             stats = stats,
             tone = settings.tone,
             grayscale = settings.grayscale,
+            billing = container.billing,
+            proGate = container.proGate,
             coverOf = container.library::coverFileOf,
             onToneChange = { tone -> container.settings.update { it.copy(tone = tone) } },
             onOpenLibrary = { startActivity(Intent(this, MainActivity::class.java)) },
@@ -189,6 +195,8 @@ private fun EInkHomePager(
   stats: ReadingStatsData,
   tone: EInkTone,
   grayscale: Boolean,
+  billing: PlayBillingManager,
+  proGate: ProFeatureGate,
   coverOf: (BookEntry) -> File?,
   onToneChange: (EInkTone) -> Unit,
   onOpenLibrary: () -> Unit,
@@ -257,6 +265,8 @@ private fun EInkHomePager(
     }
   }
   val resolvedPinned = pinnedPackages.orEmpty()
+  val entitlement by proGate.entitlement.collectAsStateWithLifecycle()
+  var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
   var drawerViewMode by remember {
     val saved = prefs.getString("drawer_view_mode", DrawerViewMode.GRID_3.name)
     mutableStateOf(DrawerViewMode.entries.firstOrNull { it.name == saved } ?: DrawerViewMode.GRID_3)
@@ -264,9 +274,14 @@ private fun EInkHomePager(
 
   val pinnedToastFmt = stringResource(R.string.launcher_pinned_toast)
   val unpinnedToastFmt = stringResource(R.string.launcher_unpinned_toast)
+  val widgetToggledMsg = stringResource(R.string.launcher_widget_toggled)
 
   fun togglePin(app: LaunchableApp) {
     val current = pinnedPackages.orEmpty()
+    if (app.packageName !in current && !proGate.canPinMoreApps(current.size, entitlement.isPro)) {
+      paywallFeature = ProFeature.LAUNCHER_CUSTOMIZATION
+      return
+    }
     val next =
       if (app.packageName in current) current - app.packageName
       else current + app.packageName
@@ -326,13 +341,32 @@ private fun EInkHomePager(
           isLoading = isLoadingApps,
           pinnedPackages = resolvedPinned,
           viewMode = drawerViewMode,
+          isPro = entitlement.isPro,
           onCycleViewMode = ::cycleViewMode,
           onLaunchApp = { pkg -> launchPackage(context, pkg) },
           onTogglePin = ::togglePin,
+          onHideAppsClick = {
+            if (!entitlement.isPro) paywallFeature = ProFeature.LAUNCHER_CUSTOMIZATION
+          },
+          onWidgetLayoutClick = {
+            if (!entitlement.isPro) {
+              paywallFeature = ProFeature.LAUNCHER_CUSTOMIZATION
+            } else {
+              scope.launch { snackbarHostState.showSnackbar(widgetToggledMsg) }
+            }
+          },
           onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
         )
       }
     }
+  }
+  if (paywallFeature != null) {
+    ProPaywallSheet(
+      billing = billing,
+      proGate = proGate,
+      highlightedFeature = paywallFeature,
+      onDismiss = { paywallFeature = null },
+    )
   }
 }
 
@@ -732,9 +766,12 @@ private fun MinimalistAppDrawerPage(
   isLoading: Boolean,
   pinnedPackages: Set<String>,
   viewMode: DrawerViewMode,
+  isPro: Boolean,
   onCycleViewMode: () -> Unit,
   onLaunchApp: (String) -> Unit,
   onTogglePin: (LaunchableApp) -> Unit,
+  onHideAppsClick: () -> Unit,
+  onWidgetLayoutClick: () -> Unit,
   onBack: () -> Unit,
 ) {
   var query by remember { mutableStateOf("") }
@@ -803,6 +840,30 @@ private fun MinimalistAppDrawerPage(
       }
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      OutlinedButton(
+        onClick = onHideAppsClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+      ) {
+        val label =
+          if (isPro) stringResource(R.string.launcher_hide_apps)
+          else "${stringResource(R.string.launcher_hide_apps)} · PRO"
+        EInkText(label, style = MaterialTheme.typography.labelMedium)
+      }
+      OutlinedButton(
+        onClick = onWidgetLayoutClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+      ) {
+        val label =
+          if (isPro) stringResource(R.string.launcher_widget_layout)
+          else "${stringResource(R.string.launcher_widget_layout)} · PRO"
+        EInkText(label, style = MaterialTheme.typography.labelMedium)
+      }
+    }
+    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
     if (isLoading && filtered.isEmpty()) {
       Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

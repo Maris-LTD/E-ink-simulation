@@ -51,6 +51,7 @@ fun ProPaywallSheet(
   billing: PlayBillingManager,
   proGate: ProFeatureGate,
   feature: ProFeature? = null,
+  highlightedFeature: ProFeature? = feature,
   onDismiss: () -> Unit,
 ) {
   val context = LocalContext.current
@@ -106,8 +107,8 @@ fun ProPaywallSheet(
           if (entitlement.isPending) {
             PendingBannerCard()
           }
-          PaywallContextHeader(feature = feature)
-          PaywallFeatureList()
+          PaywallContextHeader(feature = highlightedFeature)
+          PaywallFeatureList(highlightedFeature = highlightedFeature)
           PaywallTrustBadges()
           Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             PaywallTierCard(

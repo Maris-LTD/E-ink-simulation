@@ -134,9 +134,16 @@
     <string name="tone_white">Trắng</string>
     <string name="tone_gray">Xám</string>
     <string name="tone_dark">Đêm</string>
+    <string name="tone_amoled">AMOLED Đen</string>
 
     <!-- Reader Settings Panel -->
     <string name="settings_font">Phông chữ</string>
+    <string name="settings_import_font">Font tùy chỉnh (.ttf / .otf)</string>
+    <string name="settings_import_font_cta">Nhập Font</string>
+    <string name="export_notes_cta">Xuất (Markdown / TXT)</string>
+    <string name="launcher_hide_apps">Ẩn ứng dụng</string>
+    <string name="launcher_widget_layout">Bố cục Widget</string>
+    <string name="launcher_widget_toggled">Đã đổi bố cục widget trang chủ</string>
     <string name="settings_font_size">Cỡ chữ</string>
     <string name="settings_font_weight">Độ đậm chữ</string>
     <string name="settings_line_height">Giãn dòng</string>
@@ -426,28 +433,38 @@
     <string name="paywall_title">Inkify Pro</string>
     <string name="paywall_badge_pro">PRO</string>
     <string name="paywall_header_general">Đọc sâu hơn trên màn hình E-Ink</string>
-    <string name="paywall_sub_general">Mở khóa toàn bộ Adaptive PDF, đồng bộ Google Drive riêng tư và Focus Mode.</string>
+    <string name="paywall_sub_general">Mở khóa toàn bộ Adaptive PDF, giao diện AMOLED &amp; Giấy ấm, tùy biến Launcher, đồng bộ Drive, xuất ghi chú và Focus Mode.</string>
     <string name="paywall_header_pdf_reflow">Mở khóa Adaptive PDF toàn phần</string>
     <string name="paywall_sub_pdf_reflow">Bạn vừa xem thử 5 trang đầu. Nâng cấp để dàn chữ, lọc hình/bảng và đọc theo vùng cho toàn bộ tài liệu.</string>
     <string name="paywall_header_drive_sync">Đồng bộ giữa mọi thiết bị</string>
     <string name="paywall_sub_drive_sync">Sao lưu sách, tiến độ đọc, dấu trang và highlight riêng tư trên Google Drive của bạn.</string>
     <string name="paywall_header_lockscreen">Đọc ngay trên Màn hình khóa</string>
     <string name="paywall_sub_lockscreen">Biến màn hình khóa thành trang giấy E-Ink tĩnh lặng kèm tiến độ và nút lật trang.</string>
-    <string name="paywall_header_launcher">Màn hình chính eInk tối giản</string>
-    <string name="paywall_sub_launcher">Thay thế màn hình chính nhiều màu sắc bằng giao diện E-Ink đơn sắc và nút đọc tiếp 1 chạm.</string>
+    <string name="paywall_header_launcher">Tùy biến Launcher &amp; Màn hình khóa</string>
+    <string name="paywall_sub_launcher">Ghim không giới hạn ứng dụng, ẩn ứng dụng gây xao nhãng và tùy chỉnh widget tiến độ đọc.</string>
+    <string name="paywall_header_themes">AMOLED Đen tuyệt đối &amp; Giấy ấm</string>
+    <string name="paywall_sub_themes">Mở khóa nền đen #000000 tiết kiệm pin, giấy vàng ấm, hiệu ứng hạt giấy và nhập font .ttf/.otf riêng.</string>
+    <string name="paywall_header_export">Xuất Ghi chú &amp; Highlight</string>
+    <string name="paywall_sub_export">Xuất toàn bộ highlight và ghi chú sách ra file Markdown (.md) hoặc văn bản (.txt) bất cứ lúc nào.</string>
     <string name="paywall_header_focus">Chế độ Tập trung (Focus Mode)</string>
     <string name="paywall_sub_focus">Tự động bật Không làm phiền khi đọc để giữ trọn sự tập trung qua từng chương sách.</string>
 
-    <string name="paywall_feat_pdf_title">Dàn chữ PDF, Cắt lề &amp; Lọc hình</string>
-    <string name="paywall_feat_pdf_desc">Dàn lại chữ PDF, lọc bảng/hình minh họa và điều hướng theo từng cột.</string>
+    <string name="paywall_feat_pdf_title">Adaptive PDF Reflow không giới hạn</string>
+    <string name="paywall_feat_pdf_desc">Dàn lại chữ PDF phức tạp mà vẫn giữ nguyên bảng biểu &amp; sơ đồ.</string>
     <string name="paywall_feat_sync_title">Đồng bộ Google Drive</string>
-    <string name="paywall_feat_sync_desc">Sao lưu riêng tư sách, highlight, dấu trang và thống kê trên Drive.</string>
+    <string name="paywall_feat_sync_desc">Sao lưu tự động sách, tiến độ đọc, dấu trang và highlight.</string>
     <string name="paywall_feat_lockscreen_title">Hình nền khóa &amp; Điều hướng</string>
     <string name="paywall_feat_lockscreen_desc">Hình nền giấy E-Ink kèm đoạn đang đọc và nút lật trang.</string>
-    <string name="paywall_feat_launcher_title">eInk Home Launcher</string>
-    <string name="paywall_feat_launcher_desc">Màn hình chính đơn sắc tối giản dành riêng cho máy đọc sách.</string>
-    <string name="paywall_feat_focus_title">Chế độ Tập trung (DND)</string>
-    <string name="paywall_feat_focus_desc">Tự động chặn thông báo làm phiền trong lúc đọc sách.</string>
+    <string name="paywall_feat_launcher_title">Tùy biến Launcher &amp; Màn hình khóa</string>
+    <string name="paywall_feat_launcher_desc">Ghim không giới hạn app, ẩn app gây nghiện &amp; widget tiến độ tùy chỉnh.</string>
+    <string name="paywall_feat_focus_title">Chế độ Tập trung tự động (DND)</string>
+    <string name="paywall_feat_focus_desc">Tự động tắt thông báo gây xao nhãng khi đang đọc sách.</string>
+    <string name="pro_feature_launcher_title">Tùy biến Launcher &amp; Màn hình khóa</string>
+    <string name="pro_feature_launcher_desc">Ghim không giới hạn app, ẩn app gây nghiện &amp; widget tiến độ tùy chỉnh.</string>
+    <string name="pro_feature_themes_title">AMOLED Đen tuyệt đối &amp; Giấy ấm</string>
+    <string name="pro_feature_themes_desc">Nền đen #000000 tiết kiệm pin, hạt giấy &amp; nhập font .ttf/.otf riêng.</string>
+    <string name="pro_feature_export_title">Xuất Ghi chú &amp; Highlight</string>
+    <string name="pro_feature_export_desc">Xuất toàn bộ ghi chú sách ra Markdown (.md) hoặc TXT bất cứ lúc nào.</string>
 
     <string name="paywall_trust_ads" formatted="false">100% Không quảng cáo &amp; Không theo dõi</string>
     <string name="paywall_trust_offline">Hoạt động Offline hoàn toàn</string>
@@ -456,14 +473,14 @@
     <string name="paywall_tier_annual_title">Gói Năm</string>
     <string name="paywall_tier_annual_badge">TIẾT KIỆM NHẤT</string>
     <string name="paywall_tier_annual_trial">Dùng thử 7 ngày miễn phí</string>
-    <string name="paywall_tier_annual_fallback_price">79.000đ / năm</string>
+    <string name="paywall_tier_annual_fallback_price">99.000đ / năm</string>
     <string name="paywall_tier_lifetime_title">Trọn đời</string>
     <string name="paywall_tier_lifetime_badge">MUA ĐỨT</string>
     <string name="paywall_tier_lifetime_desc">Thanh toán 1 lần, sở hữu mãi mãi</string>
-    <string name="paywall_tier_lifetime_fallback_price">199.000đ</string>
+    <string name="paywall_tier_lifetime_fallback_price">229.000đ</string>
     <string name="paywall_tier_monthly_title">Gói Tháng</string>
     <string name="paywall_tier_monthly_desc">Gia hạn linh hoạt từng tháng</string>
-    <string name="paywall_tier_monthly_fallback_price">19.000đ / tháng</string>
+    <string name="paywall_tier_monthly_fallback_price">29.000đ / tháng</string>
 
     <string name="paywall_cta_trial">Dùng thử 7 ngày miễn phí</string>
     <string name="paywall_cta_subscribe">Đăng ký %1$s</string>
@@ -483,6 +500,8 @@
     <string name="paywall_tip_desc">Bạn thích Inkify? Có thể tặng tác giả một ly cà phê hoặc cuốn sách nhỏ.</string>
     <string name="paywall_tip_coffee">Tặng ly cà phê</string>
     <string name="paywall_tip_book">Tặng cuốn sách</string>
+    <string name="tip_coffee_fallback_price">39.000đ</string>
+    <string name="tip_book_fallback_price">99.000đ</string>
 
     <string name="paywall_msg_purchase_success">Chào mừng đến với Inkify Pro! Toàn bộ tính năng đã được mở khóa.</string>
     <string name="paywall_msg_tip_success">Cảm ơn bạn rất nhiều vì đã ủng hộ!</string>

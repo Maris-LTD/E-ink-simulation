@@ -22,7 +22,7 @@ import com.example.emptyapp.reader.EInkTone
 private fun eInkColorScheme(tone: EInkTone): ColorScheme {
   val bg = Color(tone.background)
   val fg = Color(tone.text)
-  if (tone == EInkTone.DARK) {
+  if (tone.isDarkTone) {
     return darkColorScheme(
       primary = fg,
       onPrimary = bg,

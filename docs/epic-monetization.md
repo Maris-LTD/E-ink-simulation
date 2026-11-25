@@ -21,10 +21,10 @@ Cộng đồng người dùng thiết bị E-Ink (Boox, Bigme, Hisense, Kindle A
 
 | Gói | Product ID (Play Console) | Loại | Vai trò tâm lý & Đề xuất giá tham khảo |
 | :--- | :--- | :--- | :--- |
-| **Inkify Pro — Tháng** | `inkify_pro_monthly` | Subscription | **Gói neo giá (Anchor):** ~$0.79 / tháng (~19.000đ). Giúp gói Năm & Trọn đời trông cực kỳ hời. |
-| **Inkify Pro — Năm** *(Best Value)* | `inkify_pro_annual` | Subscription + **7-day Free Trial** | **Gói chủ lực:** ~$3.99 / năm (~79.000đ, tiết kiệm ~65%). Có **Dùng thử 7 ngày miễn phí** để xóa rào cản bấm mua lần đầu. |
-| **Inkify Pro — Trọn đời** | `inkify_pro_lifetime` | One-time IAP (Non-consumable) | **Gói chốt đơn giá trị cao:** ~$8.99 (~199.000đ, chỉ bằng ~2.3 năm). Cực hút khách hàng E-Ink thích "mua đứt dùng mãi". |
-| **Ủng hộ tác giả (Tip Jar)** *(Tùy chọn)* | `inkify_tip_coffee`, `inkify_tip_book` | Consumable IAP | Hiện sau khi người dùng đã lên Pro hoặc đạt cột mốc đọc cao (`ReadingGamification`), tạo thêm doanh thu tự nguyện. |
+| **Inkify Pro — Tháng** | `inkify_pro_monthly` | Subscription | **Gói neo giá (Anchor):** `$1.49 / tháng` (`29.000đ / tháng`). Giúp gói Năm & Trọn đời trông cực kỳ hời. |
+| **Inkify Pro — Năm** *(Best Value)* | `inkify_pro_annual` | Subscription + **7-day Free Trial** | **Gói chủ lực:** `$7.99 / năm` (`99.000đ / năm`). Có **Dùng thử 7 ngày miễn phí** để xóa rào cản bấm mua lần đầu. |
+| **Inkify Pro — Trọn đời** | `inkify_pro_lifetime` | One-time IAP (Non-consumable) | **Gói chốt đơn giá trị cao:** `$16.99` (`229.000đ`). Cực hút khách hàng E-Ink thích "mua đứt dùng mãi". |
+| **Ủng hộ tác giả (Tip Jar)** *(Tùy chọn)* | `inkify_tip_coffee`, `inkify_tip_book` | Consumable IAP | `inkify_tip_coffee` (`$1.99` / `39.000đ`), `inkify_tip_book` (`$4.99` / `99.000đ`). Hiện khi đã lên Pro, có đầy đủ giá fallback khi offline. |
 
 ### 2.2. Các điểm kích hoạt Paywall đúng "Aha! Moment" (High-Intent Triggers)
 Thay vì hiện popup ngẫu nhiên gây khó chịu, Paywall chỉ xuất hiện khi người dùng **vừa nhìn thấy giá trị vượt trội** hoặc **đang có nhu cầu cấp thiết**:
@@ -54,10 +54,12 @@ Thay vì hiện popup ngẫu nhiên gây khó chịu, Paywall chỉ xuất hiệ
 | Nhóm tính năng | Free | Inkify Pro | Module / File liên quan |
 | :--- | :--- | :--- | :--- |
 | **Đọc sách cốt lõi** | EPUB, PDF chuẩn, Bookmark, Highlight, Mục lục, Tìm kiếm, Tra từ điển | Không giới hạn | `ReadiumEngine`, `PdfPagerReader`, `AnnotationRepository`, `DictionaryService` |
-| **Adaptive PDF Engine** | Cắt lề thủ công + dùng thử Reflow **5 trang đầu/file** | Full **PDF Reflow**, **Graphic/Table Masking**, **Guided Region Nav**, Auto Margin Crop | `PdfReflowEngine`, `PdfGraphicMasker`, `PdfRegionNavigator`, `PdfMarginCropper` |
-| **Đồng bộ đám mây** | Lưu trữ cục bộ + Android Backup cơ bản | Full **Google Drive Sync** (tiến độ, bookmark, highlight, file sách) | `GoogleDriveSyncManager` |
-| **Hệ thống E-Ink & Điện thoại tối giản** | **Miễn phí toàn bộ:** **Lock-Screen Live Wallpaper**, **Lock-Screen Nav**, **eInk Home Launcher**, Widget | Giữ nguyên miễn phí (trải nghiệm cốt lõi của điện thoại tối giản) | `EInkWallpaperService`, `LockScreenReadingNotifier`, `LauncherActivity` |
-| **Focus & Thống kê** | Thống kê tổng quan cơ bản | **Focus Mode (DND)**, chi tiết Streak & Gamification | `FocusModeController`, `ReadingStatsRepository`, `ReadingGamification` |
+| **1. Adaptive PDF Engine** (`ADAPTIVE_PDF_REFLOW`) | Cắt lề thủ công + dùng thử Reflow **5 trang đầu/file** (`PDF_FREE_PREVIEW_PAGES = 5`) | Full **PDF Reflow**, **Graphic/Table Masking**, **Guided Region Nav** | `PdfReflowEngine`, `PdfGraphicMasker`, `PdfRegionNavigator`, `ReaderScreen` |
+| **2. Giao diện & Font nâng cao** (`ADVANCED_PAPER_THEMES`) | `E-Ink Light`, `E-Ink Dark`, `Paper`, `Soft Gray` + Font hệ thống | **AMOLED Pitch Black (`#000000`)**, **Warm Paper**, **Paper Grain**, **Import Custom Fonts (`.ttf`/`.otf`)** | `EInkSettings`, `ReaderSettingsPanel`, `ReaderScreen` |
+| **3. Tùy biến Launcher & Lock-Screen** (`LAUNCHER_CUSTOMIZATION`) | eInk Home Launcher tối đa **4 app ghim** (`MAX_FREE_PINNED_APPS = 4`) + Lock-Screen Wallpaper & Nav cơ bản | Ghim app không giới hạn, **Hide Distracting Apps**, **Custom Home Widget Layout** | `LauncherActivity`, `EInkWallpaperService`, `LockScreenReadingNotifier` |
+| **4. Đồng bộ đám mây** (`DRIVE_SYNC`) | Lưu trữ cục bộ + Android Backup cơ bản | Full **Google Drive Sync** (tiến độ, bookmark, highlight, file sách) | `GoogleDriveSyncManager`, `ReadingStatsSheet` |
+| **5. Xuất Ghi chú & Highlight** (`EXPORT_NOTES`) | Tạo/xem/quản lý Bookmark & Highlight trong app không giới hạn | Xuất Highlight & Ghi chú ra **Markdown (`.md`) / Plain Text (`.txt`)** | `HighlightExporter`, `LibraryHighlights`, `ReaderContentsSheet` |
+| **6. Focus Mode** (`FOCUS_MODE`) | Thống kê & Gamification đầy đủ | Tự động bật **Do Not Disturb (DND)** khi đọc | `FocusModeController`, `ReaderScreen` |
 
 ---
 
@@ -67,7 +69,7 @@ Thay vì hiện popup ngẫu nhiên gây khó chịu, Paywall chỉ xuất hiệ
   - `com.example.emptyapp.data.billing`
   - `com.example.emptyapp.ui.monet`
 - **Các thành phần chính:**
-  1. `ProFeature` (enum): `ADAPTIVE_PDF_REFLOW`, `DRIVE_SYNC`, `LOCKSCREEN_WALLPAPER`, `EINK_LAUNCHER`, `FOCUS_MODE`.
+  1. `ProFeature` (enum): `ADAPTIVE_PDF_REFLOW`, `DRIVE_SYNC`, `FOCUS_MODE`, `LAUNCHER_CUSTOMIZATION`, `ADVANCED_PAPER_THEMES`, `EXPORT_NOTES`.
   2. `ProEntitlement` (Serializable data class): `isPro`, `productId`, `purchaseType` (`SUBSCRIPTION` / `LIFETIME`), `purchaseTimeEpochMs`, `lastVerifiedAtEpochMs`, `isPending`.
   3. `EntitlementStore`: Lưu/đọc `ProEntitlement` qua `AtomicJsonFile` (tương tự `BookIndexStore` / `EInkSettingsStore`). Hỗ trợ đọc offline tức thì khi khởi động app.
   4. `PlayBillingManager`:

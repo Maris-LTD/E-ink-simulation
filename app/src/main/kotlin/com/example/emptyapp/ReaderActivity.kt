@@ -156,7 +156,7 @@ class ReaderActivity : FragmentActivity() {
     hideSystemBars()
     setContent {
       val settings by viewModel.settings.collectAsStateWithLifecycle()
-      val isDark = settings.tone == EInkTone.DARK
+      val isDark = settings.tone.isDarkTone
       LaunchedEffect(settings.tone) {
         window.decorView.setBackgroundColor(settings.tone.background)
         WindowInsetsControllerCompat(window, window.decorView).apply {

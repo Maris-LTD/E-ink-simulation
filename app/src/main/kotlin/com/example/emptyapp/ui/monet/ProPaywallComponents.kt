@@ -72,6 +72,9 @@ internal fun PaywallContextHeader(feature: ProFeature?) {
       ProFeature.ADAPTIVE_PDF_REFLOW -> R.string.paywall_header_pdf_reflow to R.string.paywall_sub_pdf_reflow
       ProFeature.DRIVE_SYNC -> R.string.paywall_header_drive_sync to R.string.paywall_sub_drive_sync
       ProFeature.FOCUS_MODE -> R.string.paywall_header_focus to R.string.paywall_sub_focus
+      ProFeature.LAUNCHER_CUSTOMIZATION -> R.string.paywall_header_launcher to R.string.paywall_sub_launcher
+      ProFeature.ADVANCED_PAPER_THEMES -> R.string.paywall_header_themes to R.string.paywall_sub_themes
+      ProFeature.EXPORT_NOTES -> R.string.paywall_header_export to R.string.paywall_sub_export
       null -> R.string.paywall_header_general to R.string.paywall_sub_general
     }
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -85,24 +88,45 @@ internal fun PaywallContextHeader(feature: ProFeature?) {
 }
 
 @Composable
-internal fun PaywallFeatureList() {
-  val features =
+internal fun PaywallFeatureList(highlightedFeature: ProFeature? = null) {
+  val allFeatures =
     listOf(
-      R.string.paywall_feat_pdf_title to R.string.paywall_feat_pdf_desc,
-      R.string.paywall_feat_sync_title to R.string.paywall_feat_sync_desc,
-      R.string.paywall_feat_focus_title to R.string.paywall_feat_focus_desc,
+      Triple(ProFeature.ADAPTIVE_PDF_REFLOW, R.string.paywall_feat_pdf_title, R.string.paywall_feat_pdf_desc),
+      Triple(ProFeature.ADVANCED_PAPER_THEMES, R.string.pro_feature_themes_title, R.string.pro_feature_themes_desc),
+      Triple(ProFeature.LAUNCHER_CUSTOMIZATION, R.string.pro_feature_launcher_title, R.string.pro_feature_launcher_desc),
+      Triple(ProFeature.DRIVE_SYNC, R.string.paywall_feat_sync_title, R.string.paywall_feat_sync_desc),
+      Triple(ProFeature.EXPORT_NOTES, R.string.pro_feature_export_title, R.string.pro_feature_export_desc),
+      Triple(ProFeature.FOCUS_MODE, R.string.paywall_feat_focus_title, R.string.paywall_feat_focus_desc),
     )
+  val orderedFeatures =
+    if (highlightedFeature != null) {
+      allFeatures.sortedByDescending { it.first == highlightedFeature }
+    } else {
+      allFeatures
+    }
   Column(
     modifier =
       Modifier.fillMaxWidth()
         .clip(EInkShapes.Card)
         .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
         .padding(14.dp),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    features.forEach { (titleRes, descRes) ->
+    orderedFeatures.forEach { (itemFeature, titleRes, descRes) ->
+      val isHighlighted = itemFeature == highlightedFeature
       Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+          Modifier.fillMaxWidth()
+            .then(
+              if (isHighlighted) {
+                Modifier.clip(EInkShapes.Control)
+                  .background(MaterialTheme.colorScheme.surfaceVariant, EInkShapes.Control)
+                  .border(EInkBorder.Active, MaterialTheme.colorScheme.primary, EInkShapes.Control)
+                  .padding(10.dp)
+              } else {
+                Modifier
+              },
+            ),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
       ) {

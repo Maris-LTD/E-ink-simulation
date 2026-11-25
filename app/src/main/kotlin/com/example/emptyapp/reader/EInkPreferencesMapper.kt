@@ -20,7 +20,7 @@ object EInkPreferencesMapper {
     EpubPreferences(
       backgroundColor = Color(settings.tone.background),
       textColor = Color(settings.tone.text),
-      theme = if (settings.tone == EInkTone.DARK) Theme.DARK else Theme.LIGHT,
+      theme = if (settings.tone.isDarkTone) Theme.DARK else Theme.LIGHT,
       fontFamily = if (settings.font == EInkFont.SERIF) READER_SERIF else READER_SANS,
       fontSize = settings.fontScale,
       fontWeight = settings.fontWeight,

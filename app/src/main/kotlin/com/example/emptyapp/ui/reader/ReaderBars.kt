@@ -420,4 +420,5 @@ private fun toneLabel(tone: EInkTone): String =
     EInkTone.HIGH_CONTRAST -> stringResource(R.string.tone_white)
     EInkTone.SOFT_GRAY -> stringResource(R.string.tone_gray)
     EInkTone.DARK -> stringResource(R.string.tone_dark)
+    EInkTone.AMOLED -> stringResource(R.string.tone_amoled)
   }

@@ -89,6 +89,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.annotation.HighlightExporter
 import com.example.emptyapp.data.billing.PlayBillingManager
 import com.example.emptyapp.data.billing.ProEntitlement
 import com.example.emptyapp.data.billing.ProFeature
@@ -458,6 +459,14 @@ fun LibraryScreen(
           LibraryHighlightList(
             highlights = filteredHighlights,
             onOpenHighlight = { bookId, locatorJson -> onOpenBook(bookId, locatorJson) },
+            isPro = entitlement.isPro,
+            onExportNotes = {
+              if (proGate != null && !proGate.canExportNotes(entitlement.isPro)) {
+                paywallFeature = ProFeature.EXPORT_NOTES
+              } else {
+                HighlightExporter.shareAsMarkdown(context, filteredHighlights)
+              }
+            },
             onRemove = { id ->
               val removed = highlights.firstOrNull { it.id == id }
               viewModel.removeHighlight(id)

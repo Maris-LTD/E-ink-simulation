@@ -85,7 +85,7 @@ object LockScreenReadingNotifier {
         ?.settings
         ?.value
         ?.tone ?: EInkTone.HIGH_CONTRAST
-    val btnBg = if (tone == EInkTone.DARK) 0xFF2A2A2A.toInt() else 0xFFEEEEEE.toInt()
+    val btnBg = if (tone.isDarkTone) 0xFF2A2A2A.toInt() else 0xFFEEEEEE.toInt()
     val remoteViews =
       RemoteViews(context.packageName, R.layout.notification_lockscreen_nav).apply {
         setInt(R.id.notif_root, "setBackgroundColor", tone.background)

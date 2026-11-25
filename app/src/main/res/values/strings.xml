@@ -134,9 +134,16 @@
     <string name="tone_white">White</string>
     <string name="tone_gray">Gray</string>
     <string name="tone_dark">Night</string>
+    <string name="tone_amoled">AMOLED</string>
 
     <!-- Reader Settings Panel -->
     <string name="settings_font">Font</string>
+    <string name="settings_import_font">Custom Font (.ttf / .otf)</string>
+    <string name="settings_import_font_cta">Import Font</string>
+    <string name="export_notes_cta">Export (Markdown / TXT)</string>
+    <string name="launcher_hide_apps">Hide Apps</string>
+    <string name="launcher_widget_layout">Widget Layout</string>
+    <string name="launcher_widget_toggled">Switched home widget layout</string>
     <string name="settings_font_size">Font size</string>
     <string name="settings_font_weight">Font weight</string>
     <string name="settings_line_height">Line spacing</string>
@@ -431,28 +438,38 @@
     <string name="paywall_title">Inkify Pro</string>
     <string name="paywall_badge_pro">PRO</string>
     <string name="paywall_header_general">Read Deeper on E-Ink</string>
-    <string name="paywall_sub_general">Unlock full Adaptive PDF Reflow, private Google Drive sync, and Focus Mode.</string>
+    <string name="paywall_sub_general">Unlock full Adaptive PDF Reflow, AMOLED &amp; Warm Paper themes, Launcher customization, Drive sync, Note export, and Focus Mode.</string>
     <string name="paywall_header_pdf_reflow">Unlock Full Adaptive PDF</string>
     <string name="paywall_sub_pdf_reflow">You\'ve previewed the first 5 pages. Upgrade to reflow, mask graphics, and navigate regions across entire PDFs.</string>
     <string name="paywall_header_drive_sync">Sync Across All Devices</string>
     <string name="paywall_sub_drive_sync">Back up your books, reading progress, bookmarks, and highlights privately in your Google Drive.</string>
     <string name="paywall_header_lockscreen">Read Right on Your Lock Screen</string>
     <string name="paywall_sub_lockscreen">Turn your lock screen into a calm E-Ink paper display with live reading progress and page controls.</string>
-    <string name="paywall_header_launcher">Minimalist eInk Home Launcher</string>
-    <string name="paywall_sub_launcher">Replace distracting app grids with a calm monochrome E-Ink home screen and 1-tap book resume.</string>
+    <string name="paywall_header_launcher">Full Launcher &amp; Lock-Screen Control</string>
+    <string name="paywall_sub_launcher">Pin unlimited apps, hide distracting apps, and customize home &amp; lock-screen progress widgets.</string>
+    <string name="paywall_header_themes">AMOLED Pitch Black &amp; Warm Paper</string>
+    <string name="paywall_sub_themes">Unlock true #000000 battery-saving dark mode, warm night paper, paper grain, and custom .ttf/.otf fonts.</string>
+    <string name="paywall_header_export">Export Highlights &amp; Notes</string>
+    <string name="paywall_sub_export">Export all book highlights and notes to Markdown (.md) or Plain Text (.txt) anytime.</string>
     <string name="paywall_header_focus">Distraction-Free Focus Mode</string>
     <string name="paywall_sub_focus">Silence notifications with Do Not Disturb while reading so you stay immersed in every chapter.</string>
 
-    <string name="paywall_feat_pdf_title">Adaptive PDF Reflow &amp; Masking</string>
-    <string name="paywall_feat_pdf_desc">Reflow dense PDFs, mask illustrations, and navigate multi-column regions.</string>
-    <string name="paywall_feat_sync_title">Google Drive Sync</string>
-    <string name="paywall_feat_sync_desc">Private AppData backup for books, highlights, bookmarks, and stats.</string>
+    <string name="paywall_feat_pdf_title">Unlimited Adaptive PDF Reflow</string>
+    <string name="paywall_feat_pdf_desc">Reflow complex PDFs while preserving tables &amp; diagrams.</string>
+    <string name="paywall_feat_sync_title">Google Drive Cloud Sync</string>
+    <string name="paywall_feat_sync_desc">Automatic backup for books, reading progress &amp; highlights.</string>
     <string name="paywall_feat_lockscreen_title">Lock-Screen Wallpaper &amp; Nav</string>
     <string name="paywall_feat_lockscreen_desc">Live E-Ink paper wallpaper with excerpt &amp; page turn controls.</string>
-    <string name="paywall_feat_launcher_title">eInk Home Launcher</string>
-    <string name="paywall_feat_launcher_desc">Distraction-free monochrome home screen built for E-Ink phones.</string>
-    <string name="paywall_feat_focus_title">Focus Mode (Do Not Disturb)</string>
-    <string name="paywall_feat_focus_desc">Automatically mute notifications during reading sessions.</string>
+    <string name="paywall_feat_launcher_title">Full Launcher &amp; Lock-Screen Control</string>
+    <string name="paywall_feat_launcher_desc">Unlimited pinned apps, hide distracting apps &amp; custom progress widgets.</string>
+    <string name="paywall_feat_focus_title">Auto Focus Mode (DND)</string>
+    <string name="paywall_feat_focus_desc">Automatically silence notifications while reading.</string>
+    <string name="pro_feature_launcher_title">Full Launcher &amp; Lock-Screen Control</string>
+    <string name="pro_feature_launcher_desc">Unlimited pinned apps, hide distracting apps &amp; custom progress widgets.</string>
+    <string name="pro_feature_themes_title">AMOLED Pitch Black &amp; Warm Paper</string>
+    <string name="pro_feature_themes_desc">True #000000 battery-saving dark mode, paper grain &amp; custom .ttf/.otf fonts.</string>
+    <string name="pro_feature_export_title">Export Highlights &amp; Notes</string>
+    <string name="pro_feature_export_desc">Export your book notes to Markdown or TXT anytime.</string>
 
     <string name="paywall_trust_ads" formatted="false">100% Ads-free &amp; No tracking</string>
     <string name="paywall_trust_offline">Works 100% Offline</string>
@@ -461,14 +478,14 @@
     <string name="paywall_tier_annual_title">Annual</string>
     <string name="paywall_tier_annual_badge">BEST VALUE</string>
     <string name="paywall_tier_annual_trial">Includes 7-day free trial</string>
-    <string name="paywall_tier_annual_fallback_price">$3.99 / year</string>
+    <string name="paywall_tier_annual_fallback_price">$7.99 / year</string>
     <string name="paywall_tier_lifetime_title">Lifetime</string>
     <string name="paywall_tier_lifetime_badge">ONE-TIME</string>
     <string name="paywall_tier_lifetime_desc">Pay once, own Inkify Pro forever</string>
-    <string name="paywall_tier_lifetime_fallback_price">$8.99</string>
+    <string name="paywall_tier_lifetime_fallback_price">$16.99</string>
     <string name="paywall_tier_monthly_title">Monthly</string>
     <string name="paywall_tier_monthly_desc">Flexible monthly access</string>
-    <string name="paywall_tier_monthly_fallback_price">$0.79 / month</string>
+    <string name="paywall_tier_monthly_fallback_price">$1.49 / month</string>
 
     <string name="paywall_cta_trial">Start 7-Day Free Trial</string>
     <string name="paywall_cta_subscribe">Continue with %1$s</string>
@@ -488,6 +505,8 @@
     <string name="paywall_tip_desc">Enjoying Inkify? Buy a small coffee or book to support future E-Ink features.</string>
     <string name="paywall_tip_coffee">Buy a Coffee</string>
     <string name="paywall_tip_book">Buy a Book</string>
+    <string name="tip_coffee_fallback_price">$1.99</string>
+    <string name="tip_book_fallback_price">$4.99</string>
 
     <string name="paywall_msg_purchase_success">Welcome to Inkify Pro! All features are now unlocked.</string>
     <string name="paywall_msg_tip_success">Thank you so much for your support!</string>

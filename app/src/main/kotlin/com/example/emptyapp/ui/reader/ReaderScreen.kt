@@ -60,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.emptyapp.data.annotation.HighlightExporter
 import com.example.emptyapp.data.billing.PlayBillingManager
 import com.example.emptyapp.data.billing.ProEntitlement
 import com.example.emptyapp.data.billing.ProFeature
@@ -465,7 +466,13 @@ fun ReaderScreen(
           seekEnabled = positions.isNotEmpty(),
           tone = settings.tone,
           brightness = settings.brightness,
-          onToneChange = { tone -> viewModel.updateSettings { it.copy(tone = tone) } },
+          onToneChange = { tone ->
+            if (proGate != null && !proGate.canUseTone(tone, entitlement.isPro)) {
+              paywallFeature = ProFeature.ADVANCED_PAPER_THEMES
+            } else {
+              viewModel.updateSettings { it.copy(tone = tone) }
+            }
+          },
           onBrightnessChange = viewModel::previewBrightness,
           onBrightnessChangeFinished = viewModel::commitBrightness,
           onSeekToProgress = { fraction ->
@@ -500,6 +507,8 @@ fun ReaderScreen(
         onPdfModeChange = { next -> viewModel.updatePdfConfig { it.copy(mode = next) } },
         onToggleFocusMode = ::handleToggleFocusMode,
         onToggleLockScreenReader = ::handleToggleLockScreenReader,
+        isPro = entitlement.isPro,
+        onRequestPro = { paywallFeature = it },
         onChange = viewModel::updateSettings,
         modifier =
           Modifier.align(Alignment.BottomCenter)
@@ -569,6 +578,14 @@ fun ReaderScreen(
                 viewModel.restoreHighlight(removed)
               }
             }
+          }
+        },
+        isPro = entitlement.isPro,
+        onExportNotes = {
+          if (proGate != null && !proGate.canExportNotes(entitlement.isPro)) {
+            paywallFeature = ProFeature.EXPORT_NOTES
+          } else {
+            HighlightExporter.shareAsMarkdown(context, highlights)
           }
         },
         onDismiss = { contentsOpen = false },

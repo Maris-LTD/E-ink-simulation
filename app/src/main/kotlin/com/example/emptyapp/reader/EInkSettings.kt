@@ -6,6 +6,11 @@ enum class EInkTone(val background: Int, val text: Int) {
   HIGH_CONTRAST(0xFFFFFFFF.toInt(), 0xFF000000.toInt()),
   SOFT_GRAY(0xFFCFCFCF.toInt(), 0xFF101010.toInt()),
   DARK(0xFF121212.toInt(), 0xFFEAEAEA.toInt()),
+  AMOLED(0xFF000000.toInt(), 0xFFEAEAEA.toInt()),
+  ;
+
+  val isDarkTone: Boolean
+    get() = this == DARK || this == AMOLED
 }
 
 enum class EInkFont { SERIF, SANS_SERIF }

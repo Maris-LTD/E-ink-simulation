@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,8 @@ fun LibraryHighlightList(
   highlights: List<HighlightEntry>,
   onOpenHighlight: (bookId: String, locatorJson: String) -> Unit,
   onRemove: (String) -> Unit,
+  isPro: Boolean = true,
+  onExportNotes: () -> Unit = {},
 ) {
   if (highlights.isEmpty()) {
     Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -56,6 +59,20 @@ fun LibraryHighlightList(
   }
   val deleteCd = stringResource(R.string.action_delete)
   LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 76.dp)) {
+    item(key = "lib_export_notes_header") {
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.End,
+      ) {
+        OutlinedButton(onClick = onExportNotes, shape = EInkShapes.Control) {
+          val label =
+            if (isPro) stringResource(R.string.export_notes_cta)
+            else "${stringResource(R.string.export_notes_cta)} · PRO"
+          EInkText(text = label, style = MaterialTheme.typography.labelLarge)
+        }
+      }
+      HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+    }
     items(highlights, key = { it.id }, contentType = { "highlight" }) { item ->
       val accentColor = MaterialTheme.colorScheme.outline
       Row(

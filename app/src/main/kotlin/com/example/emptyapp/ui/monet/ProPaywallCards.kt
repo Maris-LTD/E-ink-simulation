@@ -117,8 +117,12 @@ internal fun PaywallTipJarSection(
   products: Map<String, BillingProductUi>,
   onTip: (String) -> Unit,
 ) {
-  val coffeePrice = products[BillingConstants.PRODUCT_TIP_COFFEE]?.formattedPrice
-  val bookPrice = products[BillingConstants.PRODUCT_TIP_BOOK]?.formattedPrice
+  val coffeePrice =
+    products[BillingConstants.PRODUCT_TIP_COFFEE]?.formattedPrice
+      ?: stringResource(R.string.tip_coffee_fallback_price)
+  val bookPrice =
+    products[BillingConstants.PRODUCT_TIP_BOOK]?.formattedPrice
+      ?: stringResource(R.string.tip_book_fallback_price)
   Column(
     modifier =
       Modifier.fillMaxWidth()
@@ -143,20 +147,20 @@ internal fun PaywallTipJarSection(
         shape = EInkShapes.Control,
         modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
       ) {
-        val label =
-          if (coffeePrice != null) "${stringResource(R.string.paywall_tip_coffee)} ($coffeePrice)"
-          else stringResource(R.string.paywall_tip_coffee)
-        EInkText(text = label, style = MaterialTheme.typography.labelLarge)
+        EInkText(
+          text = "${stringResource(R.string.paywall_tip_coffee)} ($coffeePrice)",
+          style = MaterialTheme.typography.labelLarge,
+        )
       }
       OutlinedButton(
         onClick = { onTip(BillingConstants.PRODUCT_TIP_BOOK) },
         shape = EInkShapes.Control,
         modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
       ) {
-        val label =
-          if (bookPrice != null) "${stringResource(R.string.paywall_tip_book)} ($bookPrice)"
-          else stringResource(R.string.paywall_tip_book)
-        EInkText(text = label, style = MaterialTheme.typography.labelLarge)
+        EInkText(
+          text = "${stringResource(R.string.paywall_tip_book)} ($bookPrice)",
+          style = MaterialTheme.typography.labelLarge,
+        )
       }
     }
   }

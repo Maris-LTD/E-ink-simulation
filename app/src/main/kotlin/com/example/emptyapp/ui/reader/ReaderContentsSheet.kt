@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,6 +52,8 @@ fun ReaderContentsSheet(
   onSelectLocatorJson: (String) -> Unit,
   onRemoveBookmark: (String) -> Unit,
   onRemoveHighlight: (String) -> Unit,
+  isPro: Boolean = true,
+  onExportNotes: () -> Unit = {},
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -99,7 +102,14 @@ fun ReaderContentsSheet(
     when (selectedTab) {
       ContentsTab.TOC -> TocList(flatToc, onSelectToc)
       ContentsTab.BOOKMARKS -> BookmarkList(bookmarks, onSelectLocatorJson, onRemoveBookmark)
-      ContentsTab.HIGHLIGHTS -> HighlightList(highlights, onSelectLocatorJson, onRemoveHighlight)
+      ContentsTab.HIGHLIGHTS ->
+        HighlightList(
+          highlights = highlights,
+          onSelect = onSelectLocatorJson,
+          onRemove = onRemoveHighlight,
+          isPro = isPro,
+          onExportNotes = onExportNotes,
+        )
     }
   }
 }
@@ -180,12 +190,28 @@ private fun HighlightList(
   highlights: List<HighlightEntry>,
   onSelect: (String) -> Unit,
   onRemove: (String) -> Unit,
+  isPro: Boolean,
+  onExportNotes: () -> Unit,
 ) {
   if (highlights.isEmpty()) {
     EmptySection(stringResource(R.string.highlights_empty))
     return
   }
   LazyColumn(modifier = Modifier.fillMaxSize()) {
+    item(key = "export_notes_header") {
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.End,
+      ) {
+        OutlinedButton(onClick = onExportNotes) {
+          val label =
+            if (isPro) stringResource(R.string.export_notes_cta)
+            else "${stringResource(R.string.export_notes_cta)} · PRO"
+          EInkText(text = label, style = MaterialTheme.typography.labelLarge)
+        }
+      }
+      HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+    }
     items(highlights, key = { it.id }) { item ->
       Row(
         modifier =

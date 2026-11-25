@@ -22,7 +22,7 @@ object EInkColorFilter {
       )
     matrix.postConcat(contrastMatrix)
     when (settings.tone) {
-      EInkTone.DARK -> if (!contentAlreadyDark) {
+      EInkTone.DARK, EInkTone.AMOLED -> if (!contentAlreadyDark) {
         val invert =
           ColorMatrix(
             floatArrayOf(

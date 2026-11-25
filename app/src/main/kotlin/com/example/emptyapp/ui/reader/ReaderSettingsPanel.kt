@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.emptyapp.R
+import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.reader.EInkFont
 import com.example.emptyapp.reader.EInkSettings
 import com.example.emptyapp.reader.EInkTone
@@ -63,6 +64,9 @@ fun ReaderSettingsPanel(
   onPdfModeChange: (PdfReadingMode) -> Unit = {},
   onToggleFocusMode: (Boolean) -> Unit = {},
   onToggleLockScreenReader: ((Boolean) -> Unit)? = null,
+  isPro: Boolean = true,
+  onRequestPro: (ProFeature) -> Unit = {},
+  onImportCustomFont: () -> Unit = {},
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -137,10 +141,19 @@ fun ReaderSettingsPanel(
             isPdf = isPdf,
             pdfMode = pdfMode,
             pdfReflowAllowed = pdfReflowAllowed,
+            isPro = isPro,
+            onRequestPro = onRequestPro,
+            onImportCustomFont = onImportCustomFont,
             onPdfModeChange = onPdfModeChange,
             onChange = onChange,
           )
-        ReaderSettingsTab.DISPLAY -> DisplaySettingsTab(settings = settings, onChange = onChange)
+        ReaderSettingsTab.DISPLAY ->
+          DisplaySettingsTab(
+            settings = settings,
+            isPro = isPro,
+            onRequestPro = onRequestPro,
+            onChange = onChange,
+          )
         ReaderSettingsTab.CONTROLS ->
           ControlsSettingsTab(
             settings = settings,
@@ -160,6 +173,9 @@ private fun TextAndPdfSettingsTab(
   isPdf: Boolean,
   pdfMode: PdfReadingMode,
   pdfReflowAllowed: Boolean,
+  isPro: Boolean,
+  onRequestPro: (ProFeature) -> Unit,
+  onImportCustomFont: () -> Unit,
   onPdfModeChange: (PdfReadingMode) -> Unit,
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
 ) {
@@ -172,6 +188,31 @@ private fun TextAndPdfSettingsTab(
       nameOf = { if (it == EInkFont.SERIF) "Serif" else "Sans" },
       onSelect = { font -> onChange { it.copy(font = font) } },
     )
+    Row(
+      modifier =
+        Modifier.fillMaxWidth()
+          .clip(EInkShapes.Control)
+          .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Control)
+          .clickable {
+            if (!isPro) onRequestPro(ProFeature.ADVANCED_PAPER_THEMES) else onImportCustomFont()
+          }
+          .padding(horizontal = 12.dp, vertical = 10.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      EInkText(
+        text = stringResource(R.string.settings_import_font),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.weight(1f),
+      )
+      EInkText(
+        text =
+          if (isPro) stringResource(R.string.settings_import_font_cta)
+          else "${stringResource(R.string.settings_import_font_cta)} · PRO",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+      )
+    }
     SettingsStepperRow(
       label = stringResource(R.string.settings_font_size),
       value = "${(settings.fontScale * 100).toInt()}%",
@@ -244,6 +285,8 @@ private fun TextAndPdfSettingsTab(
 @Composable
 private fun DisplaySettingsTab(
   settings: EInkSettings,
+  isPro: Boolean,
+  onRequestPro: (ProFeature) -> Unit,
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
 ) {
   SettingsSectionTitle(stringResource(R.string.settings_section_eink))
@@ -252,20 +295,30 @@ private fun DisplaySettingsTab(
   val whiteLabel = stringResource(R.string.tone_white)
   val grayLabel = stringResource(R.string.tone_gray)
   val darkLabel = stringResource(R.string.tone_dark)
+  val amoledLabel = stringResource(R.string.tone_amoled)
   SettingsChoiceRow(
     label = stringResource(R.string.settings_tone),
     options = EInkTone.entries,
     selected = settings.tone,
     nameOf = {
-      when (it) {
-        EInkTone.PAPER -> paperLabel
-        EInkTone.WARM -> warmLabel
-        EInkTone.HIGH_CONTRAST -> whiteLabel
-        EInkTone.SOFT_GRAY -> grayLabel
-        EInkTone.DARK -> darkLabel
+      val base =
+        when (it) {
+          EInkTone.PAPER -> paperLabel
+          EInkTone.WARM -> warmLabel
+          EInkTone.HIGH_CONTRAST -> whiteLabel
+          EInkTone.SOFT_GRAY -> grayLabel
+          EInkTone.DARK -> darkLabel
+          EInkTone.AMOLED -> amoledLabel
+        }
+      if (!isPro && (it == EInkTone.WARM || it == EInkTone.AMOLED)) "$base · PRO" else base
+    },
+    onSelect = { tone ->
+      if (!isPro && (tone == EInkTone.WARM || tone == EInkTone.AMOLED)) {
+        onRequestPro(ProFeature.ADVANCED_PAPER_THEMES)
+      } else {
+        onChange { it.copy(tone = tone) }
       }
     },
-    onSelect = { tone -> onChange { it.copy(tone = tone) } },
   )
   SettingsSwitchRow(stringResource(R.string.settings_grayscale), settings.grayscale) { on ->
     onChange { it.copy(grayscale = on) }
@@ -276,8 +329,15 @@ private fun DisplaySettingsTab(
     onMinus = { onChange { it.copy(contrast = (it.contrast - 0.05f).coerceAtLeast(0.8f)) } },
     onPlus = { onChange { it.copy(contrast = (it.contrast + 0.05f).coerceAtMost(1.8f)) } },
   )
-  SettingsSwitchRow(stringResource(R.string.settings_paper_grain), settings.paperGrain) { on ->
-    onChange { it.copy(paperGrain = on) }
+  val paperGrainLabel =
+    if (isPro) stringResource(R.string.settings_paper_grain)
+    else "${stringResource(R.string.settings_paper_grain)} · PRO"
+  SettingsSwitchRow(paperGrainLabel, settings.paperGrain) { on ->
+    if (on && !isPro) {
+      onRequestPro(ProFeature.ADVANCED_PAPER_THEMES)
+    } else {
+      onChange { it.copy(paperGrain = on) }
+    }
   }
   SettingsSwitchRow(stringResource(R.string.settings_ghosting), settings.ghosting) { on ->
     onChange { it.copy(ghosting = on) }

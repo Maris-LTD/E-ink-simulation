@@ -1,5 +1,6 @@
 package com.example.emptyapp.data.billing
 
+import com.example.emptyapp.reader.EInkTone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,17 @@ class ProFeatureGate(
     return false
   }
 
+  fun canPinMoreApps(currentCount: Int, isPro: Boolean = this.isPro): Boolean =
+    isPro || currentCount < MAX_FREE_PINNED_APPS
+
+  fun canUseTheme(themeId: String, isPro: Boolean = this.isPro): Boolean =
+    isPro || (themeId != EInkTone.AMOLED.name && themeId != EInkTone.WARM.name)
+
+  fun canUseTone(tone: EInkTone, isPro: Boolean = this.isPro): Boolean =
+    canUseTheme(tone.name, isPro)
+
+  fun canExportNotes(isPro: Boolean = this.isPro): Boolean = isPro
+
   fun updateEntitlement(entitlement: ProEntitlement) {
     synchronized(lock) {
       store.write(entitlement)
@@ -41,5 +53,9 @@ class ProFeatureGate(
       store.write(empty)
       mutableEntitlement.value = empty
     }
+  }
+
+  companion object {
+    const val MAX_FREE_PINNED_APPS = 4
   }
 }

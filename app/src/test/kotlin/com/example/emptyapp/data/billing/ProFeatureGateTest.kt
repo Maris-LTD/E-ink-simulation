@@ -49,6 +49,9 @@ class ProFeatureGateTest {
       listOf(
         ProFeature.DRIVE_SYNC,
         ProFeature.FOCUS_MODE,
+        ProFeature.LAUNCHER_CUSTOMIZATION,
+        ProFeature.ADVANCED_PAPER_THEMES,
+        ProFeature.EXPORT_NOTES,
       )
 
     assertFalse(gate.isPro)
@@ -128,5 +131,25 @@ class ProFeatureGateTest {
     assertFalse(gate.hasAccess(ProFeature.DRIVE_SYNC))
     assertFalse(gate.hasAccess(ProFeature.FOCUS_MODE))
     assertFalse(gate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, pdfPageIndexZeroBased = 10))
+  }
+
+  @Test
+  fun helperGatesEnforceFreeBoundariesAndUnlockForPro() {
+    val gate = ProFeatureGate(store)
+
+    assertTrue(gate.canPinMoreApps(currentCount = 3, isPro = false))
+    assertFalse(gate.canPinMoreApps(currentCount = 4, isPro = false))
+    assertTrue(gate.canPinMoreApps(currentCount = 10, isPro = true))
+
+    assertTrue(gate.canUseTheme("HIGH_CONTRAST", isPro = false))
+    assertTrue(gate.canUseTheme("PAPER", isPro = false))
+    assertTrue(gate.canUseTheme("DARK", isPro = false))
+    assertFalse(gate.canUseTheme("AMOLED", isPro = false))
+    assertFalse(gate.canUseTheme("WARM", isPro = false))
+    assertTrue(gate.canUseTheme("AMOLED", isPro = true))
+    assertTrue(gate.canUseTheme("WARM", isPro = true))
+
+    assertFalse(gate.canExportNotes(isPro = false))
+    assertTrue(gate.canExportNotes(isPro = true))
   }
 }
