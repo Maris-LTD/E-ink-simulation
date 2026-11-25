@@ -23,7 +23,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -54,7 +56,8 @@ fun LibraryHighlightList(
   }
   val deleteCd = stringResource(R.string.action_delete)
   LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 76.dp)) {
-    items(highlights, key = { it.id }) { item ->
+    items(highlights, key = { it.id }, contentType = { "highlight" }) { item ->
+      val accentColor = MaterialTheme.colorScheme.outline
       Row(
         modifier =
           Modifier.fillMaxWidth()
@@ -62,18 +65,21 @@ fun LibraryHighlightList(
             .padding(start = 16.dp, end = 6.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.Top,
       ) {
-        Row(modifier = Modifier.weight(1f).height(IntrinsicSize.Min)) {
-          Box(
-            modifier =
-              Modifier.width(3.dp)
-                .fillMaxHeight()
-                .clip(EInkShapes.Pill)
-                .background(MaterialTheme.colorScheme.outline),
-          )
-          Column(
-            modifier = Modifier.padding(start = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-          ) {
+        Column(
+          modifier =
+            Modifier.weight(1f)
+              .drawBehind {
+                val barWidth = 3.dp.toPx()
+                val radius = barWidth / 2f
+                drawRoundRect(
+                  color = accentColor,
+                  size = Size(barWidth, size.height),
+                  cornerRadius = CornerRadius(radius, radius),
+                )
+              }
+              .padding(start = 15.dp),
+          verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             EInkText(
               text = item.quote,
               style = MaterialTheme.typography.bodyLarge,
@@ -93,7 +99,6 @@ fun LibraryHighlightList(
               color = MaterialTheme.colorScheme.secondary,
             )
           }
-        }
         IconButton(
           onClick = { onRemove(item.id) },
           modifier = Modifier.size(48.dp).semantics { contentDescription = deleteCd },

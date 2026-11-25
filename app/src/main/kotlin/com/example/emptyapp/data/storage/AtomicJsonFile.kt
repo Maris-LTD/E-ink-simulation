@@ -72,7 +72,7 @@ class AtomicJsonFile<T>(
       }
     }
 
-  fun write(value: T) {
+  fun write(value: T, syncToDisk: Boolean = true) {
     val encoded = json.encodeToString(serializer, value)
     synchronized(lock) {
       if (unquarantinedReadError && file.exists()) {
@@ -89,7 +89,9 @@ class AtomicJsonFile<T>(
       FileOutputStream(temp).use { out ->
         out.write(encoded.toByteArray(Charsets.UTF_8))
         out.flush()
-        out.fd.sync()
+        if (syncToDisk) {
+          out.fd.sync()
+        }
       }
       if (!temp.renameTo(file)) {
         val deletedExisting = !file.exists() || file.delete()
@@ -98,7 +100,9 @@ class AtomicJsonFile<T>(
           throw IOException("Cannot replace ${file.name}")
         }
       }
-      directorySync(file.parentFile)
+      if (syncToDisk) {
+        directorySync(file.parentFile)
+      }
     }
   }
 

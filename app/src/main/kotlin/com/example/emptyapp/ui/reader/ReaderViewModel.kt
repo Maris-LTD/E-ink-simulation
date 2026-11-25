@@ -286,7 +286,7 @@ class ReaderViewModel(
         viewModelScope.launch {
           while (pendingProgress != null && isActive) {
             delay(PROGRESS_SAVE_INTERVAL_MS)
-            flushProgress()
+            flushProgress(syncToDisk = false)
           }
         }
     }
@@ -317,14 +317,14 @@ class ReaderViewModel(
     mutablePageTurnTrigger.value += 1
   }
 
-  private suspend fun flushProgress() {
+  private suspend fun flushProgress(syncToDisk: Boolean = true) {
     val snapshot = pendingProgress ?: return
     withContext(NonCancellable) {
       if (pendingProgress === snapshot) {
         pendingProgress = null
       }
       val (locator, total) = snapshot
-      repository.saveProgress(bookId, serializeLocator(locator), total)
+      repository.saveProgress(bookId, serializeLocator(locator), total, syncToDisk = syncToDisk)
     }
   }
 
@@ -350,7 +350,7 @@ class ReaderViewModel(
         viewModelScope.launch {
           while (isActive) {
             delay(10_000L)
-            flushReadingStats()
+            flushReadingStats(syncToDisk = false)
           }
         }
     } else {
@@ -359,13 +359,13 @@ class ReaderViewModel(
       progressSaveJob?.cancel()
       progressSaveJob = null
       viewModelScope.launch(NonCancellable) {
-        flushProgress()
-        flushReadingStats()
+        flushProgress(syncToDisk = true)
+        flushReadingStats(syncToDisk = true)
       }
     }
   }
 
-  private suspend fun flushReadingStats() {
+  private suspend fun flushReadingStats(syncToDisk: Boolean = true) {
     val now = elapsedRealtimeMs()
     val elapsedMs = (now - lastFlushMs).coerceAtLeast(0L)
     lastFlushMs = now
@@ -374,7 +374,11 @@ class ReaderViewModel(
     val deltaPages = pendingPages
     pendingPages = 0
     if (deltaSeconds > 0 || deltaPages > 0) {
-      statsRepository.recordReading(deltaSeconds = deltaSeconds, deltaPages = deltaPages)
+      statsRepository.recordReading(
+        deltaSeconds = deltaSeconds,
+        deltaPages = deltaPages,
+        syncToDisk = syncToDisk,
+      )
     }
   }
 

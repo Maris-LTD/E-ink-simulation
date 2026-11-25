@@ -9,5 +9,6 @@ class BookIndexStore(indexFile: File) {
 
   fun read(): List<BookEntry> = store.read(emptyList())
 
-  fun write(books: List<BookEntry>) = store.write(books)
+  fun write(books: List<BookEntry>, syncToDisk: Boolean = true) =
+    store.write(books, syncToDisk = syncToDisk)
 }

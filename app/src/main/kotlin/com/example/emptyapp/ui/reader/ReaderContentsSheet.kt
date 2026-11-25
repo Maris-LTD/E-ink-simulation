@@ -111,7 +111,12 @@ private fun TocList(items: List<TocItem>, onSelect: (Link) -> Unit) {
     return
   }
   LazyColumn(modifier = Modifier.fillMaxSize()) {
-    items(items) { item ->
+    items(
+      count = items.size,
+      key = { index -> "${index}_${items[index].link.href}" },
+      contentType = { "toc" },
+    ) { index ->
+      val item = items[index]
       Row(
         modifier =
           Modifier.fillMaxWidth()

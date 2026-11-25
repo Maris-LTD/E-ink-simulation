@@ -49,7 +49,7 @@ fun LibraryBookmarkList(
   }
   val deleteCd = stringResource(R.string.action_delete)
   LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 76.dp)) {
-    items(bookmarks, key = { it.id }) { item ->
+    items(bookmarks, key = { it.id }, contentType = { "bookmark" }) { item ->
       val bookTitle = bookTitlesById[item.bookId]
       Row(
         modifier =
@@ -71,10 +71,12 @@ fun LibraryBookmarkList(
             overflow = TextOverflow.Ellipsis,
           )
           val meta =
-            listOfNotNull(
-              bookTitle?.takeIf { it.isNotBlank() && it != item.title },
-              "${(item.progress * 100).toInt()}%",
-            ).joinToString(" · ")
+            androidx.compose.runtime.remember(bookTitle, item.title, item.progress) {
+              listOfNotNull(
+                bookTitle?.takeIf { it.isNotBlank() && it != item.title },
+                "${(item.progress * 100).toInt()}%",
+              ).joinToString(" · ")
+            }
           EInkText(
             text = meta,
             style = MaterialTheme.typography.bodySmall,

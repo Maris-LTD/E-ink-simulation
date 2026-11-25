@@ -1197,11 +1197,12 @@ private fun BookList(
 ) {
   LazyColumn(contentPadding = PaddingValues(bottom = 76.dp)) {
     if (heroBook != null) {
-      item(key = "continue_reading_hero") {
+      item(key = "continue_reading_hero", contentType = "hero") {
+        val heroCover = remember(heroBook.id, heroBook.coverFileName) { coverOf(heroBook) }
         ContinueReadingHeroCard(
           book = heroBook,
           grayscaleCover = grayscaleCovers,
-          coverFile = coverOf(heroBook),
+          coverFile = heroCover,
           onOpen = { onOpenBook(heroBook.id) },
           onToggleCompleted = { completed -> onToggleCompleted(heroBook, completed) },
           onShowDetails = { onShowDetails(heroBook) },
@@ -1210,11 +1211,12 @@ private fun BookList(
         )
       }
     }
-    items(books, key = { it.id }) { book ->
+    items(books, key = { it.id }, contentType = { "book" }) { book ->
+      val coverFile = remember(book.id, book.coverFileName) { coverOf(book) }
       BookRow(
         book = book,
         grayscaleCover = grayscaleCovers,
-        coverFile = coverOf(book),
+        coverFile = coverFile,
         onOpen = { onOpenBook(book.id) },
         onToggleCompleted = { completed -> onToggleCompleted(book, completed) },
         onShowDetails = { onShowDetails(book) },
@@ -1247,11 +1249,12 @@ private fun BookGrid(
     modifier = Modifier.fillMaxSize(),
   ) {
     if (heroBook != null) {
-      item(key = "continue_reading_hero", span = { GridItemSpan(maxLineSpan) }) {
+      item(key = "continue_reading_hero", span = { GridItemSpan(maxLineSpan) }, contentType = "hero") {
+        val heroCover = remember(heroBook.id, heroBook.coverFileName) { coverOf(heroBook) }
         ContinueReadingHeroCard(
           book = heroBook,
           grayscaleCover = grayscaleCovers,
-          coverFile = coverOf(heroBook),
+          coverFile = heroCover,
           onOpen = { onOpenBook(heroBook.id) },
           onToggleCompleted = { completed -> onToggleCompleted(heroBook, completed) },
           onShowDetails = { onShowDetails(heroBook) },
@@ -1259,12 +1262,13 @@ private fun BookGrid(
         )
       }
     }
-    gridItems(books, key = { it.id }) { book ->
+    gridItems(books, key = { it.id }, contentType = { "book" }) { book ->
+      val coverFile = remember(book.id, book.coverFileName) { coverOf(book) }
       BookGridCard(
         book = book,
         columns = columns,
         grayscaleCover = grayscaleCovers,
-        coverFile = coverOf(book),
+        coverFile = coverFile,
         onOpen = { onOpenBook(book.id) },
         onToggleCompleted = { completed -> onToggleCompleted(book, completed) },
         onShowDetails = { onShowDetails(book) },

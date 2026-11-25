@@ -318,7 +318,7 @@ class LibraryRepository internal constructor(
     }
   }
 
-  suspend fun saveProgress(id: String, locatorJson: String, progress: Float) {
+  suspend fun saveProgress(id: String, locatorJson: String, progress: Float, syncToDisk: Boolean = true) {
     awaitLoaded()
     val clamped = progress.coerceIn(0f, 1f)
     val current = find(id)
@@ -330,7 +330,7 @@ class LibraryRepository internal constructor(
       return
     }
     val now = System.currentTimeMillis()
-    commit { list ->
+    commit(syncToDisk = syncToDisk) { list ->
       list.map {
         if (it.id == id) {
           if (it.lastLocatorJson == locatorJson && abs(it.progress - clamped) < PROGRESS_EPSILON) {
@@ -471,7 +471,10 @@ class LibraryRepository internal constructor(
     if (dirty) commit { it }
   }
 
-  private suspend fun commit(transform: (List<BookEntry>) -> List<BookEntry>) {
+  private suspend fun commit(
+    syncToDisk: Boolean = true,
+    transform: (List<BookEntry>) -> List<BookEntry>,
+  ) {
     writeMutex.withLock {
       if (!isLoaded) {
         withContext(ioDispatcher) { ensureLoadedLocked() }
@@ -485,7 +488,7 @@ class LibraryRepository internal constructor(
         dirty = true
       }
       try {
-        withContext(ioDispatcher) { store.write(state.value) }
+        withContext(ioDispatcher) { store.write(state.value, syncToDisk = syncToDisk) }
         dirty = false
         mutableLastWriteError.value = false
       } catch (e: CancellationException) {

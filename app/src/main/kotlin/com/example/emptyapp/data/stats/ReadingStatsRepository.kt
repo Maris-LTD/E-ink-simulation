@@ -104,7 +104,7 @@ class ReadingStatsRepository internal constructor(
     mutableLoaded.value = true
   }
 
-  suspend fun recordReading(deltaSeconds: Int, deltaPages: Int = 0) {
+  suspend fun recordReading(deltaSeconds: Int, deltaPages: Int = 0, syncToDisk: Boolean = true) {
     if (deltaSeconds <= 0 && deltaPages <= 0 && !dirty) return
     val safeSeconds = deltaSeconds.coerceAtLeast(0)
     val safePages = deltaPages.coerceAtLeast(0)
@@ -115,7 +115,7 @@ class ReadingStatsRepository internal constructor(
         withContext(ioDispatcher) { ensureLoadedLocked() }
       }
       if (safeSeconds == 0 && safePages == 0) {
-        persistLocked(state.value)
+        persistLocked(state.value, syncToDisk = syncToDisk)
         return
       }
       val current = state.value
@@ -140,7 +140,7 @@ class ReadingStatsRepository internal constructor(
           ),
           today = today,
         )
-      persistLocked(next)
+      persistLocked(next, syncToDisk = syncToDisk)
     }
   }
 
@@ -208,7 +208,7 @@ class ReadingStatsRepository internal constructor(
     }
   }
 
-  private suspend fun persistLocked(next: ReadingStatsData) {
+  private suspend fun persistLocked(next: ReadingStatsData, syncToDisk: Boolean = true) {
     val changed = next != state.value
     if (!changed && !dirty) return
     if (changed) {
@@ -216,7 +216,7 @@ class ReadingStatsRepository internal constructor(
       dirty = true
     }
     try {
-      write(state.value)
+      write(state.value, syncToDisk = syncToDisk)
       dirty = false
       mutableLastWriteError.value = false
     } catch (e: CancellationException) {
@@ -240,8 +240,8 @@ class ReadingStatsRepository internal constructor(
 
   private fun readInitial(): ReadingStatsData = store.read(ReadingStatsData())
 
-  private suspend fun write(data: ReadingStatsData) {
-    withContext(ioDispatcher) { store.write(data) }
+  private suspend fun write(data: ReadingStatsData, syncToDisk: Boolean = true) {
+    withContext(ioDispatcher) { store.write(data, syncToDisk = syncToDisk) }
   }
 
   companion object {

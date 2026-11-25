@@ -145,7 +145,15 @@ fun ReaderSearchSheet(
           )
           HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
           LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(state.items) { locator ->
+            items(
+              count = state.items.size,
+              key = { index ->
+                val locator = state.items[index]
+                "${index}_${locator.href}_${locator.locations.progression ?: 0.0}"
+              },
+              contentType = { "search_result" },
+            ) { index ->
+              val locator = state.items[index]
               SearchResultRow(locator = locator, onClick = { onSelectLocator(locator) })
               HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
@@ -174,19 +182,21 @@ private fun SearchResultRow(
   val chapterTitle = locator.title?.takeIf { it.isNotBlank() } ?: stringResource(R.string.search_chapter_fallback)
   val pct = ((locator.locations.totalProgression ?: 0.0) * 100).toInt()
   val snippet =
-    buildAnnotatedString {
-      append(locator.text.before.orEmpty().trimStart())
-      locator.text.highlight?.let { match ->
-        withStyle(
-          SpanStyle(
-            fontWeight = FontWeight.Bold,
-            textDecoration = TextDecoration.Underline,
-          )
-        ) {
-          append(match)
+    androidx.compose.runtime.remember(locator) {
+      buildAnnotatedString {
+        append(locator.text.before.orEmpty().trimStart())
+        locator.text.highlight?.let { match ->
+          withStyle(
+            SpanStyle(
+              fontWeight = FontWeight.Bold,
+              textDecoration = TextDecoration.Underline,
+            )
+          ) {
+            append(match)
+          }
         }
+        append(locator.text.after.orEmpty().trimEnd())
       }
-      append(locator.text.after.orEmpty().trimEnd())
     }
 
   Column(

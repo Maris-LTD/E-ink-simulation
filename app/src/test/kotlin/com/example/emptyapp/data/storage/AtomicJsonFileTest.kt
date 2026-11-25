@@ -153,4 +153,23 @@ class AtomicJsonFileTest {
     assertEquals("""["important"]""", File(dir, "data.json.corrupt-42").readText())
     assertEquals(listOf("updated"), store.read(emptyList()))
   }
+
+  @Test
+  fun writeWithoutSyncToDiskSkipsDirectorySyncWhileRemainingAtomic() {
+    val syncedDirs = mutableListOf<File?>()
+    val store =
+      AtomicJsonFile(
+        file = file,
+        serializer = serializer,
+        directorySync = { syncedDirs += it },
+      )
+
+    store.write(listOf("fast"), syncToDisk = false)
+    assertEquals(emptyList<File?>(), syncedDirs)
+    assertEquals(listOf("fast"), store.read(emptyList()))
+
+    store.write(listOf("durable"), syncToDisk = true)
+    assertEquals(listOf<File?>(dir), syncedDirs)
+    assertEquals(listOf("durable"), store.read(emptyList()))
+  }
 }

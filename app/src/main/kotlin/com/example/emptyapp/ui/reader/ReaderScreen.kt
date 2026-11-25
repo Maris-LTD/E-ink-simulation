@@ -319,6 +319,7 @@ fun ReaderScreen(
       !proGate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, currentPdfPage)
 
   Box(modifier = Modifier.fillMaxSize().background(Color(settings.tone.background))) {
+    val pdfContentSettings = remember(settings.copy(brightness = 0f)) { settings.copy(brightness = 0f) }
     when (bookFormat) {
       BookFormat.EPUB ->
         AndroidFragment<EpubNavigatorFragment>(
@@ -329,7 +330,7 @@ fun ReaderScreen(
         PdfPagerReader(
           file = bookFile,
           initialPage = remember(initialLocator, positions) { resolvePdfPageIndex(initialLocator, positions) },
-          settings = settings,
+          settings = pdfContentSettings,
           readingMode = effectivePdfMode,
           controller = pdfController,
           onPageChanged = { pageIndex, pageCount ->
