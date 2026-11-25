@@ -200,18 +200,33 @@ private fun EInkHomePager(
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
   var apps by remember { mutableStateOf(LauncherAppCache.cachedAppsOrEmpty()) }
+  var isLoadingApps by remember { mutableStateOf(apps.isEmpty()) }
   LaunchedEffect(context) {
-    apps = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context) }
+    if (apps.isEmpty()) {
+      isLoadingApps = true
+      try {
+        apps = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context) }
+      } finally {
+        isLoadingApps = false
+      }
+    }
   }
   DisposableEffect(context) {
+    var refreshJob: kotlinx.coroutines.Job? = null
     val receiver =
       object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
+          val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+          if (!shouldRefreshAppsForPackageBroadcast(intent.action, isReplacing)) return
           val pkg = intent.data?.schemeSpecificPart
           if (pkg != null) LauncherAppCache.evictIcon(pkg)
-          scope.launch {
-            apps = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context) }
-          }
+          refreshJob?.cancel()
+          refreshJob =
+            scope.launch {
+              delay(400L)
+              apps = withContext(Dispatchers.IO) { LauncherAppCache.loadApps(context, forceRefresh = true) }
+              isLoadingApps = false
+            }
         }
       }
     val filter =
@@ -227,7 +242,10 @@ private fun EInkHomePager(
       filter,
       androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
     )
-    onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    onDispose {
+      refreshJob?.cancel()
+      runCatching { context.unregisterReceiver(receiver) }
+    }
   }
 
   var pinnedPackages by remember {
@@ -305,6 +323,7 @@ private fun EInkHomePager(
       } else {
         MinimalistAppDrawerPage(
           apps = apps,
+          isLoading = isLoadingApps,
           pinnedPackages = resolvedPinned,
           viewMode = drawerViewMode,
           onCycleViewMode = ::cycleViewMode,
@@ -710,6 +729,7 @@ private fun PinnedAppTile(
 @Composable
 private fun MinimalistAppDrawerPage(
   apps: List<LaunchableApp>,
+  isLoading: Boolean,
   pinnedPackages: Set<String>,
   viewMode: DrawerViewMode,
   onCycleViewMode: () -> Unit,
@@ -783,6 +803,17 @@ private fun MinimalistAppDrawerPage(
       }
     }
     HorizontalDivider(thickness = 1.5.dp, color = MaterialTheme.colorScheme.outline)
+
+    if (isLoading && filtered.isEmpty()) {
+      Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        androidx.compose.material3.CircularProgressIndicator(
+          modifier = Modifier.size(28.dp),
+          strokeWidth = 2.dp,
+          color = MaterialTheme.colorScheme.onBackground,
+        )
+      }
+      return@Column
+    }
 
     when (viewMode) {
       DrawerViewMode.LIST, DrawerViewMode.TEXT_ONLY -> {
@@ -878,7 +909,7 @@ private fun MonochromeAppIcon(
   var iconBitmap by remember(packageName) { mutableStateOf(LauncherAppCache.getIcon(packageName)) }
   if (iconBitmap == null) {
     LaunchedEffect(packageName) {
-      iconBitmap = withContext(Dispatchers.IO) { LauncherAppCache.loadIcon(context, packageName) }
+      iconBitmap = withContext(LauncherAppCache.iconDispatcher) { LauncherAppCache.loadIcon(context, packageName) }
     }
   }
 
@@ -941,7 +972,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGridCells(
   }
 }
 
+internal fun shouldRefreshAppsForPackageBroadcast(
+  action: String?,
+  isReplacing: Boolean,
+): Boolean = !(action == Intent.ACTION_PACKAGE_REMOVED && isReplacing)
+
 internal object LauncherAppCache {
+  val iconDispatcher = Dispatchers.IO.limitedParallelism(2)
   private val iconCache = LruCache<String, ImageBitmap>(DeviceMemoryProfile.current.launcherIconCacheCount)
   @Volatile private var cachedApps: List<LaunchableApp>? = null
   private val grayscalePaint =
@@ -968,7 +1005,10 @@ internal object LauncherAppCache {
     iconCache.remove(packageName)
   }
 
-  fun loadApps(context: Context): List<LaunchableApp> {
+  fun loadApps(context: Context, forceRefresh: Boolean = false): List<LaunchableApp> {
+    if (!forceRefresh) {
+      cachedApps?.let { return it }
+    }
     val queried = queryLaunchableApps(context)
     cachedApps = queried
     return queried
