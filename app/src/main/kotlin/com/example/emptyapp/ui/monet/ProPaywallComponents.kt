@@ -109,8 +109,8 @@ internal fun PaywallFeatureList(highlightedFeature: ProFeature? = null) {
       Modifier.fillMaxWidth()
         .clip(EInkShapes.Card)
         .border(EInkBorder.Card, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Card)
-        .padding(14.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
+        .padding(12.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     orderedFeatures.forEach { (itemFeature, titleRes, descRes) ->
       val isHighlighted = itemFeature == highlightedFeature
@@ -131,13 +131,15 @@ internal fun PaywallFeatureList(highlightedFeature: ProFeature? = null) {
         verticalAlignment = Alignment.Top,
       ) {
         CheckIcon(modifier = Modifier.padding(top = 3.dp).size(15.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
           EInkText(text = stringResource(titleRes), style = MaterialTheme.typography.titleSmall)
-          EInkText(
-            text = stringResource(descRes),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.secondary,
-          )
+          if (isHighlighted || highlightedFeature == null) {
+            EInkText(
+              text = stringResource(descRes),
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.secondary,
+            )
+          }
         }
       }
     }
