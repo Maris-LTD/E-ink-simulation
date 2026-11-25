@@ -153,6 +153,7 @@ dependencies {
   implementation(libs.readium.navigator)
   implementation(libs.readium.adapter.pdfium)
   implementation(libs.play.services.auth)
+  implementation(libs.play.review.ktx)
   implementation(libs.pdfbox.android)
   implementation(libs.billing.ktx)
   implementation(libs.androidx.profileinstaller)

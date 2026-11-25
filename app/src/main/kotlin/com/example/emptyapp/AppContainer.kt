@@ -10,6 +10,7 @@ import com.example.emptyapp.security.AppIntegrityGuard
 import com.example.emptyapp.data.book.LibraryRepository
 import com.example.emptyapp.data.book.SampleBooksSeeder
 import com.example.emptyapp.data.dictionary.DictionaryService
+import com.example.emptyapp.data.review.ReviewPromptStore
 import com.example.emptyapp.data.stats.ReadingStatsRepository
 import com.example.emptyapp.data.sync.GoogleDriveSyncManager
 import com.example.emptyapp.data.sync.SyncTombstoneStore
@@ -46,6 +47,7 @@ class AppContainer(context: Context) {
     GoogleDriveSyncManager(appContext, library, annotations, stats, syncTombstones, appScope)
   }
   val lockScreenReading: LockScreenReadingStore by lazy { LockScreenReadingStore(appContext) }
+  val reviewPromptStore: ReviewPromptStore by lazy { ReviewPromptStore(appContext) }
   val entitlements: EntitlementStore by lazy {
     EntitlementStore(
       appContext.filesDir,

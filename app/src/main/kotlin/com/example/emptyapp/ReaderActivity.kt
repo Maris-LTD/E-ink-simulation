@@ -44,6 +44,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.emptyapp.data.book.BookFormat
+import com.example.emptyapp.data.review.PlayInAppReviewLauncher
 import com.example.emptyapp.reader.EInkPreferencesMapper
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.reader.FocusModeController
@@ -60,6 +61,7 @@ import com.example.emptyapp.reader.pdf.ReflowPageResult
 import com.example.emptyapp.system.EInkReadingWidgetProvider
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.emptyapp.ui.eink.EInkTheme
@@ -88,6 +90,7 @@ class ReaderActivity : FragmentActivity() {
   private val focusModeController by lazy { FocusModeController(this) }
   private var lastLockScreenPositionKey: String? = null
   private var overrideLocatorConsumedInState: Boolean = false
+  private var shouldCheckReviewOnReady: Boolean = false
   @Volatile private var cachedChapterSnippets: Pair<String, List<String>>? = null
   private val cachedPdfPageSnippets = PdfSnippetMemoryCache()
   private val requestNotificationPermission =
@@ -139,6 +142,7 @@ class ReaderActivity : FragmentActivity() {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    shouldCheckReviewOnReady = savedInstanceState == null
     overrideLocatorConsumedInState =
       savedInstanceState?.getBoolean(STATE_OVERRIDE_LOCATOR_CONSUMED, false) == true
     val restoredNoteLocatorJson = savedInstanceState?.getString(STATE_PENDING_NOTE_LOCATOR_JSON)
@@ -238,8 +242,18 @@ class ReaderActivity : FragmentActivity() {
           },
         )
       }
-      LaunchedEffect(viewModel.state.collectAsStateWithLifecycle().value is ReaderUiState.Ready, settings.lockScreenReader) {
+      val isReaderReady = viewModel.state.collectAsStateWithLifecycle().value is ReaderUiState.Ready
+      LaunchedEffect(isReaderReady, settings.lockScreenReader) {
         if (settings.lockScreenReader) postLockScreenNotification()
+      }
+      LaunchedEffect(isReaderReady) {
+        if (!isReaderReady || !shouldCheckReviewOnReady) return@LaunchedEffect
+        shouldCheckReviewOnReady = false
+        val reviewStore = (application as EmptyApplication).container.reviewPromptStore
+        if (reviewStore.recordReadingSessionAndShouldPrompt()) {
+          delay(IN_APP_REVIEW_DELAY_MS)
+          PlayInAppReviewLauncher.requestAndLaunch(this@ReaderActivity, reviewStore)
+        }
       }
       LaunchedEffect(settings.focusMode) {
         focusModeController.applyFocusMode(settings.focusMode)
@@ -716,6 +730,7 @@ class ReaderActivity : FragmentActivity() {
     private const val MENU_HIGHLIGHT = 1001
     private const val MENU_NOTE = 1002
     private const val MENU_LOOKUP = 1003
+    private const val IN_APP_REVIEW_DELAY_MS = 1500L
 
     fun intentFor(
       context: Context,
