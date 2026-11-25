@@ -1,0 +1,16 @@
+HSPLcom/example/emptyapp/EmptyApplication;->**(**)**
+HSPLcom/example/emptyapp/AppContainer;->**(**)**
+HSPLcom/example/emptyapp/DeviceMemoryProfile;->**(**)**
+HSPLcom/example/emptyapp/MainActivity;->**(**)**
+HSPLcom/example/emptyapp/LauncherActivity;->**(**)**
+HSPLcom/example/emptyapp/ReaderActivity;->**(**)**
+HSPLcom/example/emptyapp/NavigationKt;->**(**)**
+HSPLcom/example/emptyapp/ui/eink/EInkThemeKt;->**(**)**
+HSPLcom/example/emptyapp/ui/eink/CoverBitmapCache;->**(**)**
+HSPLcom/example/emptyapp/ui/library/LibraryScreenKt;->**(**)**
+HSPLcom/example/emptyapp/ui/library/LibraryFilterEngineKt;->**(**)**
+HSPLcom/example/emptyapp/ui/reader/ReaderScreenKt;->**(**)**
+HSPLcom/example/emptyapp/ui/reader/PdfPagerReaderKt;->**(**)**
+HSPLcom/example/emptyapp/ui/reader/PdfRendererHolder;->**(**)**
+HSPLcom/example/emptyapp/data/book/LibraryRepository;->**(**)**
+HSPLcom/example/emptyapp/data/settings/EInkSettingsStore;->**(**)**

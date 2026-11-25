@@ -20,6 +20,7 @@ desugarJdkLibs = "2.1.5"
 playServicesAuth = "21.4.0"
 pdfboxAndroid = "2.0.27.0"
 billing = "7.1.1"
+profileinstaller = "1.4.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -54,6 +55,7 @@ readium-adapter-pdfium = { module = "org.readium.kotlin-toolkit:readium-adapter-
 play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfboxAndroid" }
 billing-ktx = { module = "com.android.billingclient:billing-ktx", version.ref = "billing" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
