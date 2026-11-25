@@ -635,16 +635,30 @@ class ReaderActivity : FragmentActivity() {
     }
   }
 
-  private fun selectionCallback(): ActionMode.Callback =
-    object : ActionMode.Callback {
+  private var activeSelectionMode: ActionMode? = null
+
+  private fun ensureSelectionMenuItems(menu: Menu): Boolean {
+    if (menu.findItem(MENU_HIGHLIGHT) != null) return false
+    menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, getString(R.string.reader_menu_highlight))
+    menu.add(Menu.NONE, MENU_NOTE, 1, getString(R.string.reader_menu_note))
+    menu.add(Menu.NONE, MENU_LOOKUP, 2, getString(R.string.reader_menu_lookup))
+    return true
+  }
+
+  private fun selectionCallback(): ActionMode.Callback2 =
+    object : ActionMode.Callback2() {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-        menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, getString(R.string.reader_menu_highlight))
-        menu.add(Menu.NONE, MENU_NOTE, 1, getString(R.string.reader_menu_note))
-        menu.add(Menu.NONE, MENU_LOOKUP, 2, getString(R.string.reader_menu_lookup))
+        activeSelectionMode = mode
+        viewModel.setTextSelectionActive(true)
+        ensureSelectionMenuItems(menu)
         return true
       }
 
-      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+        activeSelectionMode = mode
+        viewModel.setTextSelectionActive(true)
+        return ensureSelectionMenuItems(menu)
+      }
 
       override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
         val nav = navigator as? EpubNavigatorFragment ?: return false
@@ -660,31 +674,36 @@ class ReaderActivity : FragmentActivity() {
                 ).show()
               }
               nav.clearSelection()
+              mode.finish()
             }
-            mode.finish()
             true
           }
           MENU_NOTE -> {
             lifecycleScope.launch {
               nav.currentSelection()?.let { viewModel.openNoteDialog(it.locator) }
               nav.clearSelection()
+              mode.finish()
             }
-            mode.finish()
             true
           }
           MENU_LOOKUP -> {
             lifecycleScope.launch {
               nav.currentSelection()?.locator?.text?.highlight?.let(viewModel::lookupWord)
               nav.clearSelection()
+              mode.finish()
             }
-            mode.finish()
             true
           }
           else -> false
         }
       }
 
-      override fun onDestroyActionMode(mode: ActionMode) = Unit
+      override fun onDestroyActionMode(mode: ActionMode) {
+        if (activeSelectionMode === mode) {
+          activeSelectionMode = null
+          viewModel.setTextSelectionActive(false)
+        }
+      }
     }
 
   companion object {

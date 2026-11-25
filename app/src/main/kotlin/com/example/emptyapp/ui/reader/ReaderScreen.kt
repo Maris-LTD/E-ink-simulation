@@ -130,6 +130,7 @@ fun ReaderScreen(
   val dictionaryState by viewModel.dictionaryState.collectAsStateWithLifecycle()
   val searchState by viewModel.searchState.collectAsStateWithLifecycle()
   val writeError by viewModel.writeError.collectAsStateWithLifecycle()
+  val textSelectionActive by viewModel.textSelectionActive.collectAsStateWithLifecycle()
   val notifBlockedCount by viewModel.notificationPermissionBlockedCount.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val density = LocalDensity.current
@@ -199,7 +200,7 @@ fun ReaderScreen(
         EInkColorFilter.paintOf(settings, contentAlreadyDark = nav is EpubNavigatorFragment),
       )
     }
-    val epubPreferences = remember(settings) { EInkPreferencesMapper.toEpub(settings) }
+    val epubPreferences = remember(settings.copy(brightness = 0f)) { EInkPreferencesMapper.toEpub(settings) }
     LaunchedEffect(nav, epubPreferences) {
       if (nav is EpubNavigatorFragment) {
         nav.awaitView()
@@ -623,7 +624,7 @@ fun ReaderScreen(
         onDismiss = viewModel::dismissDictionary,
       )
     }
-    if (!chromeVisible && !searchOpen && !contentsOpen && !settingsOpen && pendingNoteLocator == null && dictionaryState == null) {
+    if (!chromeVisible && !searchOpen && !contentsOpen && !settingsOpen && pendingNoteLocator == null && dictionaryState == null && !textSelectionActive) {
       Box(
         modifier =
           Modifier.align(Alignment.CenterStart)

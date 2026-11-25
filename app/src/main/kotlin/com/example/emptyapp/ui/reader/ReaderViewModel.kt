@@ -123,6 +123,7 @@ class ReaderViewModel(
   private val mutableDictionaryState = MutableStateFlow<DictionaryUiState?>(null)
   private val mutableSearchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
   private val mutableOverlayOpen = MutableStateFlow(false)
+  private val mutableTextSelectionActive = MutableStateFlow(false)
   private val mutablePendingNoteLocator = MutableStateFlow<Locator?>(null)
   private val mutablePendingNoteDraft = MutableStateFlow("")
   private val mutableNotificationPermissionBlockedCount = MutableStateFlow(0)
@@ -134,6 +135,7 @@ class ReaderViewModel(
   val dictionaryState: StateFlow<DictionaryUiState?> = mutableDictionaryState.asStateFlow()
   val searchState: StateFlow<SearchUiState> = mutableSearchState.asStateFlow()
   val overlayOpen: StateFlow<Boolean> = mutableOverlayOpen.asStateFlow()
+  val textSelectionActive: StateFlow<Boolean> = mutableTextSelectionActive.asStateFlow()
   val pendingNoteLocator: StateFlow<Locator?> = mutablePendingNoteLocator.asStateFlow()
   val pendingNoteDraft: StateFlow<String> = mutablePendingNoteDraft.asStateFlow()
   val notificationPermissionBlockedCount: StateFlow<Int> = mutableNotificationPermissionBlockedCount.asStateFlow()
@@ -553,6 +555,10 @@ class ReaderViewModel(
 
   fun setOverlayOpen(open: Boolean) {
     mutableOverlayOpen.value = open
+  }
+
+  fun setTextSelectionActive(active: Boolean) {
+    mutableTextSelectionActive.value = active
   }
 
   fun searchInBook(rawQuery: String) {
