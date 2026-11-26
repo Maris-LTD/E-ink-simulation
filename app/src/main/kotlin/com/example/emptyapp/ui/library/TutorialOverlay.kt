@@ -59,7 +59,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.emptyapp.R
+import com.example.emptyapp.data.billing.ProEntitlement
 import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.billing.ProFeatureGate
 import com.example.emptyapp.reader.EInkSettings
@@ -90,6 +92,8 @@ fun TutorialOverlay(
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
+  val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
+  val isPro = proGate == null || proGate.effectiveIsPro(entitlement)
   val pagerState = rememberPagerState(
     initialPage = initialPage.coerceIn(0, ONBOARDING_PAGE_COUNT - 1),
     pageCount = { ONBOARDING_PAGE_COUNT },
@@ -165,7 +169,13 @@ fun TutorialOverlay(
           verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
           when (pageIndex) {
-            0 -> StepDisplaySetup(settings = settings, onUpdateSettings = onUpdateSettings)
+            0 ->
+              StepDisplaySetup(
+                settings = settings,
+                isPro = isPro,
+                onRequirePro = onRequirePro,
+                onUpdateSettings = onUpdateSettings,
+              )
             1 ->
               StepLockScreenSetup(
                 wallpaperActive = wallpaperActive,
@@ -284,6 +294,8 @@ private fun StepHeader(tag: String, title: String, desc: String) {
 @Composable
 private fun StepDisplaySetup(
   settings: EInkSettings,
+  isPro: Boolean = true,
+  onRequirePro: (ProFeature) -> Unit = {},
   onUpdateSettings: ((EInkSettings) -> EInkSettings) -> Unit,
 ) {
   StepHeader(
@@ -328,7 +340,14 @@ private fun StepDisplaySetup(
     ToneChip(
       label = stringResource(R.string.onboard_tone_paper),
       selected = settings.tone == EInkTone.PAPER,
-      onClick = { onUpdateSettings { it.copy(tone = EInkTone.PAPER, paperGrain = true) } },
+      onClick = {
+        onUpdateSettings {
+          it.copy(
+            tone = EInkTone.PAPER,
+            paperGrain = if (isPro) true else false,
+          )
+        }
+      },
       modifier = Modifier.weight(1f),
     )
     ToneChip(
@@ -339,10 +358,19 @@ private fun StepDisplaySetup(
     )
   }
 
+  val paperGrainLabel =
+    if (isPro) stringResource(R.string.settings_paper_grain)
+    else "${stringResource(R.string.settings_paper_grain)} · PRO"
   ToggleOptionRow(
-    label = stringResource(R.string.settings_paper_grain),
+    label = paperGrainLabel,
     checked = settings.paperGrain,
-    onCheckedChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
+    onCheckedChange = { on ->
+      if (on && !isPro) {
+        onRequirePro(ProFeature.ADVANCED_PAPER_THEMES)
+      } else {
+        onUpdateSettings { it.copy(paperGrain = on) }
+      }
+    },
   )
 }
 

@@ -66,7 +66,6 @@ fun ReaderSettingsPanel(
   onToggleLockScreenReader: ((Boolean) -> Unit)? = null,
   isPro: Boolean = true,
   onRequestPro: (ProFeature) -> Unit = {},
-  onImportCustomFont: () -> Unit = {},
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -143,7 +142,6 @@ fun ReaderSettingsPanel(
             pdfReflowAllowed = pdfReflowAllowed,
             isPro = isPro,
             onRequestPro = onRequestPro,
-            onImportCustomFont = onImportCustomFont,
             onPdfModeChange = onPdfModeChange,
             onChange = onChange,
           )
@@ -175,7 +173,6 @@ private fun TextAndPdfSettingsTab(
   pdfReflowAllowed: Boolean,
   isPro: Boolean,
   onRequestPro: (ProFeature) -> Unit,
-  onImportCustomFont: () -> Unit,
   onPdfModeChange: (PdfReadingMode) -> Unit,
   onChange: ((EInkSettings) -> EInkSettings) -> Unit,
 ) {
@@ -188,31 +185,6 @@ private fun TextAndPdfSettingsTab(
       nameOf = { if (it == EInkFont.SERIF) "Serif" else "Sans" },
       onSelect = { font -> onChange { it.copy(font = font) } },
     )
-    Row(
-      modifier =
-        Modifier.fillMaxWidth()
-          .clip(EInkShapes.Control)
-          .border(EInkBorder.Hairline, MaterialTheme.colorScheme.outlineVariant, EInkShapes.Control)
-          .clickable {
-            if (!isPro) onRequestPro(ProFeature.ADVANCED_PAPER_THEMES) else onImportCustomFont()
-          }
-          .padding(horizontal = 12.dp, vertical = 10.dp),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      EInkText(
-        text = stringResource(R.string.settings_import_font),
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.weight(1f),
-      )
-      EInkText(
-        text =
-          if (isPro) stringResource(R.string.settings_import_font_cta)
-          else "${stringResource(R.string.settings_import_font_cta)} · PRO",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-      )
-    }
     SettingsStepperRow(
       label = stringResource(R.string.settings_font_size),
       value = "${(settings.fontScale * 100).toInt()}%",

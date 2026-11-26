@@ -387,6 +387,10 @@
     <string name="launcher_view_text">Text Only</string>
     <string name="launcher_pinned_toast">Pinned %1$s to Home</string>
     <string name="launcher_unpinned_toast">Unpinned %1$s</string>
+    <string name="launcher_action_pin">Pin to Home</string>
+    <string name="launcher_action_unpin">Unpin from Home</string>
+    <string name="launcher_action_app_info">App info</string>
+    <string name="launcher_action_uninstall">Uninstall</string>
     <string name="launcher_status_format">Battery %1$d%% · Streak %2$dd</string>
     <string name="launcher_pinned_apps">PINNED APPS</string>
     <string name="launcher_long_press_unpin">Long-press to unpin</string>
@@ -467,7 +471,7 @@
     <string name="pro_feature_launcher_title">Launcher &amp; Lock-Screen Control</string>
     <string name="pro_feature_launcher_desc">Unlimited pinned apps and hide distracting apps.</string>
     <string name="pro_feature_themes_title">AMOLED &amp; Warm Paper Themes</string>
-    <string name="pro_feature_themes_desc">Deep black night mode, paper grain, and custom fonts.</string>
+    <string name="pro_feature_themes_desc">Deep black night mode, warm paper tone, and paper grain.</string>
     <string name="pro_feature_export_title">Export Highlights &amp; Notes</string>
     <string name="pro_feature_export_desc">Save and share your book notes anytime.</string>
 

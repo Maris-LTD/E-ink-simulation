@@ -4,13 +4,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.ColorMatrix as AndroidColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
+import android.provider.Settings
 import android.util.LruCache
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -53,6 +56,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +65,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -102,6 +107,8 @@ import com.example.emptyapp.data.stats.ReadingGamification
 import com.example.emptyapp.data.stats.ReadingStatsData
 import com.example.emptyapp.reader.EInkTone
 import com.example.emptyapp.ui.eink.CoverBitmapCache
+import com.example.emptyapp.ui.eink.EInkBorder
+import com.example.emptyapp.ui.eink.EInkShapes
 import com.example.emptyapp.ui.eink.EInkText
 import com.example.emptyapp.ui.eink.EInkTheme
 import com.example.emptyapp.ui.monet.ProPaywallSheet
@@ -265,8 +272,17 @@ private fun EInkHomePager(
     }
   }
   val resolvedPinned = pinnedPackages.orEmpty()
+  var hiddenPackages by remember {
+    mutableStateOf(prefs.getStringSet("hidden_packages", emptySet()).orEmpty())
+  }
+  var compactHomeLayout by remember {
+    mutableStateOf(prefs.getBoolean("compact_home_layout", false))
+  }
+  var hideAppsDialogOpen by remember { mutableStateOf(false) }
   val entitlement by proGate.entitlement.collectAsStateWithLifecycle()
+  val isPro = proGate.effectiveIsPro(entitlement)
   var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
+  var actionMenuApp by remember { mutableStateOf<LaunchableApp?>(null) }
   var drawerViewMode by remember {
     val saved = prefs.getString("drawer_view_mode", DrawerViewMode.GRID_3.name)
     mutableStateOf(DrawerViewMode.entries.firstOrNull { it.name == saved } ?: DrawerViewMode.GRID_3)
@@ -278,7 +294,7 @@ private fun EInkHomePager(
 
   fun togglePin(app: LaunchableApp) {
     val current = pinnedPackages.orEmpty()
-    if (app.packageName !in current && !proGate.canPinMoreApps(current.size, entitlement.isPro)) {
+    if (app.packageName !in current && !proGate.canPinMoreApps(current.size, isPro)) {
       paywallFeature = ProFeature.LAUNCHER_CUSTOMIZATION
       return
     }
@@ -326,6 +342,7 @@ private fun EInkHomePager(
           stats = stats,
           tone = tone,
           grayscale = grayscale,
+          compactLayout = isPro && compactHomeLayout,
           pinnedApps = remember(apps, resolvedPinned) { apps.filter { it.packageName in resolvedPinned } },
           coverOf = coverOf,
           onToneChange = onToneChange,
@@ -333,25 +350,36 @@ private fun EInkHomePager(
           onOpenBook = onOpenBook,
           onOpenDrawer = { scope.launch { pagerState.animateScrollToPage(1) } },
           onLaunchApp = { pkg -> launchPackage(context, pkg) },
-          onUnpinApp = { app -> togglePin(app) },
+          onAppLongClick = { app -> actionMenuApp = app },
         )
       } else {
+        val visibleDrawerApps =
+          remember(apps, hiddenPackages, isPro) {
+            if (isPro && hiddenPackages.isNotEmpty()) apps.filter { it.packageName !in hiddenPackages } else apps
+          }
         MinimalistAppDrawerPage(
-          apps = apps,
+          apps = visibleDrawerApps,
           isLoading = isLoadingApps,
           pinnedPackages = resolvedPinned,
           viewMode = drawerViewMode,
-          isPro = entitlement.isPro,
+          isPro = isPro,
           onCycleViewMode = ::cycleViewMode,
           onLaunchApp = { pkg -> launchPackage(context, pkg) },
-          onTogglePin = ::togglePin,
+          onAppLongClick = { app -> actionMenuApp = app },
           onHideAppsClick = {
-            if (!entitlement.isPro) paywallFeature = ProFeature.LAUNCHER_CUSTOMIZATION
-          },
-          onWidgetLayoutClick = {
-            if (!entitlement.isPro) {
+            if (!isPro) {
               paywallFeature = ProFeature.LAUNCHER_CUSTOMIZATION
             } else {
+              hideAppsDialogOpen = true
+            }
+          },
+          onWidgetLayoutClick = {
+            if (!isPro) {
+              paywallFeature = ProFeature.LAUNCHER_CUSTOMIZATION
+            } else {
+              val next = !compactHomeLayout
+              compactHomeLayout = next
+              prefs.edit().putBoolean("compact_home_layout", next).apply()
               scope.launch { snackbarHostState.showSnackbar(widgetToggledMsg) }
             }
           },
@@ -360,12 +388,66 @@ private fun EInkHomePager(
       }
     }
   }
+  if (hideAppsDialogOpen) {
+    AlertDialog(
+      onDismissRequest = { hideAppsDialogOpen = false },
+      containerColor = MaterialTheme.colorScheme.background,
+      title = { EInkText(stringResource(R.string.launcher_hide_apps), style = MaterialTheme.typography.titleMedium) },
+      text = {
+        LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+          items(apps, key = { it.packageName }) { app ->
+            val hidden = app.packageName in hiddenPackages
+            Row(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .clickable {
+                    val next = if (hidden) hiddenPackages - app.packageName else hiddenPackages + app.packageName
+                    hiddenPackages = next
+                    prefs.edit().putStringSet("hidden_packages", next).apply()
+                  }
+                  .padding(vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              androidx.compose.material3.Checkbox(checked = hidden, onCheckedChange = null)
+              EInkText(text = app.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            }
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(onClick = { hideAppsDialogOpen = false }) {
+          EInkText(stringResource(R.string.action_close), style = MaterialTheme.typography.labelLarge)
+        }
+      },
+    )
+  }
   if (paywallFeature != null) {
     ProPaywallSheet(
       billing = billing,
       proGate = proGate,
       highlightedFeature = paywallFeature,
       onDismiss = { paywallFeature = null },
+    )
+  }
+  actionMenuApp?.let { targetApp ->
+    LauncherAppActionsDialog(
+      app = targetApp,
+      isPinned = targetApp.packageName in resolvedPinned,
+      canUninstall = remember(targetApp.packageName) { canUninstallApp(context, targetApp.packageName) },
+      onTogglePin = {
+        actionMenuApp = null
+        togglePin(targetApp)
+      },
+      onOpenAppInfo = {
+        actionMenuApp = null
+        openAppSettings(context, targetApp.packageName)
+      },
+      onUninstall = {
+        actionMenuApp = null
+        uninstallApp(context, targetApp.packageName)
+      },
+      onDismiss = { actionMenuApp = null },
     )
   }
 }
@@ -445,6 +527,7 @@ private fun MinimalistHomePage(
   stats: ReadingStatsData,
   tone: EInkTone,
   grayscale: Boolean,
+  compactLayout: Boolean = false,
   pinnedApps: List<LaunchableApp>,
   coverOf: (BookEntry) -> File?,
   onToneChange: (EInkTone) -> Unit,
@@ -452,7 +535,7 @@ private fun MinimalistHomePage(
   onOpenBook: (String) -> Unit,
   onOpenDrawer: () -> Unit,
   onLaunchApp: (String) -> Unit,
-  onUnpinApp: (LaunchableApp) -> Unit,
+  onAppLongClick: (LaunchableApp) -> Unit,
 ) {
   val context = LocalContext.current
   var now by remember { mutableStateOf(LocalDateTime.now()) }
@@ -525,8 +608,9 @@ private fun MinimalistHomePage(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.secondary,
           )
-          Spacer(modifier = Modifier.height(4.dp))
-          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          if (!compactLayout) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
               modifier = Modifier.fillMaxWidth(),
               horizontalArrangement = Arrangement.SpaceBetween,
@@ -555,6 +639,7 @@ private fun MinimalistHomePage(
                       .background(MaterialTheme.colorScheme.primary),
                 )
               }
+            }
             }
           }
         }
@@ -593,7 +678,7 @@ private fun MinimalistHomePage(
                     PinnedAppTile(
                       app = app,
                       onClick = { onLaunchApp(app.packageName) },
-                      onLongClick = { onUnpinApp(app) },
+                      onLongClick = { onAppLongClick(app) },
                       modifier = Modifier.weight(1f),
                     )
                   }
@@ -769,7 +854,7 @@ private fun MinimalistAppDrawerPage(
   isPro: Boolean,
   onCycleViewMode: () -> Unit,
   onLaunchApp: (String) -> Unit,
-  onTogglePin: (LaunchableApp) -> Unit,
+  onAppLongClick: (LaunchableApp) -> Unit,
   onHideAppsClick: () -> Unit,
   onWidgetLayoutClick: () -> Unit,
   onBack: () -> Unit,
@@ -888,7 +973,7 @@ private fun MinimalistAppDrawerPage(
                   .defaultMinSize(minHeight = 48.dp)
                   .combinedClickable(
                     onClick = { onLaunchApp(app.packageName) },
-                    onLongClick = { onTogglePin(app) },
+                    onLongClick = { onAppLongClick(app) },
                   )
                   .padding(horizontal = 16.dp, vertical = 12.dp),
               horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -940,7 +1025,7 @@ private fun MinimalistAppDrawerPage(
                   )
                   .combinedClickable(
                     onClick = { onLaunchApp(app.packageName) },
-                    onLongClick = { onTogglePin(app) },
+                    onLongClick = { onAppLongClick(app) },
                   )
                   .padding(horizontal = 6.dp, vertical = 10.dp),
               horizontalAlignment = Alignment.CenterHorizontally,
@@ -1119,6 +1204,107 @@ private fun queryLaunchableApps(context: Context): List<LaunchableApp> {
     .distinctBy { it.packageName }
     .sortedWith { a, b -> appComparator.compare(a.label, b.label) }
     .toList()
+}
+
+@Composable
+private fun LauncherAppActionsDialog(
+  app: LaunchableApp,
+  isPinned: Boolean,
+  canUninstall: Boolean,
+  onTogglePin: () -> Unit,
+  onOpenAppInfo: () -> Unit,
+  onUninstall: () -> Unit,
+  onDismiss: () -> Unit,
+) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    shape = EInkShapes.Card,
+    containerColor = MaterialTheme.colorScheme.background,
+    title = {
+      EInkText(
+        text = app.label,
+        style = MaterialTheme.typography.titleMedium,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+      )
+    },
+    text = {
+      Column(modifier = Modifier.fillMaxWidth()) {
+        LauncherActionRow(
+          label = stringResource(if (isPinned) R.string.launcher_action_unpin else R.string.launcher_action_pin),
+          onClick = onTogglePin,
+        )
+        HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+        LauncherActionRow(
+          label = stringResource(R.string.launcher_action_app_info),
+          onClick = onOpenAppInfo,
+        )
+        if (canUninstall) {
+          HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
+          LauncherActionRow(
+            label = stringResource(R.string.launcher_action_uninstall),
+            onClick = onUninstall,
+          )
+        }
+      }
+    },
+    confirmButton = {
+      TextButton(onClick = onDismiss) {
+        EInkText(stringResource(R.string.action_close), style = MaterialTheme.typography.labelLarge)
+      }
+    },
+  )
+}
+
+@Composable
+private fun LauncherActionRow(
+  label: String,
+  onClick: () -> Unit,
+) {
+  Row(
+    modifier =
+      Modifier.fillMaxWidth()
+        .defaultMinSize(minHeight = 48.dp)
+        .clickable(role = Role.Button, onClick = onClick)
+        .padding(vertical = 12.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    EInkText(text = label, style = MaterialTheme.typography.bodyLarge)
+    EInkText("›", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.secondary)
+  }
+}
+
+internal fun isUninstallableApplicationFlags(flags: Int): Boolean =
+  (flags and ApplicationInfo.FLAG_SYSTEM) == 0 || (flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+private fun canUninstallApp(
+  context: Context,
+  packageName: String,
+): Boolean =
+  runCatching {
+    val info = context.packageManager.getApplicationInfo(packageName, 0)
+    isUninstallableApplicationFlags(info.flags)
+  }.getOrDefault(false)
+
+private fun openAppSettings(
+  context: Context,
+  packageName: String,
+) {
+  val intent =
+    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+  runCatching { context.startActivity(intent) }
+}
+
+private fun uninstallApp(
+  context: Context,
+  packageName: String,
+) {
+  val intent =
+    Intent(Intent.ACTION_DELETE, Uri.fromParts("package", packageName, null))
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+  runCatching { context.startActivity(intent) }
 }
 
 private fun launchPackage(

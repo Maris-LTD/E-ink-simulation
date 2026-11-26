@@ -29,6 +29,10 @@ data class LockScreenReadingState(
   val progress: Float = 0f,
   val locatorJson: String? = null,
   val capturedAt: Long = System.currentTimeMillis(),
+  val progressStart: Float = progress,
+  val progressEnd: Float = progress,
+  val isPdf: Boolean = false,
+  val snippetPages: List<Int>? = null,
 ) {
   val currentSnippet: String
     get() = snippets.getOrNull(currentSnippetIndex.coerceIn(0, (snippets.size - 1).coerceAtLeast(0))).orEmpty()
@@ -141,13 +145,28 @@ class LockScreenReadingStore internal constructor(
           stepped = null
           return@update current
         }
+        val fraction =
+          if (current.snippets.size > 1) nextIdx.toFloat() / (current.snippets.size - 1).toFloat()
+          else 0f
+        val updatedProgress =
+          if (current.progressEnd > current.progressStart) {
+            (current.progressStart + (current.progressEnd - current.progressStart) * fraction).coerceIn(0f, 1f)
+          } else {
+            current.progress
+          }
+        val targetPdfPage = current.snippetPages?.getOrNull(nextIdx)
         val updatedLocatorJson =
           current.locatorJson?.let { raw ->
-            updateLocatorProgression(raw, nextIdx, current.snippets.size)
+            if (current.isPdf && targetPdfPage != null) {
+              updatePdfLocatorPosition(raw, targetPdfPage, updatedProgress)
+            } else {
+              updateLocatorProgression(raw, nextIdx, current.snippets.size)
+            }
           }
         val updated =
           current.copy(
             currentSnippetIndex = nextIdx,
+            progress = updatedProgress,
             locatorJson = updatedLocatorJson,
             capturedAt = nowProvider(),
           )
@@ -181,6 +200,28 @@ class LockScreenReadingStore internal constructor(
             val newChapterProg = nextIdx.toDouble() / (snippetCount - 1).toDouble()
             put("progression", JsonPrimitive(newChapterProg))
           }
+        }
+      val updatedRoot =
+        buildJsonObject {
+          for ((k, v) in root) {
+            if (k != "locations") put(k, v)
+          }
+          put("locations", updatedLocations)
+        }
+      json.encodeToString(JsonObject.serializer(), updatedRoot)
+    }.getOrDefault(raw)
+
+  private fun updatePdfLocatorPosition(raw: String, pageIndexZeroBased: Int, totalProgress: Float): String =
+    runCatching {
+      val root = json.parseToJsonElement(raw).jsonObject
+      val existingLocations = (root["locations"] as? JsonObject)?.toMap().orEmpty()
+      val updatedLocations =
+        buildJsonObject {
+          for ((k, v) in existingLocations) {
+            if (k != "position" && k != "totalProgression") put(k, v)
+          }
+          put("position", JsonPrimitive(pageIndexZeroBased + 1))
+          put("totalProgression", JsonPrimitive(totalProgress.toDouble()))
         }
       val updatedRoot =
         buildJsonObject {

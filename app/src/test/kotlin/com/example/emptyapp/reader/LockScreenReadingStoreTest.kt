@@ -161,4 +161,52 @@ class LockScreenReadingStoreTest {
       )
     assertNull(reloaded.state.value)
   }
+
+  @Test
+  fun stepSnippetInterpolatesProgressAndUpdatesPdfPagePosition() {
+    var now = 1_000L
+    val store =
+      LockScreenReadingStore(
+        file = file,
+        ioDispatcher = Dispatchers.Unconfined,
+        nowProvider = { now },
+      )
+
+    store.updateSession(
+      LockScreenReadingState(
+        bookId = "pdf-1",
+        title = "PDF Test",
+        snippets = listOf("Page 1 - A", "Page 1 - B", "Page 2 - A", "Page 3 - A"),
+        currentSnippetIndex = 0,
+        progress = 0.0f,
+        progressStart = 0.0f,
+        progressEnd = 0.6f,
+        isPdf = true,
+        snippetPages = listOf(0, 0, 1, 2),
+        locatorJson = """{"href":"pdf","locations":{"position":1,"totalProgression":0.0}}""",
+        capturedAt = 1_000L,
+      )
+    )
+
+    now = 2_000L
+    val step1 = store.stepSnippet(1)
+    assertNotNull(step1)
+    assertEquals(1, step1?.currentSnippetIndex)
+    assertEquals(0.2f, step1?.progress ?: -1f, 0.001f)
+    assertTrue(step1?.locatorJson.orEmpty().contains("\"position\":1"))
+
+    now = 3_000L
+    val step2 = store.stepSnippet(1)
+    assertNotNull(step2)
+    assertEquals(2, step2?.currentSnippetIndex)
+    assertEquals(0.4f, step2?.progress ?: -1f, 0.001f)
+    assertTrue(step2?.locatorJson.orEmpty().contains("\"position\":2"))
+
+    now = 4_000L
+    val step3 = store.stepSnippet(1)
+    assertNotNull(step3)
+    assertEquals(3, step3?.currentSnippetIndex)
+    assertEquals(0.6f, step3?.progress ?: -1f, 0.001f)
+    assertTrue(step3?.locatorJson.orEmpty().contains("\"position\":3"))
+  }
 }

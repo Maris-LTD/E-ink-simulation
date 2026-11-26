@@ -43,6 +43,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.emptyapp.data.billing.ProFeature
 import com.example.emptyapp.data.book.BookFormat
 import com.example.emptyapp.data.review.PlayInAppReviewLauncher
 import com.example.emptyapp.reader.EInkPreferencesMapper
@@ -288,14 +289,14 @@ class ReaderActivity : FragmentActivity() {
     val locatorJson = locator?.toJSON()?.toString()
 
     container.appScope.launch(Dispatchers.IO) {
-      val (extractedSnippets, extractedStartIdx) = extractLockScreenSnippets(ready, locator, progress)
+      val extraction = extractLockScreenSnippets(ready, locator, progress)
       val fallbackSnippet =
         locator?.title?.takeIf { it.isNotBlank() }
           ?: ready.toc.firstOrNull { it.url() == locator?.href }?.title?.takeIf { it.isNotBlank() }
           ?: ready.book.title.takeIf { it.isNotBlank() }
       val (snippets, startIdx) =
-        if (extractedSnippets.isNotEmpty()) {
-          extractedSnippets to extractedStartIdx
+        if (extraction.snippets.isNotEmpty()) {
+          extraction.snippets to extraction.startIndex
         } else if (fallbackSnippet != null) {
           listOf(fallbackSnippet) to 0
         } else {
@@ -313,6 +314,10 @@ class ReaderActivity : FragmentActivity() {
           progress = progress,
           locatorJson = locatorJson,
           capturedAt = capturedAt,
+          progressStart = if (extraction.snippets.isNotEmpty()) extraction.progressStart else progress,
+          progressEnd = if (extraction.snippets.isNotEmpty()) extraction.progressEnd else progress,
+          isPdf = extraction.isPdf,
+          snippetPages = extraction.snippetPages,
         )
       container.lockScreenReading.updateSession(lockState)
       LockScreenReadingNotifier.show(
@@ -335,32 +340,45 @@ class ReaderActivity : FragmentActivity() {
     ready: ReaderUiState.Ready,
     locator: org.readium.r2.shared.publication.Locator?,
     progress: Float,
-  ): Pair<List<String>, Int> {
+  ): LockScreenExtractionResult {
+    val proGate = (application as EmptyApplication).container.proGate
     if (ready.book.format == BookFormat.PDF) {
       val totalPages = ready.positions.size.coerceAtLeast(1)
       val pageIdx =
         (locator?.locations?.position?.minus(1) ?: (progress * (totalPages - 1)).toInt())
           .coerceIn(0, totalPages - 1)
+      if (!proGate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, pageIdx)) {
+        return LockScreenExtractionResult(
+          snippets = emptyList(),
+          startIndex = 0,
+          progressStart = progress,
+          progressEnd = progress,
+          isPdf = true,
+        )
+      }
       val appCtx = applicationContext
       val cache = PdfDocumentCache(File(appCtx.filesDir, "pdf_cache"))
-      return extractPdfLockScreenSnippets(
+      return extractPdfLockScreenWindow(
         bookId = ready.book.id,
         file = ready.file,
-        pageIdx = pageIdx,
+        startPageIdx = pageIdx,
         totalPages = totalPages,
         snippetCache = cachedPdfPageSnippets,
         documentCache = cache,
+        canAccessPage = { idx -> proGate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, idx) },
         analyzeFallback = { pdfFile, indices ->
           PdfPageAnalyzer.ensureInitialized(appCtx)
           PdfPageAnalyzer.analyzePages(pdfFile, indices)
         },
       )
     } else {
-      val targetHref = locator?.href ?: ready.publication.readingOrder.firstOrNull()?.url() ?: return emptyList<String>() to 0
+      val readingOrder = ready.publication.readingOrder
+      val targetHref = locator?.href ?: readingOrder.firstOrNull()?.url()
+      val spineIdx =
+        readingOrder.indexOfFirst { it.url() == targetHref }.takeIf { it >= 0 } ?: 0
       val link =
-        ready.publication.readingOrder.firstOrNull { it.url() == targetHref }
-          ?: ready.publication.readingOrder.firstOrNull()
-          ?: return emptyList<String>() to 0
+        readingOrder.getOrNull(spineIdx)
+          ?: return LockScreenExtractionResult(emptyList(), 0, progress, progress, isPdf = false)
       val chapterKey = "${ready.book.id}|${link.url()}"
       val snippets =
         cachedChapterSnippets?.takeIf { it.first == chapterKey }?.second
@@ -374,14 +392,25 @@ class ReaderActivity : FragmentActivity() {
                   res.close()
                 }
               }.getOrNull().orEmpty()
-            if (html.isBlank()) return emptyList<String>() to 0
+            if (html.isBlank()) {
+              return LockScreenExtractionResult(emptyList(), 0, progress, progress, isPdf = false)
+            }
             val plain = LockScreenTextChunker.stripHtmlToPlainText(html)
-            LockScreenTextChunker.chunkText(plain, maxCharsPerSnippet = 260)
+            LockScreenTextChunker.chunkText(plain, maxCharsPerSnippet = 200)
               .also { cachedChapterSnippets = chapterKey to it }
           }
       val chapterProg = (locator?.locations?.progression ?: 0.0).toFloat()
       val idx = LockScreenTextChunker.estimateInitialSnippetIndex(snippets, chapterProg)
-      return snippets to idx
+      val spineCount = readingOrder.size.coerceAtLeast(1)
+      val pStart = (spineIdx.toFloat() / spineCount.toFloat()).coerceIn(0f, 1f)
+      val pEnd = ((spineIdx + 1).toFloat() / spineCount.toFloat()).coerceIn(pStart, 1f)
+      return LockScreenExtractionResult(
+        snippets = snippets,
+        startIndex = idx,
+        progressStart = pStart,
+        progressEnd = pEnd,
+        isPdf = false,
+      )
     }
   }
 
@@ -801,6 +830,62 @@ internal class PdfSnippetMemoryCache(private val maxEntries: Int = 16) {
   }
 }
 
+internal data class LockScreenExtractionResult(
+  val snippets: List<String>,
+  val startIndex: Int,
+  val progressStart: Float,
+  val progressEnd: Float,
+  val isPdf: Boolean,
+  val snippetPages: List<Int>? = null,
+)
+
+internal fun extractPdfLockScreenWindow(
+  bookId: String,
+  file: File,
+  startPageIdx: Int,
+  totalPages: Int,
+  snippetCache: PdfSnippetMemoryCache,
+  documentCache: PdfDocumentCache,
+  canAccessPage: (Int) -> Boolean,
+  analyzeFallback: (File, List<Int>) -> List<PdfPageAnalysis>,
+  maxPages: Int = 3,
+): LockScreenExtractionResult {
+  val safeTotal = totalPages.coerceAtLeast(1)
+  val allSnippets = ArrayList<String>()
+  val allPages = ArrayList<Int>()
+  var lastIncludedPage = startPageIdx
+  for (offset in 0 until maxPages) {
+    val pageIdx = startPageIdx + offset
+    if (pageIdx >= safeTotal || !canAccessPage(pageIdx)) break
+    val (pageSnippets, _) =
+      extractPdfLockScreenSnippets(
+        bookId = bookId,
+        file = file,
+        pageIdx = pageIdx,
+        totalPages = safeTotal,
+        snippetCache = snippetCache,
+        documentCache = documentCache,
+        canAccessPage = canAccessPage,
+        analyzeFallback = analyzeFallback,
+      )
+    if (pageSnippets.isNotEmpty()) {
+      allSnippets.addAll(pageSnippets)
+      repeat(pageSnippets.size) { allPages.add(pageIdx) }
+      lastIncludedPage = pageIdx
+    }
+  }
+  val pStart = (startPageIdx.toFloat() / safeTotal.toFloat()).coerceIn(0f, 1f)
+  val pEnd = ((lastIncludedPage + 1).toFloat() / safeTotal.toFloat()).coerceIn(pStart, 1f)
+  return LockScreenExtractionResult(
+    snippets = allSnippets,
+    startIndex = 0,
+    progressStart = pStart,
+    progressEnd = pEnd,
+    isPdf = true,
+    snippetPages = allPages.takeIf { it.isNotEmpty() },
+  )
+}
+
 internal fun extractPdfLockScreenSnippets(
   bookId: String,
   file: File,
@@ -809,7 +894,9 @@ internal fun extractPdfLockScreenSnippets(
   snippetCache: PdfSnippetMemoryCache,
   documentCache: PdfDocumentCache,
   analyzeFallback: (File, List<Int>) -> List<PdfPageAnalysis>,
+  canAccessPage: (Int) -> Boolean = { true },
 ): Pair<List<String>, Int> {
+  if (!canAccessPage(pageIdx)) return emptyList<String>() to 0
   snippetCache.get(bookId, pageIdx)?.let { return it to 0 }
   val requestedIndices =
     if (pageIdx + 1 < totalPages) listOf(pageIdx, pageIdx + 1) else listOf(pageIdx)
@@ -830,7 +917,7 @@ internal fun extractPdfLockScreenSnippets(
         reflowed.items
           .filterIsInstance<ReflowItem.Paragraph>()
           .joinToString("\n\n") { it.text }
-      LockScreenTextChunker.chunkText(bodyText, maxCharsPerSnippet = 260)
+      LockScreenTextChunker.chunkText(bodyText, maxCharsPerSnippet = 200)
     } else {
       emptyList()
     }

@@ -147,6 +147,7 @@ fun ReaderScreen(
   var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
   var currentPdfPage by remember(initialLocator, positions) { mutableIntStateOf(resolvePdfPageIndex(initialLocator, positions)) }
   val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
+  val isPro = proGate?.effectiveIsPro(entitlement) ?: false
   val latestBrightness by rememberUpdatedState(settings.brightness)
   val latestOnLeftEdgeTap by rememberUpdatedState {
     if (bookFormat == BookFormat.PDF) {
@@ -316,7 +317,7 @@ fun ReaderScreen(
   val isAdaptivePdfBlocked =
     bookFormat == BookFormat.PDF &&
       effectivePdfMode != PdfReadingMode.SMART_ORIGINAL &&
-      !entitlement.isPro &&
+      !isPro &&
       proGate != null &&
       !proGate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, currentPdfPage)
 
@@ -467,7 +468,7 @@ fun ReaderScreen(
           tone = settings.tone,
           brightness = settings.brightness,
           onToneChange = { tone ->
-            if (proGate != null && !proGate.canUseTone(tone, entitlement.isPro)) {
+            if (proGate != null && !proGate.canUseTone(tone, isPro)) {
               paywallFeature = ProFeature.ADVANCED_PAPER_THEMES
             } else {
               viewModel.updateSettings { it.copy(tone = tone) }
@@ -507,7 +508,7 @@ fun ReaderScreen(
         onPdfModeChange = { next -> viewModel.updatePdfConfig { it.copy(mode = next) } },
         onToggleFocusMode = ::handleToggleFocusMode,
         onToggleLockScreenReader = ::handleToggleLockScreenReader,
-        isPro = entitlement.isPro,
+        isPro = isPro,
         onRequestPro = { paywallFeature = it },
         onChange = viewModel::updateSettings,
         modifier =
@@ -580,9 +581,9 @@ fun ReaderScreen(
             }
           }
         },
-        isPro = entitlement.isPro,
+        isPro = isPro,
         onExportNotes = {
-          if (proGate != null && !proGate.canExportNotes(entitlement.isPro)) {
+          if (proGate != null && !proGate.canExportNotes(isPro)) {
             paywallFeature = ProFeature.EXPORT_NOTES
           } else {
             HighlightExporter.shareAsMarkdown(context, highlights)

@@ -128,6 +128,7 @@ class ProFeatureGateTest {
     val gate = ProFeatureGate(store) { false }
 
     assertFalse(gate.isPro)
+    assertFalse(gate.effectiveIsPro(gate.entitlement.value))
     assertFalse(gate.hasAccess(ProFeature.DRIVE_SYNC))
     assertFalse(gate.hasAccess(ProFeature.FOCUS_MODE))
     assertFalse(gate.hasAccess(ProFeature.ADAPTIVE_PDF_REFLOW, pdfPageIndexZeroBased = 10))

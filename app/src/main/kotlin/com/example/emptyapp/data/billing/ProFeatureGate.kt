@@ -15,7 +15,10 @@ class ProFeatureGate(
   val entitlement: StateFlow<ProEntitlement> = mutableEntitlement.asStateFlow()
 
   val isPro: Boolean
-    get() = mutableEntitlement.value.isPro && isIntegrityValid()
+    get() = effectiveIsPro(mutableEntitlement.value)
+
+  fun effectiveIsPro(entitlement: ProEntitlement = mutableEntitlement.value): Boolean =
+    entitlement.isPro && isIntegrityValid()
 
   fun hasAccess(feature: ProFeature, pdfPageIndexZeroBased: Int? = null): Boolean {
     if (isPro) return true

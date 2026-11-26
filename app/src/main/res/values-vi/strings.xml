@@ -382,6 +382,10 @@
     <string name="launcher_view_text">Chỉ chữ</string>
     <string name="launcher_pinned_toast">Đã ghim %1$s ra Màn hình chính</string>
     <string name="launcher_unpinned_toast">Đã bỏ ghim %1$s</string>
+    <string name="launcher_action_pin">Ghim ra Màn hình chính</string>
+    <string name="launcher_action_unpin">Bỏ ghim khỏi Màn hình chính</string>
+    <string name="launcher_action_app_info">Thông tin ứng dụng</string>
+    <string name="launcher_action_uninstall">Gỡ cài đặt</string>
     <string name="launcher_status_format">Pin %1$d%% · Chuỗi %2$dd</string>
     <string name="launcher_pinned_apps">ỨNG DỤNG GHIM</string>
     <string name="launcher_long_press_unpin">Nhấn giữ để bỏ</string>
@@ -462,7 +466,7 @@
     <string name="pro_feature_launcher_title">Tùy biến Launcher &amp; Màn hình khóa</string>
     <string name="pro_feature_launcher_desc">Ghim app không giới hạn, ẩn app gây xao nhãng.</string>
     <string name="pro_feature_themes_title">Giao diện AMOLED &amp; Giấy ấm</string>
-    <string name="pro_feature_themes_desc">Nền đen sâu dịu mắt, vân giấy tự nhiên và font chữ riêng.</string>
+    <string name="pro_feature_themes_desc">Nền đen sâu dịu mắt, giấy ấm và vân giấy tự nhiên.</string>
     <string name="pro_feature_export_title">Xuất Ghi chú &amp; Highlight</string>
     <string name="pro_feature_export_desc">Lưu và chia sẻ toàn bộ trích dẫn, ghi chú sách.</string>
 

@@ -167,6 +167,8 @@ fun ReadingStatsScreen(
   var paywallOpen by remember { mutableStateOf(false) }
   var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
   val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
+  val isPro = proGate?.effectiveIsPro(entitlement) ?: false
+  val effectiveEntitlement = entitlement.copy(isPro = isPro)
   val saveErrorMsg = stringResource(R.string.error_save_data)
   LaunchedEffect(writeError) {
     if (writeError) {
@@ -351,7 +353,7 @@ fun ReadingStatsScreen(
       if (selectedTab == 1) {
         if (billing != null && proGate != null) {
           InkifyProSettingsCard(
-            entitlement = entitlement,
+            entitlement = effectiveEntitlement,
             onOpenPaywall = {
               paywallFeature = null
               paywallOpen = true
@@ -359,7 +361,15 @@ fun ReadingStatsScreen(
           )
           HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         }
-        EInkDisplaySettingsCard(settings = settings, onUpdateSettings = onUpdateSettings)
+        EInkDisplaySettingsCard(
+          settings = settings,
+          isPro = isPro || proGate == null,
+          onRequestPro = { feature ->
+            paywallFeature = feature
+            paywallOpen = true
+          },
+          onUpdateSettings = onUpdateSettings,
+        )
         HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
         LanguageCard(currentLanguage = currentLanguage, onChangeLanguage = onChangeLanguage)
         HorizontalDivider(thickness = EInkBorder.Hairline, color = MaterialTheme.colorScheme.outlineVariant)
@@ -1186,6 +1196,8 @@ private fun GoogleSyncCard(
 @Composable
 private fun EInkDisplaySettingsCard(
   settings: EInkSettings,
+  isPro: Boolean = true,
+  onRequestPro: (ProFeature) -> Unit = {},
   onUpdateSettings: ((EInkSettings) -> EInkSettings) -> Unit,
 ) {
   Column(
@@ -1207,7 +1219,8 @@ private fun EInkDisplaySettingsCard(
     ) {
       EInkTone.entries.forEach { tone ->
         val selected = tone == settings.tone
-        val label =
+        val isProTone = tone == EInkTone.WARM || tone == EInkTone.AMOLED
+        val baseLabel =
           when (tone) {
             EInkTone.PAPER -> stringResource(R.string.tone_paper)
             EInkTone.WARM -> stringResource(R.string.tone_warm)
@@ -1216,6 +1229,7 @@ private fun EInkDisplaySettingsCard(
             EInkTone.DARK -> stringResource(R.string.tone_dark)
             EInkTone.AMOLED -> stringResource(R.string.tone_amoled)
           }
+        val label = if (!isPro && isProTone) "$baseLabel · PRO" else baseLabel
         Box(
           modifier =
             Modifier.clip(EInkShapes.Control)
@@ -1231,7 +1245,13 @@ private fun EInkDisplaySettingsCard(
               .selectable(
                 selected = selected,
                 role = Role.RadioButton,
-                onClick = { onUpdateSettings { it.copy(tone = tone) } },
+                onClick = {
+                  if (!isPro && isProTone) {
+                    onRequestPro(ProFeature.ADVANCED_PAPER_THEMES)
+                  } else {
+                    onUpdateSettings { it.copy(tone = tone) }
+                  }
+                },
               )
               .padding(horizontal = 12.dp, vertical = 8.dp),
           contentAlignment = Alignment.Center,
@@ -1245,19 +1265,28 @@ private fun EInkDisplaySettingsCard(
         }
       }
     }
+    val paperGrainLabel =
+      if (isPro) stringResource(R.string.settings_paper_grain)
+      else "${stringResource(R.string.settings_paper_grain)} · PRO"
     Row(
       modifier =
         Modifier.fillMaxWidth()
           .toggleable(
             value = settings.paperGrain,
             role = Role.Switch,
-            onValueChange = { on -> onUpdateSettings { it.copy(paperGrain = on) } },
+            onValueChange = { on ->
+              if (on && !isPro) {
+                onRequestPro(ProFeature.ADVANCED_PAPER_THEMES)
+              } else {
+                onUpdateSettings { it.copy(paperGrain = on) }
+              }
+            },
           )
           .semantics(mergeDescendants = true) {},
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-      EInkText(stringResource(R.string.settings_paper_grain), style = MaterialTheme.typography.bodyMedium)
+      EInkText(paperGrainLabel, style = MaterialTheme.typography.bodyMedium)
       Switch(
         checked = settings.paperGrain,
         onCheckedChange = null,

@@ -58,6 +58,7 @@ fun ProPaywallSheet(
   val scope = rememberCoroutineScope()
   val billingState by billing.state.collectAsStateWithLifecycle()
   val entitlement by proGate.entitlement.collectAsStateWithLifecycle()
+  val isPro = proGate.effectiveIsPro(entitlement)
   var selectedProductId by remember { mutableStateOf(BillingConstants.PRODUCT_ANNUAL) }
   var message by remember { mutableStateOf<BillingMessage?>(null) }
 
@@ -95,7 +96,7 @@ fun ProPaywallSheet(
         message?.let { currentMsg ->
           PaywallMessageBanner(message = currentMsg, onDismiss = { message = null })
         }
-        if (entitlement.isPro) {
+        if (isPro) {
           ActiveProSummaryCard(entitlement = entitlement)
           PaywallTipJarSection(
             products = billingState.products,

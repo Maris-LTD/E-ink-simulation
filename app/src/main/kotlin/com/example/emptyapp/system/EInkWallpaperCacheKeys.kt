@@ -25,6 +25,7 @@ internal data class WallpaperExcerptLayoutKey(
   val bodyWidth: Int,
   val widthPx: Float,
   val fgColor: Int,
+  val maxLines: Int = Int.MAX_VALUE,
 )
 
 internal data class WallpaperCoverKey(

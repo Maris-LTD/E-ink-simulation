@@ -33,7 +33,7 @@ data class EInkSettings(
   val brightness: Float = -1f,
   val orientationLock: OrientationLock = OrientationLock.AUTO,
   val animations: Boolean = false,
-  val paperGrain: Boolean = true,
+  val paperGrain: Boolean = false,
   val ghosting: Boolean = false,
   val readerFooter: Boolean = true,
   val lockScreenReader: Boolean = true,

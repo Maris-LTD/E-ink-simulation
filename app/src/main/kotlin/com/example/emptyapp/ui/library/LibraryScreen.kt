@@ -171,6 +171,7 @@ fun LibraryScreen(
   var paywallOpen by remember { mutableStateOf(false) }
   var paywallFeature by remember { mutableStateOf<ProFeature?>(null) }
   val entitlement = proGate?.entitlement?.collectAsStateWithLifecycle()?.value ?: ProEntitlement()
+  val isPro = proGate?.effectiveIsPro(entitlement) ?: false
   var setupBannerDismissed by remember { mutableStateOf(tutorialPrefs.getBoolean("setup_banner_dismissed", false)) }
   var milestoneNudgeDismissed by remember {
     mutableStateOf(tutorialPrefs.getBoolean("pro_milestone_nudge_dismissed", false))
@@ -291,10 +292,10 @@ fun LibraryScreen(
           .then(if (tutorialOpen) Modifier.clearAndSetSemantics {} else Modifier),
     ) {
       LibraryHeader(
-        isPro = entitlement.isPro,
+        isPro = isPro,
         showProButton =
           shouldShowLibraryProBadge(
-            isPro = entitlement.isPro,
+            isPro = isPro,
             hasBilling = billing != null && proGate != null,
             totalPagesTurned = stats.totalPagesTurned,
             totalReadingSeconds = stats.totalSeconds,
@@ -377,7 +378,7 @@ fun LibraryScreen(
           billing != null &&
           proGate != null &&
           ReadingGamification.shouldShowMilestoneNudge(
-            isPro = entitlement.isPro,
+            isPro = isPro,
             dismissed = milestoneNudgeDismissed,
             stats = stats,
             completedBooksCount = completedBooksCount,
@@ -459,10 +460,11 @@ fun LibraryScreen(
           LibraryHighlightList(
             highlights = filteredHighlights,
             onOpenHighlight = { bookId, locatorJson -> onOpenBook(bookId, locatorJson) },
-            isPro = entitlement.isPro,
+            isPro = isPro,
             onExportNotes = {
-              if (proGate != null && !proGate.canExportNotes(entitlement.isPro)) {
+              if (proGate != null && !proGate.canExportNotes(isPro)) {
                 paywallFeature = ProFeature.EXPORT_NOTES
+                paywallOpen = true
               } else {
                 HighlightExporter.shareAsMarkdown(context, filteredHighlights)
               }

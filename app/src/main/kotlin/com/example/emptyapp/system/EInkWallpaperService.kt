@@ -21,6 +21,7 @@ import android.service.wallpaper.WallpaperService
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.TextUtils
 import android.text.format.DateFormat
 import android.view.SurfaceHolder
 import androidx.core.content.res.ResourcesCompat
@@ -344,6 +345,16 @@ class EInkWallpaperService : WallpaperService() {
       val padX = w * 0.09f
       val hasLockExcerpt = settings?.lockScreenReader == true && lockState != null && lockState.currentSnippet.isNotBlank()
       if (hasLockExcerpt) {
+        drawDailyGoalBar(
+          canvas = canvas,
+          w = w,
+          padX = padX,
+          goalTop = h * 0.54f,
+          todayMin = todayMin,
+          goalMin = goalMin,
+          goalProgress = goalProgress,
+          localized = localized,
+        )
         drawReadingExcerptPanel(
           canvas = canvas,
           w = w,
@@ -359,15 +370,16 @@ class EInkWallpaperService : WallpaperService() {
       }
 
       // Daily goal bar
-      val goalTop = h * 0.635f
-      val goalBarH = w * 0.022f
-      canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_daily_goal), padX, goalTop - w * 0.02f, leftPaint)
-      canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_minutes_format, todayMin, goalMin), w - padX, goalTop - w * 0.02f, rightPaint)
-      canvas.drawRect(padX, goalTop, w - padX, goalTop + goalBarH, borderPaint)
-      if (goalProgress > 0f) {
-        val fillW = (w - 2f * padX) * goalProgress
-        canvas.drawRect(padX, goalTop, padX + fillW, goalTop + goalBarH, fillPaint)
-      }
+      drawDailyGoalBar(
+        canvas = canvas,
+        w = w,
+        padX = padX,
+        goalTop = h * 0.635f,
+        todayMin = todayMin,
+        goalMin = goalMin,
+        goalProgress = goalProgress,
+        localized = localized,
+      )
 
       // Currently reading card with monochrome book cover
       val cardTop = h * 0.695f
@@ -638,6 +650,26 @@ class EInkWallpaperService : WallpaperService() {
       return text.substring(0, end) + "…"
     }
 
+    private fun drawDailyGoalBar(
+      canvas: Canvas,
+      w: Float,
+      padX: Float,
+      goalTop: Float,
+      todayMin: Int,
+      goalMin: Int,
+      goalProgress: Float,
+      localized: Context,
+    ) {
+      val goalBarH = w * 0.022f
+      canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_daily_goal), padX, goalTop - w * 0.02f, leftPaint)
+      canvas.drawText(localized.getString(com.example.emptyapp.R.string.wallpaper_minutes_format, todayMin, goalMin), w - padX, goalTop - w * 0.02f, rightPaint)
+      canvas.drawRect(padX, goalTop, w - padX, goalTop + goalBarH, borderPaint)
+      if (goalProgress > 0f) {
+        val fillW = (w - 2f * padX) * goalProgress
+        canvas.drawRect(padX, goalTop, padX + fillW, goalTop + goalBarH, fillPaint)
+      }
+    }
+
     private fun drawReadingExcerptPanel(
       canvas: Canvas,
       w: Float,
@@ -677,7 +709,9 @@ class EInkWallpaperService : WallpaperService() {
       val bodyTop = dividerY + w * 0.025f
       val bodyMaxH = (bottom - innerPad - bodyTop).coerceAtLeast(20f)
       val bodyWidth = ((right - innerPad) - (padX + innerPad)).toInt().coerceAtLeast(40)
-      val layout = resolveExcerptLayout(lockState.currentSnippet, bodyWidth, w, fgColor)
+      val rawLineHeight = (excerptBodyPaint.getFontMetricsInt(null) * 1.25f).coerceAtLeast(1f)
+      val maxLines = (bodyMaxH / rawLineHeight).toInt().coerceAtLeast(1)
+      val layout = resolveExcerptLayout(lockState.currentSnippet, bodyWidth, w, fgColor, maxLines)
 
       canvas.save()
       canvas.clipRect(padX + innerPad, bodyTop, right - innerPad, bodyTop + bodyMaxH)
@@ -691,8 +725,9 @@ class EInkWallpaperService : WallpaperService() {
       bodyWidth: Int,
       widthPx: Float,
       fgColor: Int,
+      maxLines: Int,
     ): StaticLayout {
-      val key = WallpaperExcerptLayoutKey(snippet, bodyWidth, widthPx, fgColor)
+      val key = WallpaperExcerptLayoutKey(snippet, bodyWidth, widthPx, fgColor, maxLines)
       val existing = cachedExcerptLayout
       if (key == cachedExcerptKey && existing != null) return existing
       val built =
@@ -700,6 +735,8 @@ class EInkWallpaperService : WallpaperService() {
           .obtain(snippet, 0, snippet.length, excerptBodyPaint, bodyWidth)
           .setAlignment(Layout.Alignment.ALIGN_NORMAL)
           .setLineSpacing(0f, 1.25f)
+          .setMaxLines(maxLines)
+          .setEllipsize(TextUtils.TruncateAt.END)
           .build()
       cachedExcerptKey = key
       cachedExcerptLayout = built
