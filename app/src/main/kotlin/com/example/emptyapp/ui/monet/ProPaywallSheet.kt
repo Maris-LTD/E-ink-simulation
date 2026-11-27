@@ -63,7 +63,11 @@ fun ProPaywallSheet(
   var message by remember { mutableStateOf<BillingMessage?>(null) }
 
   LaunchedEffect(billing) {
-    if (!billingState.isConnected) billing.startConnection()
+    if (!billingState.isConnected) {
+      billing.startConnection()
+    } else if (billingState.products.isEmpty() && !billingState.isLoadingCatalog) {
+      billing.queryCatalog()
+    }
     billing.messages.collect { message = it }
   }
 

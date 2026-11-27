@@ -21,8 +21,8 @@ import com.android.billingclient.api.consumePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -44,8 +44,7 @@ class PlayBillingManager(
   val messages: SharedFlow<BillingMessage> = mutableMessages.asSharedFlow()
 
   private val productDetailsById = ConcurrentHashMap<String, ProductDetails>()
-  private var reconnectAttempts = 0
-  private var isConnecting = false
+  private val isConnecting = AtomicBoolean(false)
 
   private val purchasesListener = PurchasesUpdatedListener { result, purchases ->
     when (result.responseCode) {
@@ -62,14 +61,14 @@ class PlayBillingManager(
       .enablePendingPurchases(
         PendingPurchasesParams.newBuilder().enableOneTimeProducts().enablePrepaidPlans().build()
       )
+      .enableAutoServiceReconnection()
       .build()
 
   private val stateListener =
     object : BillingClientStateListener {
       override fun onBillingSetupFinished(result: BillingResult) {
-        isConnecting = false
+        isConnecting.set(false)
         if (result.responseCode == BillingResponseCode.OK) {
-          reconnectAttempts = 0
           mutableState.update { it.copy(isConnected = true) }
           scope.launch {
             queryCatalog()
@@ -77,38 +76,30 @@ class PlayBillingManager(
           }
         } else {
           mutableState.update { it.copy(isConnected = false) }
-          scheduleReconnect()
+          mutableMessages.tryEmit(BillingMessage.Error(result.responseCode, result.debugMessage))
         }
       }
 
       override fun onBillingServiceDisconnected() {
-        isConnecting = false
+        isConnecting.set(false)
         mutableState.update { it.copy(isConnected = false) }
-        scheduleReconnect()
       }
     }
 
   fun startConnection() {
-    if (billingClient.isReady || isConnecting) return
-    isConnecting = true
+    if (billingClient.isReady || !isConnecting.compareAndSet(false, true)) return
     billingClient.startConnection(stateListener)
   }
 
-  private fun scheduleReconnect() {
-    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return
-    val delayMs = 1000L * (1L shl reconnectAttempts.coerceAtMost(5))
-    reconnectAttempts++
-    scope.launch {
-      delay(delayMs)
-      startConnection()
-    }
-  }
-
   suspend fun queryCatalog() {
-    if (!billingClient.isReady) return
+    if (!billingClient.isReady) {
+      startConnection()
+      return
+    }
     mutableState.update { it.copy(isLoadingCatalog = true) }
-    val subs = queryDetails(ProductType.SUBS, listOf(BillingConstants.PRODUCT_MONTHLY, BillingConstants.PRODUCT_ANNUAL))
-    val inapp =
+    val (subs, subsResult) =
+      queryDetails(ProductType.SUBS, listOf(BillingConstants.PRODUCT_MONTHLY, BillingConstants.PRODUCT_ANNUAL))
+    val (inapp, inappResult) =
       queryDetails(
         ProductType.INAPP,
         listOf(BillingConstants.PRODUCT_LIFETIME, BillingConstants.PRODUCT_TIP_COFFEE, BillingConstants.PRODUCT_TIP_BOOK),
@@ -119,6 +110,15 @@ class PlayBillingManager(
       details.toBillingProductUi()?.let { mapped[it.productId] = it }
     }
     mutableState.update { it.copy(isLoadingCatalog = false, products = mapped) }
+    val failedResult =
+      when {
+        subsResult.responseCode != BillingResponseCode.OK -> subsResult
+        inappResult.responseCode != BillingResponseCode.OK -> inappResult
+        else -> null
+      }
+    if (failedResult != null) {
+      mutableMessages.tryEmit(BillingMessage.Error(failedResult.responseCode, failedResult.debugMessage))
+    }
   }
 
   suspend fun refreshPurchases(userInitiatedRestore: Boolean = false) {
@@ -153,9 +153,15 @@ class PlayBillingManager(
   }
 
   fun launchPurchase(activity: Activity, productId: String): BillingResult {
-    val details = productDetailsById[productId]
-    if (!billingClient.isReady || details == null) {
+    if (!billingClient.isReady) {
       startConnection()
+      val msg = "Billing service not connected"
+      mutableMessages.tryEmit(BillingMessage.Error(BillingResponseCode.SERVICE_DISCONNECTED, msg))
+      return BillingResult.newBuilder().setResponseCode(BillingResponseCode.SERVICE_DISCONNECTED).setDebugMessage(msg).build()
+    }
+    val details = productDetailsById[productId]
+    if (details == null) {
+      scope.launch { queryCatalog() }
       val msg = "Product not ready: $productId"
       mutableMessages.tryEmit(BillingMessage.Error(BillingResponseCode.ITEM_UNAVAILABLE, msg))
       return BillingResult.newBuilder().setResponseCode(BillingResponseCode.ITEM_UNAVAILABLE).setDebugMessage(msg).build()
@@ -163,19 +169,29 @@ class PlayBillingManager(
     val paramsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details)
     if (details.productType == ProductType.SUBS) {
       val offerToken = mutableState.value.products[productId]?.offerToken ?: details.subscriptionOfferDetails?.firstOrNull()?.offerToken
-      if (offerToken != null) paramsBuilder.setOfferToken(offerToken)
+      if (offerToken.isNullOrBlank()) {
+        val msg = "No active subscription offer: $productId"
+        mutableMessages.tryEmit(BillingMessage.Error(BillingResponseCode.ITEM_UNAVAILABLE, msg))
+        return BillingResult.newBuilder().setResponseCode(BillingResponseCode.ITEM_UNAVAILABLE).setDebugMessage(msg).build()
+      }
+      paramsBuilder.setOfferToken(offerToken)
     }
     val flowParams = BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(paramsBuilder.build())).build()
-    return billingClient.launchBillingFlow(activity, flowParams)
+    val result = billingClient.launchBillingFlow(activity, flowParams)
+    if (result.responseCode != BillingResponseCode.OK && result.responseCode != BillingResponseCode.USER_CANCELED) {
+      mutableMessages.tryEmit(BillingMessage.Error(result.responseCode, result.debugMessage))
+    }
+    return result
   }
 
-  private suspend fun queryDetails(productType: String, productIds: List<String>): List<ProductDetails> {
+  private suspend fun queryDetails(productType: String, productIds: List<String>): Pair<List<ProductDetails>, BillingResult> {
     val products =
       productIds.map { id ->
         QueryProductDetailsParams.Product.newBuilder().setProductId(id).setProductType(productType).build()
       }
     val result = billingClient.queryProductDetails(QueryProductDetailsParams.newBuilder().setProductList(products).build())
-    return if (result.billingResult.responseCode == BillingResponseCode.OK) result.productDetailsList.orEmpty() else emptyList()
+    val list = if (result.billingResult.responseCode == BillingResponseCode.OK) result.productDetailsList.orEmpty() else emptyList()
+    return list to result.billingResult
   }
 
   private suspend fun handlePurchases(purchases: List<Purchase>, emitMessages: Boolean, resetIfEmpty: Boolean = false) {
@@ -218,9 +234,5 @@ class PlayBillingManager(
         mutableMessages.tryEmit(BillingMessage.PurchasePending)
       }
     }
-  }
-
-  private companion object {
-    const val MAX_RECONNECT_ATTEMPTS = 5
   }
 }

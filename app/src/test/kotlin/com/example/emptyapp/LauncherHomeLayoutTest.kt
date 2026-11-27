@@ -1,10 +1,13 @@
 package com.example.emptyapp
 
+import android.content.pm.ApplicationInfo
 import com.example.emptyapp.ui.eink.CoverBitmapCache
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherHomeLayoutTest {
@@ -68,5 +71,16 @@ class LauncherHomeLayoutTest {
   fun coverBitmapCacheColorFilterForMatchesGrayscaleFlag() {
     assertNull(CoverBitmapCache.colorFilterFor(grayscale = false))
     assertNotNull(CoverBitmapCache.colorFilterFor(grayscale = true))
+  }
+
+  @Test
+  fun isUninstallableApplicationFlagsAllowsUserAppsAndUpdatedSystemAppsOnly() {
+    assertTrue(isUninstallableApplicationFlags(0))
+    assertFalse(isUninstallableApplicationFlags(ApplicationInfo.FLAG_SYSTEM))
+    assertTrue(
+      isUninstallableApplicationFlags(
+        ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP,
+      ),
+    )
   }
 }
